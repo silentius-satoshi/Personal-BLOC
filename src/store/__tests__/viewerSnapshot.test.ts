@@ -110,6 +110,8 @@ describe('viewer snapshot builders', () => {
       'cbPaymentStrategy', 'cbRotateBackPct', 'coldStorageBtc', 'creditLine', 'expenses', 'hasCbLoan',
       'hiddenTabs',
       'income', 'ndpLastPaidDate',
+      // BL14 (Batch 1, build 2) — a CONSCIOUS EXPOSE, the owner's G2-A: a trusted viewer's Dashboard draws the goal tile.
+      'planGoalNetBtc',
       // The plan of record (Run 1, D9) — a CONSCIOUS EXPOSE: a trusted viewer's faces start from the owner's plan.
       'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',
       'policyPayDownAbove', 'policyStrikeStopAtSupportPct',

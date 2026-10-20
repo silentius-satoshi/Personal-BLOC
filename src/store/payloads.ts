@@ -58,6 +58,8 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     policyPayDownAbove:           s.policyPayDownAbove,
     policyBearBufferMonths:       s.policyBearBufferMonths,
     policyCashReserveMonths:      s.policyCashReserveMonths,
+    // BL14 (Batch 1, build 2) — the goal in net coins (null = none). In the backup; EXPOSED to a trusted viewer (G2-A).
+    planGoalNetBtc:               s.planGoalNetBtc,
     nostrRelays:              s.nostrRelays,   // C: relay list — syncs across the owner's devices as a plan event; stripped from the viewer snapshot
     // Backup gate (R2a-1) — the key-custody stamp. A one-way latch by construction (no path emits a null event);
     // STRIPPED from the trusted viewer snapshot below. keyProvenance is device-local → NOT here.

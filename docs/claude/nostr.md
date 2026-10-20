@@ -1351,11 +1351,11 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 45 Synced Settings Fields
+### All 46 Synced Settings Fields
 (`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the journal channels (5b: monthly pages + manifest, records:v1 the bridge) (NOT as plan fields); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
-**How they sync (since 4e):** the 41 PLAN_EVENT_FIELDS as plan events on `plan-events:v1`, the 4 prefs (`tabOrder`,
+**How they sync (since 4e):** the 42 PLAN_EVENT_FIELDS as plan events on `plan-events:v1`, the 4 prefs (`tabOrder`,
 `hiddenTabs`, `simpleMode`, `btcBuyingUnit`) whole-object on `prefs:v1`. `SETTINGS_FIELDS` / `buildSettingsPayload`
-still list all 45: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) and the plan backup read them.
+still list all 46: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) and the plan backup read them.
 `settings:v1`, the channel the list was named for, is retired.
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBlocBalanceAsOf`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
@@ -1369,6 +1369,7 @@ still list all 45: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) a
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
 `policyCbStopAtSupportPct`, `policyStrikeStopAtSupportPct`, `policyAccumulateBelow`, `policyPayDownAbove`,
 `policyBearBufferMonths`, `policyCashReserveMonths`,
+`planGoalNetBtc` (BL14 — the plan's goal; null = no goal),
 `nostrRelays`, `backupVerifiedAt`, `viewers`, `nextViewerIndex`
 (`backupVerifiedAt` (R2a-1) is synced so the backup attestation travels with the plan (an imported/external peer
 device sees it). ⚠ It does NOT un-gate a gated peer — a gated device runs no sync at all, not even a pull, and

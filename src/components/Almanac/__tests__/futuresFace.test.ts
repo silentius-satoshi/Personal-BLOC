@@ -79,7 +79,7 @@ describe('the crossing — futuresRun', () => {
 const SUMMARY: FuturesSummary = {
   count: 1000, months: 240,
   yoursBtc: { p10: 3.1, p50: 3.754, p90: 4.761 }, coldBtc: { p10: 2.79, p50: 3.27, p90: 4.05 },
-  beatsNeverDraw: 990, seized: 11, seizedWithinYear: 3, seizedHalfByMonth: 37, startISO: '2026-10-04', countsSeizures: true,
+  beatsNeverDraw: 990, tiesNeverDraw: 0, seized: 11, seizedWithinYear: 3, seizedHalfByMonth: 37, startISO: '2026-10-04', countsSeizures: true,
 };
 
 describe('the words — futuresView', () => {

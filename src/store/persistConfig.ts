@@ -123,6 +123,8 @@ export function migrateState(persistedState: any): any {
     policyPayDownAbove:           persistedState.policyPayDownAbove           ?? PLAN_POLICY_DEFAULTS.payDownAbove,
     policyBearBufferMonths:       persistedState.policyBearBufferMonths       ?? PLAN_POLICY_DEFAULTS.bearBufferMonths,
     policyCashReserveMonths:      persistedState.policyCashReserveMonths      ?? PLAN_POLICY_DEFAULTS.cashReserveMonths,
+    // BL14 (Batch 1, build 2) — the goal: an additive default (null = no goal), no bump, as for the six.
+    planGoalNetBtc:               persistedState.planGoalNetBtc               ?? null,
     btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
     lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
     nostrLogin:           persistedState.nostrLogin         ?? null,

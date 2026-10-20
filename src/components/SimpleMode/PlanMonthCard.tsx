@@ -11,7 +11,7 @@ import {
   planMonthActions, planStatus, planAfter, monthTrack, planMonthSummary, planSwitchNote, planRowDot, planRowNoteColor,
   planRowAmountColor, planBreakerLine, loggedMonthRows, loggedMonthAfter, loggedMonthStatus, venueSegments, VENUE_COLOR,
   planMinimumOwed, planMinimumLine, planInterestRollsLine, planNdpLine, planLedgerParts, planNextMonthLine,
-  planSavingsLine, planPriceLine, planMeterAria, planSignoffLine, planSignoffSub, PLAN_CRASH_TITLE, type PlanRow,
+  planSavingsLine, planPriceLine, planMeterAria, planSignoffLine, planSignoffSub, PLAN_CRASH_TITLE, planGoalLine, type PlanRow,
   type PlanAfterRow, type PlanStatus, type PlanMeter,
 } from '../Almanac/planMonthView';
 import styles from './SimpleModeView.module.css';
@@ -167,8 +167,11 @@ export function PlanMonthCard({
   const rows = isPast ? (entry ? loggedMonthRows(entry) : []) : row ? planMonthActions(pm.run.sim, pm.run.placement, runMonth) : [];
   const after = row ? planAfter(row, supportAt(runMonth), cbStop, pm.run.sim.policyApplied) : null;
   const breakerLine = isCurrent ? planBreakerLine(pm.breaker) : null;
+  // BL14 (G1-C) — the goal line: the run's own figure for the month against the saved goal (null with none).
+  const goal = pm.run.engineInputs.goalNetBtc ?? null;
+  const goalLine = row ? planGoalLine(row, goal) : null;
   const rollsLine = row ? planInterestRollsLine(row.strikeInterestUsd, dueDay) : null;
-  const why = row ? planMonthSummary(pm.run.sim, pm.run.placement, runMonth, supportAt(runMonth)) : '';
+  const why = row ? planMonthSummary(pm.run.sim, pm.run.placement, runMonth, supportAt(runMonth), goal) : '';
   // The savings need: bills nothing paid, over the plan's months left in the strategy year.
   const savingsLine = planSavingsLine(pm.run.sim, 12 - currentMonth + 1);
   const nextLine = planNextMonthLine(pm.run.sim);
@@ -228,6 +231,7 @@ export function PlanMonthCard({
             </div>
           ) : status && <Status st={status} />}
           {breakerLine && <p className={styles.pmFoot} style={{ marginLeft: 0 }}>{breakerLine}</p>}
+          {goalLine && <p className={styles.pmFoot} style={{ marginLeft: 0 }}>{goalLine}</p>}
 
           {rows.length > 0 && (
             <>

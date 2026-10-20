@@ -866,7 +866,8 @@ non-cycle only). Now it is disclosed. The funding logic and the baseline math ar
   has stopped" would be false for the credit-line case. The last sentence is the baseline's MEASURED gap ("The
   never-draw comparison leaves $Y unpaid over the same run." / "…pays every bill over the same run."); the third
   argument is REQUIRED (Run 2b), so a 2-argument call fails `tsc`. ⚠ **Under the support policy** the constraints
-  box shows `policyUnpaidNote(reading)` instead — it names the real cause (paused / broken / the limits).
+  box shows `policyUnpaidNote(reading)` instead — it names the real cause (paused / broken / the limits — or, BL14,
+  the goal, when the first unpaid month sat at it: § BL14).
 - ⚠ Every face reads it from the SAME `sim` that supplies `firstDrawMonth` (the displayed run), so the stress
   lens moves the notice. CyclingFace destructures `cycleUnfunded` ONLY. It does not render `degenerateCap`,
   which is out of scope there.
@@ -1292,11 +1293,12 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
     `'liquidated'` first (month 0 → "Coinbase starts this scenario past its liquidation line…", never "in month 0"),
     then `'ceiling'` (a limit blocked a buy-zone month that had line room) or `'line'` (Strike's own capacity was 0 in
     every buy-zone month), then `'zone'` (never in the buy zone, some month above it), else `'belowSupport'` (paused or
-    broken all run). An exhaustive test checks each kind's defining property on every A5 path and grid cell.
-  - `policyPauseReason` names what spare income repaid, in the post-liquidation and `broken` branches, through
-    `repaidTail(row)` (from the engine's `strikeRepaidUsd` / `cbRepaidUsd`): " Spare income repaid $A of Strike debt
-    and $B of Coinbase debt." / Strike only / Coinbase only / '' (both under the dust floor) — no order word. Every other
-    branch keeps the restore tail.
+    broken all run). An exhaustive test checks each kind's defining property on every A5 path and grid cell. BL14 adds
+    `'goal'` (at the goal in every buy-zone month) and `'goalMixed'`, checked before `'ceiling'` / `'line'` — § BL14.
+  - `policyPauseReason` names what spare income repaid, in the post-liquidation, `broken` and (BL14) goal branches,
+    through `repaidTail(row)` (from the engine's `strikeRepaidUsd` / `cbRepaidUsd`): " Spare income repaid $A of Strike
+    debt and $B of Coinbase debt." / Strike only / Coinbase only / '' (both under the dust floor) — no order word. Every
+    other branch keeps the restore tail.
   - Also: `policyPauseReason(row, s, expenses)` (the real reason a month did not borrow; null at bills ≤ 0),
     `policyUnpaidNote` (the card's unpaid line, exported), `policyAlert`, `policyStopSentence`, `billsRemainderTail`,
     `drawPauseClause` (policy off → today's words verbatim), `zoneStrip` (its counts ARE the engine's
@@ -1315,6 +1317,8 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   head gains `verdictBasisClause` (", after unpaid bills" / ", after reserve cash" / both — the same predicate as
   `allIn`). The Net-equity tile keeps RAW equity as its value, and when `allIn` its end sub-line reads `all-in vs
   never-draw: ±$X` (Cycling, Strategy), so the tile's colour and its words agree. Both apply with the policy off too.
+  BL14: with a goal, all-in equity also counts the spare income kept at the goal on both sides (the head then adds
+  ", counting the spare income kept at your goal"), and a gap under the dust floor is a tie (`kind: 'even'`) — § BL14.
 - **Per-face copy** (gated on `sim.policyApplied` unless marked "off too"):
   - `policyAlert` (the headline with `call: null`, shown on warn/bad) — Strategy's state line, Ownership's verdict
     list, first in Cycling's constraints. A Strike call reads only through `strikeCapNote`, never twice.
@@ -1352,7 +1356,7 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       debt); nothing bought, debt repaid → "No bills to fund. $R of spare income paid debt down, so no bitcoin bought
       this month."; nothing bought, nothing repaid (a $0 paycheck) → "No bills to fund. No bitcoin bought this
       month." (both 2b.3). ⚠ The debt-repaid shape is reached with the policy ON, the default: on P2 at $0 of bills,
-      the first pay-down months send all the spare income to debt.
+      the first pay-down months send all the spare income to debt. BL14 adds a fourth shape, at the goal — § BL14.
   - ⚠ **`cashFlowAtMonth.incomeCoveredUsd` is what the paycheck actually PAID** — `min(max(0, income),
     strikeShortfall)`, ≤ income — so `buys + incomeCovered === income` in every drawing month (v1.3 #15) — less
     Strike's minimum when income pays it (the plan of record's Run 2, D-R2-7: `buys + incomeCovered + strikeMinPaidUsd
@@ -1412,7 +1416,9 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       starting month M." + the outcome — a liquidation first (Policy v2, F5d): "Coinbase was still seized on the way down
       in month L." / "…liquidated in month L."; else "From month U the playbook could not hold the C% defense line — the
       residual is unhedged."; else "The C% defense line held; the refinance shifts the debt back to Coinbase as the price
-      recovers." Each part only past its dust floor; null when nothing moved. The old "LTV stop defense" note renders
+      recovers." — or, BL14, with a goal month after the first shift, "…as the price recovers, except at your goal, where
+      spare income repays it instead." (`GOAL_REFINANCE_CLAUSE`, § BL14). Each part only past its dust floor; null when
+      nothing moved. The old "LTV stop defense" note renders
       only with the policy off (`{!applied && defenseActive && (`), its ternaries collapsed to the policy-off words.
     - `defendedFromSub(row, applied)` — the CB LTV tile's sub reads "defended from X%" in a month the playbook moved
       collateral too (policy on), not only in a shift month; otherwise each face's fallback.
@@ -1583,7 +1589,10 @@ THIS MONTH's log overlay kept it until Run 3 (gone since — § The plan of reco
   month (F13, below) — and "Interest capitalized" is the interest less the minimum paid, for the current month only
   (Δ5). On a crash day (D13 — `isCrashDay`, still `ltvTriggered` until Run 4, D3 — done in Run 4: the Coinbase loan
   alone) THIS MONTH's status is the Emergency Console's line — `PLAN_CRASH_TITLE` over `monthPlaybookLine`'s items —
-  with `crashNote(true)` as a foot under the rows; Daily's status is the title alone.
+  with `crashNote(true)` as a foot under the rows; Daily's status is the title alone. **BL14:** with a goal set, both
+  cards print one goal line under the status (THIS MONTH under the breaker line): `planGoalLine` on the run's own month
+  and goal — "this month", at today's price once the month's Coinbase interest is added — and "Why this plan?" says how
+  the figure is read (`planMonthSummary`'s goal words). With no goal, no line and the summary byte-identical — § BL14.
 - **The status (§4.5).** Month 1 reads TODAY's fact — THE MOVE's `cbOverCeilingUsd` at S₀ — with the time back
   (`firstMonthUnderLimit`) and the catch-up as arithmetic on the run's numbers ("Your limit: 45% of what Coinbase's
   collateral is worth at support ($X per ₿ today)."). Later months read their own month-end through ONE rule,
@@ -1838,6 +1847,73 @@ what its buttons do.
   price-history fetch per screen visit (5e, F12).
 - Tests: § Test Suite → "The plan of record (Run 4)".
 
+#### BL14 — the plan's goal amount (batch 1, build 2; store unchanged, NO bump)
+
+Spec `pbloc-spec-batch-1-v1` v0.6 §2.2 (G1-C, G2-A). The rule in the engine: `engines.md` § The plan's goal amount; the
+field: `store.md` § BL14; the Dashboard tile: `viewer.md` § BL14.
+
+- **One plan is five readers** (BL9). THIS MONTH's hook (`usePlanMonth` — THIS MONTH, Daily and the Advisor tab's card)
+  and the Decision, Cycling, Ownership and Strategy faces each read the saved goal through `planGoalOf(st.planGoalNetBtc)`
+  in their selector (a primitive, so `useShallow` stays stable); every engine-inputs memo passes `goalNetBtc` and depends
+  on it, and every lens reset lists it (`resetMirror.test.ts`). The stress run, the futures job and the crown read
+  `engineInputs`, so they run the goal too. `EngineFacts` and `PlanMonthFacts` (`planRun.ts`) REQUIRE it, so THIS MONTH
+  and the Decision card can't drift.
+- **THIS MONTH and Daily — the goal line** (`planGoalLine(row, goal)`, under the status). Under the goal: "Net coins
+  this month: ₿0.497 of your ₿2.000 goal, at today's price." At it: "At your goal (net coins this month: ₿0.497 of
+  ₿0.400): the plan borrows and buys nothing — spare income repays Coinbase." — naming the legs the month ACTUALLY repaid
+  (a loan over its limit is restored first, so the goal's own order isn't always the month's); "— no spare income is
+  left this month to repay a loan" when the bills or a minimum took it all; and "the plan holds — it borrows and buys
+  nothing, and $X of spare income stays with you" once both loans are repaid. `goalPair` prints both figures to three
+  places, or as many more (to eight) as it takes for a figure under the goal never to print as the goal; `netBtcText`
+  puts a sign before the ₿ ("−₿0.200"). "This month", never "today": the run reads the month's decision — today's price
+  after a month of Coinbase's interest — so with a Coinbase loan open the figure sits a little under the Dashboard tile's
+  "today", and "Why this plan?" (`planMonthSummary`'s goal words) names the interest.
+- **The faces' words when the goal was why** — each byte-identical with no goal:
+  - the month's sentence: `policyPauseReason`'s goal branch (after the post-liquidation one) — "Net coins are at your
+    goal, so the plan borrows and buys nothing. Your paycheck pays the bills." — then what spare income repaid on each
+    leg (`repaidTail`) or kept (`goalKeptTail`);
+  - the verdict's stop clause and sentence: "(at your goal)" (`stopReason` reads the stop month's row);
+  - the never-borrows notice: `'goal'` ("Net coins are at your goal in every buy-zone month on this path, so the plan
+    never borrows.") and `'goalMixed'`;
+  - the Support policy card's headline: "Buy zone · 1.50× support — at your goal, the plan borrows and buys nothing" in
+    the zone's tone — `GOAL_BUY_ZONE_LABEL`, never "Buy with the line" when nothing is borrowed (HEAD's own rule after a
+    liquidation; δ-L4);
+  - the no-bills sentence's fourth shape: "No bills to fund. Net coins are at your goal, so the plan borrows and buys
+    nothing." + the repayment or the kept income;
+  - the Decision schedule: ◎ beside a goal month's zone letter, and "at your goal" beside the zone in the printout.
+- **A goal month with a crash defense (δ-L2).** The debt shift still runs at the goal, so a month whose defense drew on
+  Strike (`goalDefenseOf`: the row's `defenseDrawnUsd` over the dust floor) "buys nothing and borrows only for a crash
+  defense" (`goalActs`) — in the goal line, "Why this plan?", the ◎ mark, the month's sentence, the headline and the
+  no-bills sentence. A month without a shift keeps "borrows and buys nothing".
+- **The sentences a goal month would have made false** (v2 — the build 2 plan's review):
+  - the faces' unpaid line, when the first unpaid month sat at the goal: "From month N, $X of bills went unpaid — net
+    coins are at your goal, so the plan borrows nothing for them." (`GOAL_UNPAID_CAUSE`; δ1);
+  - THIS MONTH's unpaid body at a goal month: "At your goal the plan borrows nothing for the bills, so income and the
+    cash reserve fall short at today's price." (`GOAL_UNPAID_BODY`; δ2);
+  - an over-limit goal month: "Spare income repays it", without "before the plan borrows again" (δ3 — the N8 rule's goal
+    twin);
+  - THE MOVE's over-limit line drops "before it borrows again" when THIS MONTH's own figure is at the goal:
+    `atGoalThisMonth: sim.policyApplied && atGoalThisMonthOf(placementInput, cbAprPct, goal)` — THE MOVE's coins and debts
+    at its price plus a month of Coinbase's interest (`netCoinsThisMonthOf`), so the card is the same on every path and
+    agrees with THIS MONTH (δ4 — words only: THE MOVE's move doesn't change, and G3 stays open);
+  - the crash playbook's note, when a goal month follows the first shift: "…the refinance shifts the debt back to Coinbase
+    as the price recovers, except at your goal, where spare income repays it instead." (`GOAL_REFINANCE_CLAUSE`; δ-L7).
+- **The never-draw verdict at the goal** (δ-L6, δ-L8). `verdictVsNeverDraw` reads the engine's one rule (`neverDrawTie`):
+  with a goal, a gap under the dust floor is `kind: 'even'`. The Cycling face says "Cycling ties — the same equity as
+  paying bills from income" (the Strategy face, "Cycle ties — …"; `neverDrawTieHead`), in a neutral box (no good or warn
+  class), the Net-equity tile in the plain text colour (its end sub-line, when the comparison is all-in, "all-in vs
+  never-draw: even"; otherwise "never-draw: $X" as before), and no signed coin gap under the head (a tie's sign is float
+  residue). The Decision face's tile reads "even" in plain. The futures' "Beats never
+  borrowing" adds "· N% tie" to its sub-line when any future ties (`tiesNeverDraw`). The kept income counts on both
+  sides, and the head names it: ", counting the spare income kept at your goal" (`KEPT_BASIS_CLAUSE`; `allIn` is then
+  true). The Ownership face shows no never-draw verdict. With no goal, every verdict's word, colour and count is as before.
+- **Still open:** δ-L3 — after a Coinbase liquidation the month's sentence keeps "Coinbase has been liquidated — the
+  policy borrows nothing more." and never names the goal (silent, not false); δ-L5 — with the policy refused (a Strike
+  liquidation LTV at or under its 70% call), the engine runs no goal, so THIS MONTH prints no goal line; its status names
+  the refusal.
+- Tests: `goalViews.test.ts` (23), `goalTile.test.tsx` (3), `yourPlanGoal.test.ts` (3), `planRun.test.ts` and
+  `planRunWiring.test.ts` (+3 each) — § Test Suite → "BL14 — the plan's goal amount".
+
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
 An ELEVENTH face **Strategy** (`◈ Strategy`, `src/components/Almanac/UnifiedFace.tsx` + `.module.css`) —
@@ -1938,7 +2014,8 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   settled with nothing usable ("Price history didn't load…"). History lands after mount, so the runs re-run once and
   an engaged stress resets once (§7 — expected).
 - **The schedule** — `planSchedule(sim, placement)`: Today reads the PLAN; months ≥ 1 read `ACTION_FIELDS` verbatim.
-  Columns Month · Moves (a wrapped list — never a horizontal scroll) · **Strike keep** · Zone (`ZONE_*`). **D2:** the
+  Columns Month · Moves (a wrapped list — never a horizontal scroll) · **Strike keep** · Zone (`ZONE_*`; BL14: a goal
+  month's ◎ beside the letter, `goalMarkLabel` its title and aria-label — § BL14). **D2:** the
   keep header is `SCHEDULE_KEEP_HEADER` ("Strike keep") on ONE line — `.colKeep` is 88px (11 mono capitals ≈ 73px +
   12px padding; Moves keeps ≥ 121px at a 375px viewport), measured by an e2e at 390px and 375px. The old "Keep ₿ at
   support" wrapped in its 76px column beside "Zone" and read as one phrase. A quiet key under the schedule's header
@@ -2012,7 +2089,8 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   words — `suggestedLineWords`.) The slider's "Suggested" chip appears
   only while the run's line is BELOW the suggestion (above it, "Suggested" would read as advice to lower the line).
 - **The print doctrine (D7) — execute = print, never act.** ONE text artifact (`scheduleToText`: the header, THE MOVE
-  as text, every month's moves, the crash notes, the disclaimer) for **Copy** (the reliable iOS-PWA path), **Download
+  as text, every month's moves — a goal month's zone reading "(accumulate · at your goal)", BL14 — the crash notes, the
+  disclaimer) for **Copy** (the reliable iOS-PWA path), **Download
   .txt** (`downloadBlob` — an iOS PWA may open it instead of saving) and **Print**. 🔴 Print sets `body.decision-print`
   and a `<pre>` portal on `<body>` holds the artifact; every print rule in the module is gated on that class, because
   a CSS module loads app-wide and an ungated `@media print` would take over every page's printing (G7). 🔴 **C1:** the

@@ -1096,7 +1096,7 @@ goes red.)
     `sync.test.ts` (a relay answers; IGNORED's log check is now no "unreadable" or "parse failed" line — 5c retired
     "payload parse failed (skipped)" from the apply) · `journalSync.test.ts` / `journalSweep.test.ts` (the pools answer;
     `setPlanLoaded`) · `characterization.test.ts` (98 persisted keys, 104 with the plan of record's Run 1, 107 with its
-    Run 2; `planLoaded: false`).
+    Run 2, 108 with BL14's goal; `planLoaded: false`).
   - Red-first and the mutations: the spec's §6.3 and Appendix P.
 - **Phase 4e — the `settings:v1` bridge retired** (spec `bitbloc-spec-4e-bridge-stop-v1` v1.3 — § Phase 4; 25 test files,
   3 new; the suite 2,505 → 2,494, 149 → 152 files; 32 mutations + X-PARITY-ORDER, each an exact-once edit run on its
@@ -1480,6 +1480,48 @@ goes red.)
     FRESH and GUARD · MF2a → F2 GONE · MF2b (the listeners back inside the panel) → F2 FIRST MOMENT · MF12a (the label
     dropped) → F12 OLD and EDGE · MF12b → F12 FUTURE · MF12c → F12 NEWER. M5c alone left FRESH green: the reconcile's
     own writes still pass the monthly-log guard, so 5c held — the reason M5c-b exists.
+- **BL14 — the plan's goal amount** (spec `pbloc-spec-batch-1-v1` v0.6 §2.2, batch 1 build 2 — the reviewer's prototype
+  v2, applied byte for byte; six new unit files and one new e2e spec, eleven changed; the suite 2,770 → 2,844 (+6
+  skipped), 180 → 186 files; e2e 94 → 97 (+2 skipped). 94 planted bugs — 26 in the engine, 12 in the field and the store,
+  12 in the wiring, 44 in the words — each an exact-once edit, red at its listed tests, the files restored and
+  md5-checked: `Claude outputs/batch-1/build-2-mutations-v2.json` and `build-2-report.md`):
+  - `src/simulation/__tests__/goalAmount.test.ts` (22, new): ⭐ GOAL OFF ×2 (absent, null, junk, zero, negative — every row
+    and result field as with no goal; policy-only and cycle-only) · ⭐ GOAL BELOW (a goal never reached: every
+    pre-existing field the same; net coins read, never acted on) · ⭐ GOAL STOP ×2 (accumulate, hold: nothing drawn,
+    bought or refinanced) · ⭐ GOAL ORDER (Strike first, then Coinbase, to zero, over a sweep's goal months) · ⭐ GOAL HOLD
+    (nothing owed: the spare income kept) · ⭐ GOAL NET (the read point: after Coinbase's interest, before Strike's) ·
+    ⭐ GOAL REENTRY (no latch) · ⭐ GOAL ZONE (the zone and the breaker stay the price's, over the face grids) · ⭐ GOAL
+    BASELINE ×3 (the never-draw world keeps the same goal, read at the same point) · ⭐ GOAL KEPT ×3 (the run's Σ
+    `goalHeldUsd` and the baseline's leftover, replayed from its rule; both in all-in equity, bit-identical with no goal;
+    a run that clears its loans for less keeps more — a real win, not a tie) · ⭐ GOAL TIE ×5 (at the goal from month 1,
+    a tie and never a beat; with the minimum paid from income; never without a goal; the floor is `DUST_USD`; the futures
+    count ties apart) · ⭐ GOAL DEFENSE (a goal month over Coinbase's defense line still shifts the same debt to Strike).
+  - `src/components/Almanac/__tests__/goalViews.test.ts` (23, new): ⭐ GOAL LINE ×4 · ⭐ GOAL PAIR · ⭐ GOAL WHY ×6 (the
+    pause reason; the policy card's headline, "Buy zone"; the verdict's stop clause and sentence; the mixed never-borrows;
+    a goal reached later or never keeps the zone's words; no bills) · ⭐ GOAL MARK · ⭐ GOAL WORDS ×3 (δ1–δ3; δ3 is the N8
+    sweep's goal twin) · ⭐ GOAL MOVE (δ4 — THE MOVE's over-limit line, read from THE MOVE's facts) · ⭐ GOAL DEFENSE ×2
+    (δ-L2's "borrows only for a crash defense" in every sentence; δ-L7's playbook note) · ⭐ GOAL VERDICT ×5 (a tie at the
+    goal, its residue of either sign; never "even" without a goal; the kept income counted and named; the faces render
+    the tie; the futures say how many tie).
+  - `src/lib/__tests__/planGoal.test.ts` (5, new): ⭐ GOAL READ · ⭐ GOAL INPUT · ⭐ GOAL FIELD · ⭐ NET · ⭐ AT.
+  - `src/store/__tests__/planGoalStore.test.ts` (12, new; the real store): ⭐ GOAL SEED · EMIT · QUIET · CLEAR · SANITIZE ·
+    FOLD · PERSIST · BACKUP · VIEWER (G2-A: the trusted snapshot carries it; the safe one names neither the field nor the
+    amount) · SEED RESETS · EDITOR (the setter only in YourPlanSection) · READ (every reader through `planGoalOf`).
+  - `src/components/Viewer/__tests__/goalTile.test.tsx` (3, new): ⭐ GOAL TILE ×3 (the words; nothing to show; the tile
+    rendered with `renderToStaticMarkup`).
+  - `src/components/Settings/__tests__/yourPlanGoal.test.ts` (3, new): ⭐ GOAL FIELD ×3 (saved on blur and Enter; δ-L10,
+    the field reads the store back; the hint's words, δ-L9).
+  - Changed: `planRun.test.ts` (+3, ⭐ GOAL — one goal for THIS MONTH and the Decision card over the grid × five goals; no
+    goal byte-identical; THE MOVE never reads it) · `planRunWiring.test.ts` (+3, ⭐ GOAL — the five selectors, memos and
+    deps; THIS MONTH's and Daily's goal line; the schedule's mark, THE MOVE's goal read and the tile's gate) ·
+    `characterization.test.ts` (108 blob keys; the payload 46 keys, 45 entries; the trusted settings 41, 40 normalized) ·
+    `planEvents.test.ts` (`PLAN_EVENT_FIELDS` 41 → 42) · `viewerSnapshot.test.ts` (the trusted key set gains
+    `planGoalNetBtc` — a conscious expose) · fixtures only: `cyclingFaceView` and `ownershipFaceView` (mkRow),
+    `planMonthView` and `strikeMinimum` (facts), `supportPolicyView` (readings: `atGoal`, `goalDefense`), `futuresFace`
+    (`tiesNeverDraw`).
+  - e2e, `goal.spec.ts` (3, new): GOAL (Settings sets it; Daily and THIS MONTH read it under and at it; a bad entry
+    changes nothing; "No goal" clears it) · TILE (₿0.500 of ₿2.000, "net coins today · 25%", no plan move) · TILE — none
+    without a goal.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s

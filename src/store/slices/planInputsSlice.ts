@@ -2,6 +2,7 @@
 import type { StoreState, StoreSet, StoreGet } from '../types';
 import type { PlanField } from '../settingsFields';
 import { PLAN_POLICY_DEFAULTS, PLAN_POLICY_FIELD, PLAN_POLICY_KEYS, clampPlanPolicy } from '../../lib/planPolicy';
+import { planGoalOf } from '../../lib/planGoal';
 
 type PlanInputsSlice = Pick<StoreState,
   | 'income' | 'expenses' | 'btcPrice' | 'btcPriceMode' | 'btcPriceUpdatedAt' | 'blocApr' | 'activeTier' | 'scenario'
@@ -13,6 +14,7 @@ type PlanInputsSlice = Pick<StoreState,
   | 'setAnnualDecline' | 'setInflationRate' | 'setLtvType' | 'setTimeHorizonYears'
   | 'policyCbStopAtSupportPct' | 'policyStrikeStopAtSupportPct' | 'policyAccumulateBelow' | 'policyPayDownAbove'
   | 'policyBearBufferMonths' | 'policyCashReserveMonths' | 'setPlanPolicy' | 'resetPlanPolicy'
+  | 'planGoalNetBtc' | 'setPlanGoalNetBtc'
 >;
 
 export const createPlanInputsSlice = (set: StoreSet, get: StoreGet): PlanInputsSlice => ({
@@ -77,4 +79,13 @@ export const createPlanInputsSlice = (set: StoreSet, get: StoreGet): PlanInputsS
     if (pairs.length > 0) get().emitPlanSets(pairs);   // one ts for the whole patch
   },
   resetPlanPolicy: () => get().emitPlanSets(PLAN_POLICY_KEYS.map((k) => [PLAN_POLICY_FIELD[k], PLAN_POLICY_DEFAULTS[k]])),
+
+  // BL14 (Batch 1, build 2) — the plan's goal in net coins; null = no goal (the seed, and what an absent field folds to).
+  // Edited only in Settings' "Your plan"; the faces never write it. One event per change, through the one read rule.
+  planGoalNetBtc: null,
+  setPlanGoalNetBtc: (v) => {
+    const next = planGoalOf(v);
+    if (get().planGoalNetBtc === next) return;   // unchanged (a canonical value) — no event
+    get().emitPlanSets([['planGoalNetBtc', next]]);
+  },
 });

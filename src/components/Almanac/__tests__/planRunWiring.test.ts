@@ -159,6 +159,49 @@ describe('⭐ MIN — D-R2-7: the owner\'s minimum source reaches every run', ()
   });
 });
 
+describe('⭐ GOAL — BL14: the owner\'s goal reaches every run, and every screen says it one way', () => {
+  it('⭐ GOAL — the five selectors read it through planGoalOf; every engine-inputs memo passes it and depends on it', () => {
+    for (const [name, src] of Object.entries(READERS)) {
+      expect(selectorBody(src), `GOAL ${name} selector`).toMatch(/goalNetBtc: planGoalOf\(st\.planGoalNetBtc\),/);
+      expect(src, `GOAL ${name} import`).toMatch(/import \{ planGoalOf \} from '\.\.\/\.\.\/lib\/planGoal';/);
+    }
+    for (const [name, src] of Object.entries({ decision: FACE, ...PARENTS })) {
+      const memo = memoBody(src, 'engineInputs');
+      expect(memo, `GOAL ${name} passes it`).toMatch(/goalNetBtc: s\.goalNetBtc,/);
+      expect(depsOf(memo), `GOAL ${name} depends on it`).toMatch(/s\.goalNetBtc/);
+    }
+    const run = memoBody(HOOK, 'run');
+    expect(run, 'GOAL hook passes it').toMatch(/goalNetBtc: s\.goalNetBtc,/);
+    expect(depsOf(run), 'GOAL hook depends on the selector').toMatch(/\bs\b/);
+  });
+  it('⭐ GOAL — THIS MONTH and Daily print the one goal line from their run\'s own goal, and hand it to "Why this plan?"', () => {
+    expect(CARD, 'GOAL card reads the run\'s goal').toMatch(/const goal = pm\.run\.engineInputs\.goalNetBtc \?\? null;/);
+    expect(CARD, 'GOAL card line').toMatch(/const goalLine = row \? planGoalLine\(row, goal\) : null;/);
+    expect(CARD, 'GOAL card renders it').toMatch(/\{goalLine && <p className=\{styles\.pmFoot\} style=\{\{ marginLeft: 0 \}\}>\{goalLine\}<\/p>\}/);
+    expect(CARD, 'GOAL card summary').toMatch(/planMonthSummary\(pm\.run\.sim, pm\.run\.placement, runMonth, supportAt\(runMonth\), goal\)/);
+    expect(DAILY, 'GOAL Daily line').toMatch(/const pmGoalLine = planGoalLine\(pr1, pm\.run\.engineInputs\.goalNetBtc \?\? null\);/);
+    expect(DAILY, 'GOAL Daily renders it').toMatch(/\{pmGoalLine && <p className=\{styles\.pbFoot\} style=\{\{ marginLeft: 0 \}\}>\{pmGoalLine\}<\/p>\}/);
+    expect(DAILY, 'GOAL Daily summary')
+      .toMatch(/planMonthSummary\(pm\.run\.sim, pm\.run\.placement, 1, pm\.run\.supportPath\[1\] \?\? pm\.run\.supportPath\[0\], pm\.run\.engineInputs\.goalNetBtc \?\? null\)/);
+  });
+  it('⭐ GOAL — the Decision schedule marks a goal month; the Dashboard tile is trusted-only, goal-gated, from the plan\'s coins', () => {
+    expect(FACE, 'GOAL mark').toMatch(/\{r\.atGoal && \(\s*<span className=\{styles\.schedGoal\} title=\{goalMarkLabel\(r\)\} aria-label=\{goalMarkLabel\(r\)\}>◎<\/span>\s*\)\}/);
+    // δ4 — THE MOVE's over-limit line reads THIS MONTH's figure (THE MOVE's facts, a month of Coinbase interest) against the
+    // goal, only where the policy applies, and the card's memo depends on both.
+    expect(FACE, 'GOAL move').toMatch(/atGoalThisMonth: sim\.policyApplied && atGoalThisMonthOf\(placementInput, s\.cbAprPct, s\.goalNetBtc\),/);
+    const moveMemo = FACE.slice(FACE.indexOf('const move = useMemo(() => moveCard({'));
+    const moveDeps = depsOf(moveMemo.slice(0, moveMemo.indexOf(']);') + 3));
+    expect(moveDeps, 'GOAL move depends on the goal').toMatch(/s\.goalNetBtc/);
+    expect(moveDeps, 'GOAL move depends on the rate').toMatch(/s\.cbAprPct/);
+    expect(VIEWER_HOME, 'GOAL tile reads the goal').toMatch(/const goal = useStore\(\(st\) => planGoalOf\(st\.planGoalNetBtc\)\);/);
+    expect(VIEWER_HOME, 'GOAL tile — the plan\'s Coinbase coins').toMatch(/const planCbBtc = useStore\(\(st\) => planCbCollateralOf\(st\)\);/);
+    expect(VIEWER_HOME, 'GOAL tile — trusted-only, with a goal').toMatch(/const goalView = s\.mode === 'trusted' && f && goal !== null\s*\? goalTileView\(netCoinsBtc\(\{/);
+    expect(VIEWER_HOME, 'GOAL tile — the figures').toMatch(/strikeBtc: venueStrikeBtc, cbBtc: planCbBtc, coldBtc: venueColdBtc,\s*strikeBalanceUsd: f\.strike\.balance, cbDebtUsd: f\.cb\.balance, price: venuePrice,/);
+    expect((VIEWER_HOME.match(/<GoalTile\b/g) ?? []).length, 'GOAL one tile').toBe(1);
+    expect(VIEWER_HOME, 'GOAL tile renders from the gated view only').toMatch(/\{goalView && <GoalTile view=\{goalView\} \/>\}/);
+  });
+});
+
 describe('⭐ CARD — D-R2-2 / D-R2-8: the main screens read the plan, not the Advisor', () => {
   it('⭐ CARD — the card\'s screens and Daily read usePlanMonth: the card takes its screen\'s one run (Run 3)', () => {
     expect(INPUTS, 'CARD hook').toMatch(/const pm = usePlanMonth\(\);/);

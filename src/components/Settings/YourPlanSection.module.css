@@ -1,0 +1,30 @@
+/* BL14 (Batch 1, build 2) — Settings → Your plan's goal field. The input itself reuses NumberInput's look. */
+.goalField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.goalBtn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.goalBtn:hover {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+}
+
+.goalBad {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--amber);
+}

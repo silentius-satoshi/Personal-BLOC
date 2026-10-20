@@ -221,8 +221,12 @@ export function strikeCallSentence(c: StrikeCallSummary): string {
  *                  month (any month with capacity and no cut would have drawn).
  *   zone         — the buy zone never came, and at least one month sat above it (hold / pay down).
  *   belowSupport — every month was paused (under support) or broken.
+ *   goal         — BL14: the buy zone came, but net coins were at the owner's goal in EVERY buy-zone month, so the plan
+ *                  borrowed nothing there (checked before ceiling / line: in a goal month neither was ever asked).
+ *   goalMixed    — BL14: some buy-zone months at the goal, the rest with no room (any of those with room would have drawn):
+ *                  so neither "never leave room" nor "at your goal" alone is true of every one of them.
  */
-export type NeverDraws = 'zone' | 'ceiling' | 'belowSupport' | 'line' | 'liquidated';
+export type NeverDraws = 'zone' | 'ceiling' | 'belowSupport' | 'line' | 'liquidated' | 'goal' | 'goalMixed';
 
 export interface PolicyRoom {
   /** Room under the limit at support, in dollars; negative only when `over`. */
@@ -251,7 +255,8 @@ export interface PolicyReading {
   call: StrikeCallSummary | null;
   cash: { openingUsd: number; leftUsd: number; toBillsUsd: number; toCureUsd: number };
   /** `zone` is the state of the FIRST unpaid month — the cause the unpaid line names. */
-  unpaid: { firstMonth: number; totalUsd: number; zone: PolicyState | null } | null;
+  /** BL14 (δ1): `atGoal` — the first unpaid month sat at the goal (absent ⇒ no). */
+  unpaid: { firstMonth: number; totalUsd: number; zone: PolicyState | null; atGoal?: boolean } | null;
   coldAboveSupportBtc: number;
   firstThrottleMonth: number | null;
   /** Months (m ≥ 1) in each state — the engine's own count. */
@@ -270,6 +275,12 @@ export interface PolicyReading {
    *  loan, on and after a liquidation, and under the dust floor), only while it sits UNDER the month's price. Measured
    *  on the grids, it always does; at or above the price a seizure is the verdict's to report, never a detail line. */
   cliff: { seizeUsd: number; priceUsd: number; month: number } | null;
+  /** BL14 — the inspected month acted at the owner's goal (its row's `atGoal`): it borrowed and bought nothing, whatever
+   *  its zone. False with no goal. */
+  atGoal: boolean;
+  /** BL14 — that goal month's crash defense drew on Strike to pay Coinbase down (`goalDefenseOf`), so its words say it
+   *  borrowed only for the defense. False with no goal. */
+  goalDefense: boolean;
 }
 
 const zeroZones = (): Record<PolicyState, number> => ({ paused: 0, accumulate: 0, hold: 0, payDown: 0, broken: 0 });
@@ -289,7 +300,14 @@ function neverDrawsOf(sim: CyclingResult): NeverDraws | null {
   if (!sim.policyApplied || sim.firstDrawMonth !== null) return null;
   if (sim.liqMonth !== null) return 'liquidated';
   const z = sim.monthsInZone;
-  if (z.accumulate > 0) return sim.firstCeilingThrottleMonth !== null ? 'ceiling' : 'line';
+  if (z.accumulate > 0) {
+    // BL14 — a buy-zone month at the goal never asked the limits or the line (the engine skips the draw there).
+    const buyMonths = sim.rows.filter((r) => r.m > 0 && r.policyZone === 'accumulate');
+    const atGoal = buyMonths.filter((r) => r.atGoal === true).length;
+    if (atGoal === buyMonths.length) return 'goal';
+    if (atGoal > 0) return 'goalMixed';
+    return sim.firstCeilingThrottleMonth !== null ? 'ceiling' : 'line';
+  }
   if (z.hold + z.payDown > 0) return 'zone';
   // A zero-month run has nothing to explain (unreachable from a face — the horizon is never 0).
   return z.paused + z.broken > 0 ? 'belowSupport' : null;
@@ -304,7 +322,7 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
       brokenAtEnd: false, openingBroken: false, call: null,
       cash: { openingUsd: 0, leftUsd: 0, toBillsUsd: 0, toCureUsd: 0 }, unpaid: null, coldAboveSupportBtc: 0,
       firstThrottleMonth: null, monthsInZone: zeroZones(), liqMonth: null, neverDraws: null,
-      afterLiquidation: false, strikeOwes: false, cliff: null,
+      afterLiquidation: false, strikeOwes: false, cliff: null, atGoal: false, goalDefense: false,
     };
   }
   const row: CyclingRow | undefined = sim.rows[monthIdx];
@@ -327,7 +345,10 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
       toBillsUsd: sim.totalCashToBillsUsd, toCureUsd: sim.totalCashToCureUsd,
     },
     unpaid: first === null ? null
-      : { firstMonth: first, totalUsd: sim.totalUnfundedUsd, zone: sim.rows[first]?.policyZone ?? null },
+      : {
+        firstMonth: first, totalUsd: sim.totalUnfundedUsd, zone: sim.rows[first]?.policyZone ?? null,
+        atGoal: sim.rows[first]?.atGoal === true,   // BL14 — the first unpaid month sat at the goal (δ1)
+      },
     coldAboveSupportBtc: sim.coldRetrievedAboveSupportBtc,
     firstThrottleMonth: sim.firstCeilingThrottleMonth,
     monthsInZone: { ...sim.monthsInZone },
@@ -337,6 +358,8 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
       && (monthIdx > sim.liqMonth || (monthIdx === sim.liqMonth && sim.seizedOnTheWayDown)),
     strikeOwes: row !== undefined && shownUsd(row.strikeBalance),
     cliff: cliffOf(row),
+    atGoal: row?.atGoal === true,
+    goalDefense: row !== undefined && row.atGoal === true && goalDefenseOf(row),
   };
 }
 
@@ -484,7 +507,9 @@ const UNPAID_CAUSE: Record<PolicyState, string> = {
  *  month the policy chose not to borrow). Null when nothing went unpaid, or only float dust did. */
 export function policyUnpaidNote(r: PolicyReading): string | null {
   if (r.unpaid === null || !shownUsd(r.unpaid.totalUsd)) return null;
-  const cause = r.unpaid.zone === null ? 'nothing in the model paid them' : UNPAID_CAUSE[r.unpaid.zone];
+  // BL14 (δ1) — at the goal the plan borrows nothing for the bills in ANY zone: the line had room; the goal skipped the draw.
+  const cause = r.unpaid.atGoal === true ? GOAL_UNPAID_CAUSE
+    : r.unpaid.zone === null ? 'nothing in the model paid them' : UNPAID_CAUSE[r.unpaid.zone];
   const act = shownUsd(r.cash.openingUsd) ? 'A larger cash reserve would cover them.' : 'Set a cash reserve to cover them.';
   return `From month ${r.unpaid.firstMonth}, ${fmtUSD(r.unpaid.totalUsd)} of bills went unpaid — ${cause}. ${act}`;
 }
@@ -512,6 +537,13 @@ export function policyHeadline(r: PolicyReading, _s: EffectivePolicySettings): {
   if (r.zone === null) return { tone: 'quiet', text: '' };
   if (r.afterLiquidation && r.zone === 'accumulate') {
     return { tone: 'quiet', text: `Coinbase was liquidated in month ${r.liqMonth} — the policy borrows nothing more` };
+  }
+  if (r.atGoal) {
+    // BL14 — the zone still reads; the goal decides. Never "Buy with the line" when the plan neither borrows for the bills
+    // nor buys (the after-liquidation rule above): the buy zone reads as a zone (δ-L4).
+    const label = r.zone === 'accumulate' ? GOAL_BUY_ZONE_LABEL : ZONE_LABEL[r.zone];
+    const k = r.multiple !== null && Number.isFinite(r.multiple) ? ` · ${fmtK(r.multiple)}× support` : '';
+    return { tone: ZONE_TONE[r.zone], text: `${label}${k}${goalHeadlineTail(r.goalDefense)}` };
   }
   return { tone: ZONE_TONE[r.zone], text: zoneLine(r) };
 }
@@ -569,7 +601,43 @@ export function neverDrawsNote(r: PolicyReading, s: EffectivePolicySettings): st
       return r.monthsInZone.broken === 0
         ? 'Price stays under support on this path, so the policy never borrows.'
         : 'Price stays under support, or the model stays broken, for this whole path, so the policy never borrows.';
+    case 'goal':
+      return 'Net coins are at your goal in every buy-zone month on this path, so the plan never borrows.';
+    case 'goalMixed':
+      return "The buy zone comes, but in each of its months either the limits at support (or Strike's own line) leave no "
+        + 'room to borrow, or net coins are at your goal — so the plan never borrows.';
   }
+}
+
+// ── the goal (BL14) — the words the faces share for a month at the owner's goal ─────────────────────────────────
+
+/** BL14 (δ-L2) — a goal month's crash defense drew on Strike to pay Coinbase down: the schedule's "Draw $X on Strike and
+ *  pay Coinbase down with it", through the same dust floor. The defense still runs at the goal (it moves debt, never a
+ *  coin), so such a month borrows — for the defense alone. */
+export const goalDefenseOf = (row: Partial<Pick<CyclingRow, 'defenseDrawnUsd'>>): boolean => shownUsd(row.defenseDrawnUsd ?? 0);
+
+/** What a month at the goal does, in every sentence that says so: it borrows and buys nothing — or, in a month whose
+ *  crash defense drew on Strike (`goalDefenseOf`), it buys nothing and borrows only for that defense. */
+export const goalActs = (defense: boolean): string =>
+  (defense ? 'buys nothing and borrows only for a crash defense' : 'borrows and buys nothing');
+
+/** A month at the goal, in one sentence, whatever its zone (the pause reason's head, and `noBillsNote`'s). THIS MONTH's
+ *  own goal line (`planGoalLine`) names the amounts. */
+export const goalStopWords = (defense: boolean): string => `Net coins are at your goal, so the plan ${goalActs(defense)}.`;
+
+/** The policy card's zone line at such a month: the zone still reads; the goal decides. */
+export const goalHeadlineTail = (defense: boolean): string => ` — at your goal, the plan ${goalActs(defense)}`;
+
+/** The buy zone's name at a goal month — never "Buy with the line" when nothing is borrowed for the bills or bought (δ-L4). */
+export const GOAL_BUY_ZONE_LABEL = 'Buy zone';
+
+/** Why bills went unpaid when the first unpaid month sat at the goal (δ1): the line had room; the goal skipped the draw. */
+export const GOAL_UNPAID_CAUSE = 'net coins are at your goal, so the plan borrows nothing for them';
+
+/** What spare income kept at the goal once both loans were repaid (`goalHeldUsd`) — '' under the dust floor. */
+export function goalKeptTail(row: Partial<Pick<CyclingRow, 'goalHeldUsd'>>): string {
+  const kept = row.goalHeldUsd ?? 0;
+  return shownUsd(kept) ? ` ${fmtUSD(kept)} of spare income stays with you.` : '';
 }
 
 // ── why a month did not borrow ───────────────────────────────────────────────────────────────────────────────
@@ -614,10 +682,17 @@ export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings, e
     ? 'your paycheck pays what it can' : 'your paycheck pays the bills';
   const payDownAt = `${fmtThreshold(s.payDownAbove)}×`;
   let head: string;
-  let repaid = false;   // the post-liquidation and broken months name what was repaid on each leg
+  let repaid = false;   // the post-liquidation, broken and goal months name what was repaid on each leg
+  let kept = '';        // BL14 — at the goal with both loans repaid, what spare income kept
   if (row.postLiquidation) {
     head = 'Coinbase has been liquidated — the policy borrows nothing more.';
     repaid = true;
+  } else if (row.atGoal === true) {
+    // BL14 — at the goal the zone decides nothing: the month borrowed and bought nothing, in any zone. Name what spare
+    // income repaid on each leg, or — both loans repaid — what it kept.
+    head = `${goalStopWords(goalDefenseOf(row))} ${paycheck.charAt(0).toUpperCase()}${paycheck.slice(1)}.`;
+    repaid = true;
+    kept = goalKeptTail(row);
   } else {
     switch (row.policyZone) {
       case 'hold':
@@ -645,11 +720,14 @@ export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings, e
     }
   }
   const restoreTail = shownUsd(row.restoreUsd) ? ` ${fmtUSD(row.restoreUsd)} of spare income repaid a loan over its limit first.` : '';
-  return head + (repaid ? repaidTail(row) : restoreTail) + billsRemainderTail(row);
+  return head + (repaid ? repaidTail(row) : restoreTail) + kept + billsRemainderTail(row);
 }
 
-/** The pause clause's reason at the stop month, under the policy. */
-function stopReason(zone: PolicyState | null, s: EffectivePolicySettings): string {
+/** The pause clause's reason at the stop month, under the policy — the goal first (BL14): a month at it borrows nothing in
+ *  any zone, and it is the reason borrowing stays off while net coins stay at it. */
+function stopReason(row: Pick<CyclingRow, 'policyZone' | 'atGoal'> | undefined, s: EffectivePolicySettings): string {
+  if (row?.atGoal === true) return 'at your goal';
+  const zone = row?.policyZone ?? null;
   switch (zone) {
     case 'hold':
     case 'payDown':
@@ -670,7 +748,7 @@ function stopReason(zone: PolicyState | null, s: EffectivePolicySettings): strin
  *  ' · borrowing paused at month 12 (price above 1.5× support), resumed at 40'. */
 export function drawPauseClause(
   sim: Pick<CyclingResult, 'stopMonth' | 'drawingResumedMonth' | 'policyApplied'>
-    & { rows: ReadonlyArray<Pick<CyclingRow, 'policyZone'>> },
+    & { rows: ReadonlyArray<Pick<CyclingRow, 'policyZone' | 'atGoal'>> },
   s: EffectivePolicySettings | null,
 ): string {
   if (sim.stopMonth === null) return '';
@@ -679,7 +757,7 @@ export function drawPauseClause(
       ? ` · drawing stopped at month ${sim.stopMonth}`
       : ` · drawing paused at month ${sim.stopMonth}, resumed at ${sim.drawingResumedMonth}`;
   }
-  const why = stopReason(sim.rows[sim.stopMonth]?.policyZone ?? null, s);
+  const why = stopReason(sim.rows[sim.stopMonth], s);
   const reason = why === '' ? '' : ` (${why})`;
   return sim.drawingResumedMonth === null
     ? ` · borrowing stopped at month ${sim.stopMonth}${reason}`
@@ -693,11 +771,11 @@ export function drawPauseClause(
  */
 export function policyStopSentence(
   sim: Pick<CyclingResult, 'stopMonth' | 'drawingResumedMonth' | 'policyApplied'>
-    & { rows: ReadonlyArray<Pick<CyclingRow, 'policyZone'>> },
+    & { rows: ReadonlyArray<Pick<CyclingRow, 'policyZone' | 'atGoal'>> },
   s: EffectivePolicySettings,
 ): string {
   if (!sim.policyApplied || sim.stopMonth === null) return '';
-  const why = stopReason(sim.rows[sim.stopMonth]?.policyZone ?? null, s);
+  const why = stopReason(sim.rows[sim.stopMonth], s);
   const reason = why === '' ? '' : ` (${why})`;
   return sim.drawingResumedMonth === null
     ? `Borrowing stops in month ${sim.stopMonth}${reason} and doesn't resume on this path.`

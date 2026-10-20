@@ -31,6 +31,7 @@ const facts = (over: Partial<PlanMonthFacts> = {}): PlanMonthFacts => ({
   income: 6_000, expenses: 4_000, blocApr: 13, cbAprPct: 6.27, creditLine: 40_000,
   strikeBalance: 20_000, strikeCollateralBtc: 1, cbCollateralBtc: 1, coldBtc: 0.5, cbDebt: 50_000,
   strikeLiquidationLtvPct: 85, hold: { inHold: false, throughISO: null }, breakerSeed: null, strikeMinFromIncome: false,
+  goalNetBtc: null,
   ...over,
 });
 const OVER = facts();

@@ -137,7 +137,8 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   default `'safe'`, part of the synced `viewers` roster). `buildViewerSnapshotPayload(s, tier)` branches on the
   explicit `tier` param (M2 — the fan-out passes each `slot.tier`; M1's `viewers[0]` read was removed). The roster is STRIPPED from the snapshot in BOTH
   branches (safe has no settings; trusted's strip is now `viewers`/`nextViewerIndex`/`nostrRelays`) AND from the
-  **plan backup** (`exportPlan.ts`). SharingPage's tier `<Toggle>` calls `updateViewerSlot(index,{tier})` +
+  **plan backup** (`exportPlan.ts`). (BL14, G2-A: the plan's goal, `planGoalNetBtc`, rides the trusted settings like the
+  plan's six, the strip list unchanged; the safe branch never carries it — § BL14 below.) SharingPage's tier `<Toggle>` calls `updateViewerSlot(index,{tier})` +
   `publishViewerSnapshotNow()` so a mode flip reaches the viewer at once.
 - **Viewer hydrate (`viewerSync.ts` `applyViewerEvent`, after the `revoked` check):** `privacyMode==='safe'`
   → `setViewerSafeSnapshot({safety, thresholds, btcPriceAtSnapshot, hasCbLoan})` + `viewerDataLoaded` +
@@ -283,6 +284,40 @@ viewer (father's device, `viewerMode`) is caught by branch G before J, so viewer
   The repo has **no component-render harness** (no testing-library/jsdom, zero `.test.tsx`), so the JSX assertions
   (svg-not-emoji cluster, Journal toggle retained, preview trigger in Settings, 👁 gone) are covered by `tsc -b` +
   build + manual — a deliberate scope call (no harness introduced).
+
+---
+
+## BL14 — the goal tile (G1-C, G2-A; batch 1 build 2; store stays v21, NO bump)
+
+Spec `pbloc-spec-batch-1-v1` v0.6 §2.2. The goal and its rule: `engines.md` and `store.md` § BL14; THIS MONTH's goal line
+and the faces' words: `almanac.md` § BL14.
+
+- **`src/components/Viewer/goalTileView.ts`** (PURE) — `goalTileView(net, goal)`: `{ value, sub, fill, aria }`, e.g.
+  "₿0.500 of ₿2.000", "net coins today · 25%" (or "net coins today · at or past your goal", by the engine's own
+  `atGoalOf`), the bar's fill 0..1 (never over full), and the tile read aloud. `null` with no goal or with net coins that
+  can't be read. Its figures go through `goalPair` / `netBtcText` (a figure under the goal never prints as the goal; a
+  sign before the ₿). 🔴 It never names a plan move — what the plan does at the goal is THIS MONTH's to say — and it has no
+  colour verdict: reaching a goal is not a risk level. `GOAL_TILE_TITLE` = "Your goal".
+- **`src/components/Viewer/GoalTile.tsx`** (+ `.module.css`) — pure-from-props: the title, the value, a bar (no width
+  transition, the VenueBar / RadialGauge iOS ghost-raster rule) and the sub-line, as `role="group"` with the aria label.
+  The card shell is the gauge cards' and the ownership bar's; tokens only (`--btc` for the figure and the fill).
+- **The gate (`ViewerHomeView`):** `s.mode === 'trusted' && f && goal !== null` — the owner's Dashboard and a TRUSTED
+  viewer's, never a safe viewer's (the safe snapshot carries no amount and no goal), and only with a goal set (read
+  through `planGoalOf`). "Preview as viewer" shows each the same way: a safe preview has no tile, a trusted one has the
+  owner's.
+- **The figure: net coins TODAY, the plan's own definition** (`simulation/goal`'s `netCoinsBtc`), at the live price
+  (`btcPrice`): Strike's coins (`getCurrentBtcHeld()`) + Coinbase's AS THE PLAN COUNTS THEM (`planCbCollateralOf` — none
+  with the Coinbase loan switched off, D-R2-4; never the venue bar's `venueCbBtc`) + cold (`getCurrentColdBtc()`), less
+  Strike's balance (`f.strike.balance`) and Coinbase's ACCRUED balance (`f.cb.balance`, 0 with no loan) — each the read
+  THIS MONTH's run makes, so the two agree. THIS MONTH's figure reads the month's decision (a month of Coinbase's interest
+  later), so with a loan open it sits a little under the tile's: ₿0.497 against ₿0.500 on the e2e's seed — "this month"
+  on one, "today" on the other.
+- **Viewers (G2-A):** the goal rides the trusted snapshot's settings like the plan's six (`VIEWER_SETTINGS_FIELDS` takes
+  it; `VIEWER_SNAPSHOT_STRIP` unchanged), and a trusted viewer's tile is drawn from what that viewer already reads. The
+  safe snapshot's fixed key list is unchanged (`viewerSnapshot.test.ts`).
+- Tests: `src/components/Viewer/__tests__/goalTile.test.tsx` (3 — the words, nothing to show, and the tile rendered with
+  `renderToStaticMarkup`); `planRunWiring.test.ts` GOAL (the gate, the reads); `e2e/goal.spec.ts` TILE (the figure and
+  the share on the owner's Dashboard; no tile without a goal).
 
 ---
 

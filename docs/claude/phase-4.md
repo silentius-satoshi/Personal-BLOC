@@ -95,8 +95,9 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
     The names are apart: Fix A (no publish before the first pull) · Fix B (the first-pull hydrate relaxation) · Fix C
     (no dirty before the pull) · Option C (the relay guard) · Fix D (the seed sentinel). Only **Fix A** remains —
     `initialSettingsPullDone` (name historical) gates the plan and prefs publishes.
-  - **Kept:** `buildSettingsPayload` / `SETTINGS_FIELDS` (45 keys since the plan of record's Run 1 added six plan fields
-    on `plan-events:v1` with no bump — the trusted viewer snapshot and the plan backup);
+  - **Kept:** `buildSettingsPayload` / `SETTINGS_FIELDS` (46 keys since BL14's goal, batch 1 build 2 — 45 since the plan
+    of record's Run 1 added six plan fields on `plan-events:v1` with no bump — the trusted viewer snapshot and the plan
+    backup);
     `checkPlanParity` (the emit layer's tripwire) + DevPanel's parity row; `nextPlanEventTs` / `makePlanEventId`
     (`genesis.ts` keeps its name).
   - **The bridge's two chains moved:** `publishPlanEventsNow`'s success runs `void publishViewerSnapshotNow(); void

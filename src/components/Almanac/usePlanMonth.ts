@@ -6,6 +6,7 @@ import { usePowerLawData } from '../../hooks/usePowerLawData';
 import { strikeHoldAt, strikeDepositOf } from '../Tools/crashPlaybookView';
 import { todayLocalISO } from '../../utils/format';
 import { usePlanPolicy } from './usePlanPolicy';
+import { planGoalOf } from '../../lib/planGoal';
 import { DEFAULT_BREAKER_REARM_MONTHS } from './supportPolicyView';
 import { breakerFromHistory, type BreakerSeed } from './supportPolicyInputs';
 import {
@@ -47,6 +48,7 @@ export function usePlanMonth(): PlanMonth {
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
     strikeDepositISO: strikeDepositOf(st),   // the hold's one fact — the journal's, or a trusted viewer's copy (D9)
     strikeMinFromIncome: st.blocMinPaymentSource === 'income',
+    goalNetBtc: planGoalOf(st.planGoalNetBtc),   // BL14 — through the one read rule (a primitive: the selector stays stable)
     // D-R2-6 — read through the engine's own rule: a damaged cache is none (the stored object itself when valid, so the
     // selector stays stable), and the next fresh fold rewrites it.
     breakerCache: planBreakerCacheOf(st.planBreakerCache),
@@ -85,6 +87,7 @@ export function usePlanMonth(): PlanMonth {
     cbCollateralBtc: s.cbCollateralBtc, coldBtc: s.coldBtc, cbDebt,
     strikeLiquidationLtvPct: s.strikeLiquidationLtvPct, hold, breakerSeed,
     strikeMinFromIncome: s.strikeMinFromIncome,
+    goalNetBtc: s.goalNetBtc,
   }), [todayISO, s, plan, cbDebt, hold, breakerSeed]);
   const monthsBackUnder = useMemo(() => firstMonthUnderLimit(run.sim), [run.sim]);
   return { run, todayISO, breaker, monthsBackUnder, coldBtc: s.coldBtc };

@@ -84,6 +84,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     monthlyLog: [], deletedMonths: {}, dayLog: [], deletedDayEvents: {},
     coldStorageBtc: 0, coldStorageBtcAsOf: null, pinnedScenario: null, planEvents: [], planDirty: false, prefsDirty: false,
     ...PLAN_POLICY_SEED,   // the plan of record's six settings (a trusted viewer received the owner's)
+    planGoalNetBtc: null,  // BL14 — the goal leaves with them (a trusted viewer received the owner's)
     recordsDirty: false, lastRecordsSyncAt: null,
     lastPlanEventsSyncAt: null, lastPrefsSyncAt: null,
     nostrReconnectNeeded: false,
@@ -116,6 +117,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     monthlyLog: [], deletedMonths: {},
     coldStorageBtc: 0, coldStorageBtcAsOf: null,   // was omitted — the recovery reset used to leave the cold balance behind
     ...PLAN_POLICY_SEED,   // the plan of record's six settings — back to C1 with the rest of the plan
+    planGoalNetBtc: null,  // BL14 — no goal, with the rest of the plan
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
     planLoaded: false,   // 5c — the plan is seeds again: this store holds no owner plan until one loads
   }),

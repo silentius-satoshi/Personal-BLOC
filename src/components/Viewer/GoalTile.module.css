@@ -1,0 +1,50 @@
+/* BL14 — the Dashboard's goal tile. The card shell is the gauge cards' and the ownership bar's (a peer surface in the
+   stack); no level colours — reaching a goal is not a risk verdict. Tokens only. */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  column-gap: 10px;
+  margin-bottom: 12px;
+}
+.title {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--btc);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bar {
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.fill {
+  height: 100%;
+  background: var(--btc);
+}
+
+.sub {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 480px) {
+  .card { padding: 16px; }
+}

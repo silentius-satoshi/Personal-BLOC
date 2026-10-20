@@ -81,7 +81,7 @@ const reading = (o: Partial<PolicyReading> = {}): PolicyReading => ({
   brokenAtEnd: false, openingBroken: false, call: null,
   cash: { openingUsd: 0, leftUsd: 0, toBillsUsd: 0, toCureUsd: 0 }, unpaid: null, coldAboveSupportBtc: 0,
   firstThrottleMonth: null, monthsInZone: zones0(), liqMonth: null, neverDraws: null,
-  afterLiquidation: false, strikeOwes: false, cliff: null, ...o,
+  afterLiquidation: false, strikeOwes: false, cliff: null, atGoal: false, goalDefense: false, ...o,
 });
 
 const COLD_PROMISE_TEXT = 'Cold is never touched while price is at or above support.';
@@ -819,8 +819,8 @@ describe('after a Coinbase liquidation — the order the lines name, and what sp
 // ── 12 · drawPauseClause ─────────────────────────────────────────────────────────────────────────────────────────
 
 describe('drawPauseClause — the verdict\'s pause clause', () => {
-  const clause = (stopMonth: number | null, resumed: number | null, applied: boolean, zone: PolicyState | null = null) =>
-    ({ stopMonth, drawingResumedMonth: resumed, policyApplied: applied, rows: Array.from({ length: 50 }, () => ({ policyZone: zone })) });
+  const clause = (stopMonth: number | null, resumed: number | null, applied: boolean, zone: PolicyState | null = null, atGoal: boolean | null = null) =>
+    ({ stopMonth, drawingResumedMonth: resumed, policyApplied: applied, rows: Array.from({ length: 50 }, () => ({ policyZone: zone, atGoal })) });
 
   it('⭐ policy off: today\'s exact strings, pinned from CyclingFace / UnifiedFace', () => {
     expect(drawPauseClause(clause(7, null, false), S)).toBe(' · drawing stopped at month 7');
@@ -1071,7 +1071,7 @@ describe('policyStopSentence — Ownership\'s verdict when the policy stopped bo
   });
 
   it('a stop that never resumes; the policy off, or no stop, says nothing', () => {
-    const rows = Array.from({ length: 20 }, () => ({ policyZone: 'paused' as PolicyState }));
+    const rows = Array.from({ length: 20 }, () => ({ policyZone: 'paused' as PolicyState, atGoal: null }));
     expect(policyStopSentence({ stopMonth: 8, drawingResumedMonth: null, policyApplied: true, rows }, S))
       .toBe("Borrowing stops in month 8 (price under support) and doesn't resume on this path.");
     expect(policyStopSentence({ stopMonth: 8, drawingResumedMonth: null, policyApplied: false, rows }, S)).toBe('');

@@ -20,6 +20,7 @@ const facts = (over: Partial<PlanMonthFacts> = {}): PlanMonthFacts => ({
   income: 6_000, expenses: 4_000, blocApr: 13, cbAprPct: 6.27, creditLine: 40_000,
   strikeBalance: 20_000, strikeCollateralBtc: 1, cbCollateralBtc: 1, coldBtc: 0.5, cbDebt: 50_000,
   strikeLiquidationLtvPct: 85, hold: { inHold: false, throughISO: null }, breakerSeed: null, strikeMinFromIncome: false,
+  goalNetBtc: null,
   ...over,
 });
 
@@ -82,7 +83,7 @@ describe('⭐ ONE — invariant 2: THIS MONTH and the Decision card build THE MO
       strikeCollateralBtc: f.strikeCollateralBtc, strikeBalance: f.strikeBalance, runLine: f.creditLine,
       cbCollateralBtc: f.cbCollateralBtc, cbDebt: f.cbDebt, coldBtc: f.coldBtc, income: f.income, expenses: f.expenses,
       blocApr: f.blocApr, cbAprPct: f.cbAprPct, supportPolicy: run.supportPolicy, openingBreaker: undefined,
-      holdMonths: run.holdMonths, strikeMinFromIncome: true,
+      holdMonths: run.holdMonths, strikeMinFromIncome: true, goalNetBtc: null,
     })).toEqual(run.engineInputs);
   });
 });
@@ -183,5 +184,50 @@ describe('⭐ INT and MIN — the engine\'s Strike interest and the minimum\'s s
       }
     }
     expect(reached, 'MIN drawing months that pay a minimum').toBeGreaterThan(20);
+  });
+});
+
+describe('⭐ GOAL — BL14: THIS MONTH and the Decision card run ONE goal', () => {
+  const GOALS = [null, 0.5, 1.6, 2, 1_000] as const;
+  it('⭐ GOAL — the run hands the engine its facts\' goal, and is engineInputsOf over them: over the grid × five goals', () => {
+    let atGoal = 0, below = 0, cells = 0;
+    for (const g of GRID) for (const goalNetBtc of GOALS) {
+      const f = facts({ ...g, goalNetBtc });
+      const run = planMonthRun(f);
+      expect(run.engineInputs.goalNetBtc, 'GOAL reaches the engine').toBe(goalNetBtc);
+      expect(run.sim, 'GOAL one run').toEqual(runCyclingSim({ ...run.engineInputs, pricePath: run.pricePath }));
+      expect(engineInputsOf({
+        startDate: run.startDate, seedFromMove: run.seedFromMove, placement: run.placement,
+        strikeCollateralBtc: f.strikeCollateralBtc, strikeBalance: f.strikeBalance, runLine: f.creditLine,
+        cbCollateralBtc: f.cbCollateralBtc, cbDebt: f.cbDebt, coldBtc: f.coldBtc, income: f.income, expenses: f.expenses,
+        blocApr: f.blocApr, cbAprPct: f.cbAprPct, supportPolicy: run.supportPolicy, openingBreaker: undefined,
+        holdMonths: run.holdMonths, strikeMinFromIncome: f.strikeMinFromIncome, goalNetBtc,
+      }), 'GOAL engineInputsOf').toEqual(run.engineInputs);
+      const r1 = run.sim.rows[1];
+      if (goalNetBtc === null) expect(r1.atGoal, 'GOAL none').toBeNull();
+      else if (run.sim.policyApplied) (r1.atGoal ? atGoal++ : below++);
+      cells += 1;
+    }
+    expect(cells).toBe(GRID.length * GOALS.length);
+    expect([atGoal > 50, below > 50], 'GOAL the grid reaches both sides of the goal').toEqual([true, true]);
+  });
+
+  it('⭐ GOAL — no goal: every cell\'s run is byte-identical to the run with the field absent (BL14\'s kill criterion)', () => {
+    for (const g of GRID) {
+      const run = planMonthRun(facts({ ...g, goalNetBtc: null }));
+      const { goalNetBtc: _g, ...absent } = run.engineInputs;
+      expect(run.sim, 'GOAL absent').toEqual(runCyclingSim({ ...absent, pricePath: run.pricePath }));
+    }
+  });
+
+  it('⭐ GOAL — THE MOVE never reads the goal: the placement is the same with any goal (option A)', () => {
+    for (const g of GRID) {
+      const base = planMonthRun(facts(g));
+      for (const goalNetBtc of GOALS) {
+        const run = planMonthRun(facts({ ...g, goalNetBtc }));
+        expect(run.placementInput, 'GOAL placement input').toEqual(base.placementInput);
+        expect(run.placement, 'GOAL placement').toEqual(base.placement);
+      }
+    }
   });
 });

@@ -40,6 +40,7 @@ import {
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import { usePlanPolicy } from './usePlanPolicy';
+import { planGoalOf } from '../../lib/planGoal';
 import ControlDock, { type DockPanel } from './ControlDock';
 import MilestoneSwitchTable, { type MilestoneRow } from './MilestoneSwitchTable';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -233,6 +234,7 @@ export default function OwnershipFace() {
     openingColdBtc: st.getCurrentColdBtc(),
     cbLoanBalance: planCbLoanBalanceOf(st),   // D-R2-4 — 0 with the Coinbase loan switched off
     strikeMinFromIncome: st.blocMinPaymentSource === 'income',   // D-R2-7 — the owner's minimum, as every run reads it
+    goalNetBtc: planGoalOf(st.planGoalNetBtc),   // BL14 — the owner's saved goal: every plan reader runs it (one plan)
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
   })));
 
@@ -330,10 +332,11 @@ export default function OwnershipFace() {
     mode,
     supportPolicy,
     strikeMinFromIncome: s.strikeMinFromIncome,
+    goalNetBtc: s.goalNetBtc,
   }), [
     startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
-    supportPolicy, s.strikeMinFromIncome,
+    supportPolicy, s.strikeMinFromIncome, s.goalNetBtc,
   ]);
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
@@ -418,7 +421,7 @@ export default function OwnershipFace() {
     pricePath, cbDebt,
     s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
-    supportPolicy, s.strikeMinFromIncome,
+    supportPolicy, s.strikeMinFromIncome, s.goalNetBtc,
   ]);
 
   // ── the ownership wrapper — ownershipHero (ownershipFaceView), the one definition ──

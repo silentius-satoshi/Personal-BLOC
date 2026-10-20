@@ -20,7 +20,7 @@ import {
   applyPathStress, btcGained, clampMonth, fmtLtvPct, cashFlowAtMonth,
   refinanceFeeFraction, refinanceBreakEvenMonths, mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
   coldBeyondRecord, cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, fixedMilestoneMonths,
-  verdictVsNeverDraw, verdictBasisClause, coldSurvivePrice, surviveFairMultiple,
+  verdictVsNeverDraw, verdictBasisClause, neverDrawTieHead, coldSurvivePrice, surviveFairMultiple,
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote, minimumPaidNote,
@@ -36,6 +36,7 @@ import {
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import { usePlanPolicy } from './usePlanPolicy';
+import { planGoalOf } from '../../lib/planGoal';
 import ControlDock, { type DockPanel } from './ControlDock';
 import MilestoneSwitchTable, { type MilestoneRow } from './MilestoneSwitchTable';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -202,6 +203,7 @@ export default function UnifiedFace() {
     openingColdBtc: st.getCurrentColdBtc(),
     cbLoanBalance: planCbLoanBalanceOf(st),   // D-R2-4 — 0 with the Coinbase loan switched off
     strikeMinFromIncome: st.blocMinPaymentSource === 'income',   // D-R2-7 — the owner's minimum, as every run reads it
+    goalNetBtc: planGoalOf(st.planGoalNetBtc),   // BL14 — the owner's saved goal: every plan reader runs it (one plan)
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
   })));
 
@@ -290,10 +292,11 @@ export default function UnifiedFace() {
     mode,
     supportPolicy,
     strikeMinFromIncome: s.strikeMinFromIncome,
+    goalNetBtc: s.goalNetBtc,
   }), [
     startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     cbDebt, s.income, s.expenses, s.blocApr, s.cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
-    supportPolicy, s.strikeMinFromIncome,
+    supportPolicy, s.strikeMinFromIncome, s.goalNetBtc,
   ]);
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
@@ -331,7 +334,7 @@ export default function UnifiedFace() {
     pricePath, cbDebt,
     s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     s.income, s.expenses, s.blocApr, s.cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
-    supportPolicy, s.strikeMinFromIncome,
+    supportPolicy, s.strikeMinFromIncome, s.goalNetBtc,
   ]);
 
   const { rows, last, liqMonth } = sim;
@@ -458,8 +461,12 @@ export default function UnifiedFace() {
     // (v1.1 #5) — the colour and the number then agree.
     ['Net equity', fmtK(selRow.equity),
       !atEnd ? `at month ${monthIdx}` : mode === 'hold' ? 'hold is the baseline'
-        : verdict.allIn ? `all-in vs never-draw: ${fmtSignedK(verdict.equityDelta)}` : `never-draw: ${fmtK(sim.baselineEquity)}`,
-      atEnd && mode !== 'hold' ? (verdict.wins ? 'var(--green)' : 'var(--amber)') : (selRow.equity >= 0 ? 'var(--green)' : 'var(--red)')],
+        : verdict.allIn ? `all-in vs never-draw: ${verdict.kind === 'even' ? 'even' : fmtSignedK(verdict.equityDelta)}`
+          : `never-draw: ${fmtK(sim.baselineEquity)}`,
+      // BL14 — a tie (with a goal only) wins nothing and loses nothing: the plain text colour.
+      atEnd && mode !== 'hold'
+        ? (verdict.kind === 'even' ? 'var(--text-primary)' : verdict.wins ? 'var(--green)' : 'var(--amber)')
+        : (selRow.equity >= 0 ? 'var(--green)' : 'var(--red)')],
     ['BTC price', fmtK(selRow.price), `from ${fmtK(anchorPrice)}`, pathColor],
   ];
 
@@ -890,7 +897,7 @@ export default function UnifiedFace() {
           {/* FLYWHEEL — the cycling lens, off the SAME run. */}
           <div className={`${styles.verdict} ${
             verdict.kind === 'liquidated' ? styles.verdictBad
-              : verdict.kind === 'wins' ? styles.verdictGood : styles.verdictWarn}`}>
+              : verdict.kind === 'even' ? '' : verdict.kind === 'wins' ? styles.verdictGood : styles.verdictWarn}`}>
             {verdict.kind === 'liquidated' ? (
               <>
                 <div className={styles.verdictHead}>Liquidated at month {liqMonth} ({((liqMonth ?? 0) / 12).toFixed(1)} years)</div>
@@ -910,12 +917,19 @@ export default function UnifiedFace() {
             ) : (
               <>
                 <div className={styles.verdictHead}>
-                  {modeLabel} {verdict.wins ? 'wins' : 'loses'} — {fmtSigned(verdict.equityDelta)} equity vs paying bills from income
-                  {verdictBasisClause(sim)}
+                  {verdict.kind === 'even' ? (
+                    <>{neverDrawTieHead(modeLabel)}{verdictBasisClause(sim)}</>
+                  ) : (
+                    <>
+                      {modeLabel} {verdict.wins ? 'wins' : 'loses'} — {fmtSigned(verdict.equityDelta)} equity vs paying bills from income
+                      {verdictBasisClause(sim)}
+                    </>
+                  )}
                 </div>
                 <div className={styles.verdictSub}>
-                  {fmtBtc(last.btcHeld)} vs {fmtBtc(sim.baselineBtc)} ({verdict.btcDelta >= 0 ? '+' : '−'}
-                  {Math.abs(verdict.btcDelta).toFixed(4)} ₿)
+                  {/* BL14 — a tie's coin gap rounds to 0.0000 ₿, and its sign is float residue: not shown. */}
+                  {fmtBtc(last.btcHeld)} vs {fmtBtc(sim.baselineBtc)}{verdict.kind === 'even' ? ''
+                    : ` (${verdict.btcDelta >= 0 ? '+' : '−'}${Math.abs(verdict.btcDelta).toFixed(4)} ₿)`}
                   {mode === 'cycle' && drawPauseClause(sim, policySettings)}
                 </div>
               </>

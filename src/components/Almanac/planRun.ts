@@ -111,6 +111,9 @@ export interface EngineFacts {
   holdMonths: number;
   /** D-R2-7 — the owner pays Strike's minimum from income (`blocMinPaymentSource === 'income'`). */
   strikeMinFromIncome: boolean;
+  /** BL14 — the owner's goal in net coins (already through `planGoalOf`), or null. REQUIRED, so every plan reader —
+   *  THIS MONTH, Daily and the Decision face — passes the saved goal and the two can't drift. */
+  goalNetBtc: number | null;
 }
 
 /** The engine's inputs, minus the price path — every caller supplies its own (the face's chosen path; THIS MONTH's
@@ -136,6 +139,7 @@ export function engineInputsOf(f: EngineFacts): Omit<CyclingInputs, 'pricePath'>
     openingBreaker: f.openingBreaker,
     openingStrikeHoldMonths: f.holdMonths,
     strikeMinFromIncome: f.strikeMinFromIncome,
+    goalNetBtc: f.goalNetBtc,
   };
 }
 
@@ -167,6 +171,8 @@ export interface PlanMonthFacts {
   breakerSeed: BreakerSeed | null;
   /** D-R2-7 — the owner pays Strike's minimum from income. */
   strikeMinFromIncome: boolean;
+  /** BL14 — the owner's goal in net coins (already through `planGoalOf`), or null for none. */
+  goalNetBtc: number | null;
 }
 
 export interface PlanMonthRun {
@@ -234,6 +240,7 @@ export function planMonthRun(f: PlanMonthFacts): PlanMonthRun {
     openingBreaker: f.breakerSeed?.state,
     holdMonths,
     strikeMinFromIncome: f.strikeMinFromIncome,
+    goalNetBtc: f.goalNetBtc,
   });
   const sim = runCyclingSim({ ...engineInputs, pricePath });
   return {

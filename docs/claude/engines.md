@@ -654,3 +654,56 @@ spec pbloc-spec-powerlaw-face-v1 — `useMempoolData` is deleted).
 
 ---
 
+## The plan's goal amount — `goalNetBtc` (BL14; batch 1 build 2; store unchanged, NO bump)
+
+Spec `pbloc-spec-batch-1-v1` v0.6 §2.2. The owner's goal in NET COINS: every coin (Strike, Coinbase, cold) minus what is
+owed, in bitcoin at the month's price — so borrowing can never reach it. The field and its readers: `store.md` § BL14;
+the words: `almanac.md` § BL14; the Dashboard tile: `viewer.md` § BL14.
+
+- **`simulation/goal.ts` — the pure leaf** the engine and the Dashboard tile share: `netCoinsBtc({ strikeBtc, cbBtc,
+  coldBtc, strikeBalanceUsd, cbDebtUsd, price })` (null when it can't be read — no positive finite price, or a part that
+  isn't finite) and `atGoalOf(net, goal)` (at or above, within `GOAL_EPS` = 1e-12 relative, so a figure computed onto the
+  goal never reads as under it). 🔴 + − × ÷ only and zero imports: `cyclingSim.ts` imports it, so G1's import walk
+  reaches it.
+- **An input, `goalNetBtc`** (`CyclingInputs`) — REAL, never test-only (`.claude/rules/engine.md`). It applies only with
+  the policy applied, in cycle mode, and as a finite number above zero; anything else is no goal (`CyclingResult.goalNetBtc`
+  reports the goal the run applied, null otherwise). Readers pass it through `planGoalOf` (`lib/planGoal`).
+- **Read once a month,** after Coinbase's interest and any on-the-way-down seizure, before the month acts (month 0
+  reports the opening and acts on nothing): the row's `netCoinsBtc` and `atGoal` (null with no goal).
+- **At or above the goal** the month draws nothing (the policy draw is skipped, so the month takes the policy's own
+  not-drawing branch), buys nothing and refinances nothing (moving Strike's debt to Coinbase is borrowing on Coinbase).
+  Spare income — after the bills (income → cash reserve → unpaid), a minimum paid from income and any restore — repays
+  Strike, then Coinbase, to zero, through the pay-down zone's own code (`allocatePayDown`, the 0.005 sweep). What is left
+  once both loans are at zero is KEPT: the row's `goalHeldUsd`. A month below the goal acts on its zone — no latch
+  (D14).
+- **What runs as before:** the zone and the breaker (read before the goal), the restore (a loan over its limit is repaid
+  first), the migration, the sweep, and every defense — the debt shift still runs at the goal (it moves debt, never a
+  coin), the only borrowing there. The goal itself never moves a coin between Strike, Coinbase and cold. THE MOVE's
+  placement never reads the goal (G3, open: what THE MOVE keeps on Strike and Coinbase once both loans are repaid).
+- **The never-draw baseline** reads the same goal at the same point (after its Coinbase interest, before Strike's): at
+  the goal its surplus repays Strike, then Coinbase, and buys nothing; its leftover is kept. So a run that never acts
+  still IS the never-draw world.
+- **The kept income counts in all-in equity, on both sides:** `totalGoalHeldUsd` (Σ the rows' `goalHeldUsd`) in
+  `allInEquity`, `baselineGoalHeldUsd` (the baseline's leftover after its pay-down) in `baselineAllInEquity` — each added
+  only when above zero, so a run with no goal is bit for bit the same. Without it, whichever side cleared its loans first
+  stopped counting its spare income from then on.
+- **The never-draw verdict is ONE rule** — `neverDrawTie(r)` / `beatsNeverDraw(r)`: with a goal, a gap under
+  `NEVER_DRAW_TIE_USD` (0.5, held equal to `utils/format`'s `DUST_USD` — a test pins it) is a TIE, never a win or a loss
+  decided by rounding: a run at the goal from month 1 only repays, and the two sides' interest arithmetic differs in the
+  last bits. Without a goal, never (BL14's kill criterion). `verdictVsNeverDraw` (the faces' head and the Decision tile)
+  and `monteCarlo`'s `futureOutcome` (`beatsNeverDraw`, `tiesNeverDraw`; `FuturesSummary.tiesNeverDraw`) all read it.
+- **No goal — absent, null, zero or junk — is byte-identical:** every gate reads as before, the three row fields are
+  `null / null / 0`, both kept totals 0. Measured (spec v0.6): 12,734 runs, 630,014 months, against build 1's engine —
+  0 differences; an unreachable goal moved no figure in 9,517 policy runs; over 24,384 runs no verdict changes.
+- **Re-entry** (BL14's kill criterion, more than 1 month in 20 after first reaching the goal): 0.57% of the months on the
+  Decision face's four paths, 1.46% over 18,000 futures — held. The tail: 13% of the futures that reach the goal re-enter
+  in more than 1 month in 20 (they drift along its edge); a band (resume only some way under the goal) is the fix if an
+  owner's numbers bounce; a latch stays rejected (D14).
+- **Still open:** the build-1 engine's own no-goal tie (spec v0.6) — with no goal, a run that never acts (no Coinbase loan,
+  the price under support for the whole horizon) IS the never-draw world too, and its verdict is residue; the tie rule
+  without its goal gate fixes it, but moves no-goal screens, so it is queued as its own item.
+- Tests: `src/simulation/__tests__/goalAmount.test.ts` (22) and `src/lib/__tests__/planGoal.test.ts` (5) — § Test
+  Suite → "BL14 — the plan's goal amount".
+
+---
+

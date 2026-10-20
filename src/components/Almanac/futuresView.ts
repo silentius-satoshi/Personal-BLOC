@@ -156,7 +156,10 @@ export function futuresReadout(s: FuturesSummary): FuturesReadout {
     rows: [
       { label: 'You own', value: rangeText(s.yoursBtc), sub: end(s.yoursBtc) },
       { label: 'In your cold storage', value: rangeText(s.coldBtc), sub: end(s.coldBtc) },
-      { label: 'Beats never borrowing', value: shareText(s.beatsNeverDraw, s.count), sub: 'of the simulations, all-in' },
+      // BL14 — with a goal, a future that reaches it early ties; the sub-line says how many, so a low share never reads
+      // as losses (0 ties with no goal: the line is unchanged).
+      { label: 'Beats never borrowing', value: shareText(s.beatsNeverDraw, s.count),
+        sub: s.tiesNeverDraw > 0 ? `of the simulations, all-in · ${shareText(s.tiesNeverDraw, s.count)} tie` : 'of the simulations, all-in' },
       seized,
     ],
     note: null,

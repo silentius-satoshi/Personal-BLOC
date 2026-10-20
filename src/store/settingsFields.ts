@@ -25,6 +25,9 @@ export const SETTINGS_FIELDS = [
   // face what-if only. Plan events like any plan field; in the backup; EXPOSED to a trusted viewer (D9).
   'policyCbStopAtSupportPct', 'policyStrikeStopAtSupportPct', 'policyAccumulateBelow', 'policyPayDownAbove',
   'policyBearBufferMonths', 'policyCashReserveMonths',
+  // BL14 (Batch 1, build 2) — the plan's goal in net coins (lib/planGoal): null = no goal. A plan event like the six; in the
+  // backup; EXPOSED to a trusted viewer (G2-A: the Dashboard's goal tile), never in the safe snapshot (a fixed ratio list).
+  'planGoalNetBtc',
   'nostrRelays',                       // C: synced relay list (transport — a plan event only on a user edit)
   'backupVerifiedAt',                  // Backup gate (R2a-1) — synced; a one-way latch (no null event exists)
   'viewers', 'nextViewerIndex',        // Multi-viewer roster (M1) — synced as plan events
@@ -53,7 +56,7 @@ export const APPLY_FIELDS: ReadonlySet<string> = new Set(
 // ── Phase 4b — plan-events partition ─────────────────────────────────────────────────────────────────
 // Splits SETTINGS_FIELDS into the event-sourced PLAN partition and the whole-object-LWW PREFS partition.
 // PREFS = device-taste cosmetics (D1): a stale clobber is harmless + self-corrects, so they stay LWW on
-// prefs:v1 rather than becoming a plan event log. PLAN = everything else (41 fields — the plan of record added 6). backupVerifiedAt is a
+// prefs:v1 rather than becoming a plan event log. PLAN = everything else (42 fields — the plan of record added 6, the goal amount 1). backupVerifiedAt is a
 // PLAN field (R2a-1; it joined SETTINGS_FIELDS after the 4a design lock was written — Exclude keeps it in).
 export const PREFS_FIELDS = ['tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit'] as const;
 

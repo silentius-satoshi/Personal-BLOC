@@ -239,6 +239,11 @@ export interface StoreState {
   /** "Back to the defaults (C1)" — all six as explicit events, one ts (an explicit default is an event, so a reset beats an
    *  older edit from another device; an absence beats nothing). */
   resetPlanPolicy: () => void;
+  /** BL14 — the plan's goal in net coins (₿), or null for no goal (lib/planGoal). A synced plan field like the six, edited
+   *  only in Settings' "Your plan"; absent from the log = null. Readers take it through `planGoalOf`. */
+  planGoalNetBtc: number | null;
+  /** Through `planGoalOf` (null, junk, zero → no goal; to the satoshi); one plan event, and none when it doesn't change. */
+  setPlanGoalNetBtc: (v: number | null) => void;
 
   // Converter tab state
   converterActiveField: 'sats' | 'btc' | 'usd';

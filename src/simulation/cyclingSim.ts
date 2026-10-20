@@ -4,6 +4,7 @@ import {
   CB_SURVIVAL_BUFFER, strikeReleasableBtc, ceilingLiquidationMultiple, SHIFT_DUST_USD,
 } from './cbDefense';
 import { ltvOf } from './ltv';
+import { netCoinsBtc, atGoalOf } from './goal';
 import {
   policyZone, ceilingHeadroomUsd, strikeKeepCollateralBtc, cbKeepCollateralBtc, resolveStrikeCall,
   nextRearmableBreakerState, allocatePayDown,
@@ -342,6 +343,15 @@ export interface CyclingInputs {
    *  `false` = the month-end reading (the engine before Policy v2), kept so the tests and the report can measure the
    *  rule. Do NOT "fix" this default to off. */
   seizeOnTheWayDown?: boolean;
+  /** BL14 — THE PLAN'S GOAL, in net coins (₿: every coin — Strike, Coinbase, cold — minus what is owed, in bitcoin at the
+   *  month's price; `./goal`). POLICY-ONLY, cycle mode: a month whose net coins are at or above it — read after Coinbase's
+   *  interest and any seizure, before the month acts — draws nothing, buys nothing and refinances nothing; its spare
+   *  income, after the bills, the minimum and the restore, repays Strike, then Coinbase (the pay-down zone's order, to
+   *  zero), and with both repaid the plan holds — what is left stays with the owner (`goalHeldUsd`). The zone, the
+   *  breaker, the restore, the migration, the sweep and every defense run as before: the goal never moves a coin. A month
+   *  below it acts on its zone — no latch (the plan keeps no decision log, D14). The never-draw baseline keeps the same goal,
+   *  so a run that never acts still IS it. Absent, null, or not a finite positive number ⇒ no goal, byte-identical. */
+  goalNetBtc?: number | null;
   /** Strategy (S1): `cycle` is today's behaviour byte-identical; the others never draw and never
    *  refinance — surplus retires the named leg(s) first, then buys into the Coinbase pool. */
   mode?: CyclingMode;
@@ -476,6 +486,15 @@ export interface CyclingRow {
   strikeCureColdBtc: number;
   /** Strike collateral SOLD this month (the proceeds retire the balance 1:1). */
   strikeLiquidatedBtc: number;
+
+  // ── THE GOAL (BL14 — null / 0 with no goal or no applied policy) ─────────────────────────────────────────────
+  /** Net coins at the month's decision: every coin minus what is owed, in bitcoin at the month's price — after Coinbase's
+   *  interest and any seizure, before the month acts (month 0: the opening). `null` with no goal, or unreadable. */
+  netCoinsBtc: number | null;
+  /** The month acted at the goal (net coins at or above it). `null` with no goal; month 0 reports the opening. */
+  atGoal: boolean | null;
+  /** Spare income the goal kept from buying — what was left once both loans were repaid. 0 otherwise. */
+  goalHeldUsd: number;
 }
 
 export interface CyclingResult {
@@ -567,6 +586,15 @@ export interface CyclingResult {
    *  and funds nothing else, so a deficit month goes unpaid there too. Always computed (not a policy field), from the
    *  same per-month income the baseline already reads; `baselineAllInEquity` subtracts it. */
   baselineUnfundedUsd: number;
+  /** BL14 — the spare income the never-draw baseline KEPT at the goal once both its loans were repaid (Σ of what was left
+   *  after its pay-down; 0 with no goal). `baselineAllInEquity` counts it, as `allInEquity` counts the run's. */
+  baselineGoalHeldUsd: number;
+  /** BL14 — the goal this run applied, in net coins: null with no goal (absent, null, junk), with no applied policy, or
+   *  outside cycle mode. The verdict's tie (`neverDrawTie`) reads it. */
+  goalNetBtc: number | null;
+  /** BL14 — Σ of the rows' `goalHeldUsd`: spare income the plan kept at the goal once both loans were repaid (0 with no
+   *  goal). Cash the owner holds at the horizon, so `allInEquity` counts it. */
+  totalGoalHeldUsd: number;
   /** The reserve the run STARTED with (`openingColdBtc`, 0 when not supplied). Reported so the cold ledger
    *  foots: opening + totalColdFromCb + totalColdFromStrike − totalColdRetrievedBtc === totalColdBtc. */
   openingColdBtc: number;
@@ -655,15 +683,44 @@ export function effectivePolicyStops(
 /** Equity after the bills nothing paid AND the cash the reserve spent. Money from outside the loop is never a
  *  gain, and a bill nobody paid is never free (spec v1.4 #21). The faces' "Net equity" tile stays raw equity;
  *  this is what the VERDICT compares. The adjustments are summed first, so a run with none returns
- *  `last.equity` exactly. */
+ *  `last.equity` exactly. BL14: plus the spare income kept at the goal (`totalGoalHeldUsd`) — cash the owner holds at
+ *  the horizon, counted on both sides (`baselineAllInEquity`), so whichever side clears its loans first never stops
+ *  counting its spare income. Added only when there is some (absent ⇒ 0), so a run with no goal is bit-identical. */
 export function allInEquity(r: Pick<CyclingResult,
-  'last' | 'totalUnfundedUsd' | 'totalCashToBillsUsd' | 'totalCashToCureUsd'>): number {
-  return r.last.equity - (r.totalUnfundedUsd + r.totalCashToBillsUsd + r.totalCashToCureUsd);
+  'last' | 'totalUnfundedUsd' | 'totalCashToBillsUsd' | 'totalCashToCureUsd'>
+  & Partial<Pick<CyclingResult, 'totalGoalHeldUsd'>>): number {
+  const allIn = r.last.equity - (r.totalUnfundedUsd + r.totalCashToBillsUsd + r.totalCashToCureUsd);
+  const kept = r.totalGoalHeldUsd ?? 0;
+  return kept > 0 ? allIn + kept : allIn;
 }
 
-/** The never-draw baseline on the same basis: its equity after its OWN unpaid bills (it holds no reserve). */
-export function baselineAllInEquity(r: Pick<CyclingResult, 'baselineEquity' | 'baselineUnfundedUsd'>): number {
-  return r.baselineEquity - r.baselineUnfundedUsd;
+/** The never-draw baseline on the same basis: its equity after its OWN unpaid bills (it holds no reserve), plus — BL14 —
+ *  the spare income it kept at the goal (`baselineGoalHeldUsd`; absent ⇒ 0, bit-identical without a goal). */
+export function baselineAllInEquity(r: Pick<CyclingResult, 'baselineEquity' | 'baselineUnfundedUsd'>
+  & Partial<Pick<CyclingResult, 'baselineGoalHeldUsd'>>): number {
+  const allIn = r.baselineEquity - r.baselineUnfundedUsd;
+  const kept = r.baselineGoalHeldUsd ?? 0;
+  return kept > 0 ? allIn + kept : allIn;
+}
+
+/** The dust floor the faces print by (`utils/format`'s `DUST_USD`) — one figure, held here too so the engine's
+ *  comparison helpers import nothing new. */
+export const NEVER_DRAW_TIE_USD = 0.5;
+
+/** BL14 — the never-draw comparison TIES: with a goal, a run at the goal from month 1 only repays, so it IS the never-draw
+ *  world, and the two sides' interest arithmetic differs in the last bits — a gap under the dust floor is a tie, never a
+ *  win or a loss decided by rounding. ONLY with a goal (`goalNetBtc`): without one the comparison stands exactly as before
+ *  (BL14's kill criterion — HEAD's own never-acting tie is logged, spec v0.6). */
+export function neverDrawTie(r: Parameters<typeof allInEquity>[0] & Parameters<typeof baselineAllInEquity>[0]
+  & Partial<Pick<CyclingResult, 'goalNetBtc'>>): boolean {
+  return (r.goalNetBtc ?? null) !== null
+    && !(Math.abs(allInEquity(r) - baselineAllInEquity(r)) >= NEVER_DRAW_TIE_USD);
+}
+
+/** The run beats never drawing: more all-in equity on the same path — and, with a goal, by at least the dust floor. ONE
+ *  rule for the faces' verdict and the futures' count. */
+export function beatsNeverDraw(r: Parameters<typeof neverDrawTie>[0]): boolean {
+  return allInEquity(r) > baselineAllInEquity(r) && !neverDrawTie(r);
 }
 
 /** The policy the engine actually runs: the validated inputs, the two CLAMPED stops, the buffer in dollars. */
@@ -894,6 +951,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const strikeFirstAfterLiq = policy !== null && inputs.strikeFirstAfterLiquidation !== false;
   // Strike's minimum: rolled into the line (absent / false) or paid from income (the owner's setting) — every mode.
   const minFromIncome = inputs.strikeMinFromIncome === true;
+  // BL14 — the plan's goal: policy-only and cycle-only, like the rest of the policy's rules; anything but a finite positive
+  // number is no goal, so the engine without one is byte-identical.
+  const goal: number | null = policy !== null && mode === 'cycle' && typeof inputs.goalNetBtc === 'number'
+    && Number.isFinite(inputs.goalNetBtc) && inputs.goalNetBtc > 0 ? inputs.goalNetBtc : null;
   // Policy v2 — Morpho seizes on the way down: ADOPTED, default ON under the policy (`false` = the month-end reading,
   // TEST-ONLY). Policy-only like the rest, so the policy-off engine never reaches it.
   const seizeOnWay = policy !== null && inputs.seizeOnTheWayDown !== false;
@@ -920,6 +981,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let totalStrikeLiquidatedBtc = 0;
   let totalRestoreUsd = 0;
   let totalPayDownUsd = 0;
+  let totalGoalHeldUsd = 0;   // BL14 — Σ goalHeldUsd
   let totalCashToBillsUsd = 0;
   let totalCashToCureUsd = 0;
   let totalStrikeCureColdBtc = 0;
@@ -981,6 +1043,13 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     let strikeInterestUsd = 0;
     let strikeMinPaidUsd = 0;
     let strikeKeepBtc: number | null = null;
+    let goalHeldUsd = 0;
+
+    // BL14 — month 0 reports the opening's net coins; months ≥ 1 read them again at the decision (below).
+    let netCoins: number | null = goal !== null
+      ? netCoinsBtc({ strikeBtc: strikeColl, cbBtc: cbColl, coldBtc, strikeBalanceUsd: strikeBal, cbDebtUsd: cbDebt, price })
+      : null;
+    let atGoal = atGoalOf(netCoins, goal);
 
     // ── POLICY STATE (step 2) ── month 0 is the opening: its zone is reported, no action is taken, and it never
     // feeds the breaker (it is not a month-end of the plan).
@@ -1042,6 +1111,14 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         survivorBtc = strikeColl + cbColl + coldBtc;
       }
 
+      // ── THE GOAL (BL14) — read once, here: after Coinbase's interest and any seizure, before the month acts. ──
+      if (goal !== null) {
+        netCoins = netCoinsBtc({
+          strikeBtc: strikeColl, cbBtc: cbColl, coldBtc, strikeBalanceUsd: strikeBal, cbDebtUsd: cbDebt, price,
+        });
+        atGoal = atGoalOf(netCoins, goal);
+      }
+
       if (mode === 'cycle') {
         // ── POLICY DRAW (step 3 — replaces the price-relative draw test) ── `accumulate` only. The draw is capped
         // AT SUPPORT by both ceilings, and by what Coinbase can take back at the next refinance: Strike is a
@@ -1049,7 +1126,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // The two causes of a short draw stay separate (v1.1 #1), and both are silent once Coinbase is liquidated
         // (v1.2 #9 — at HEAD a credit exhaustion needed a drawing month, which already required that).
         let policyAvailable = 0;
-        if (policy !== null && state === 'accumulate') {
+        if (policy !== null && state === 'accumulate' && !atGoal) {   // BL14 — at the goal the plan borrows nothing
           const cbRoom = Math.min(ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop), cap * cbColl * price - cbDebt);
           const cbAbsorb = Math.max(0, cbMaxDrawForHeadroom(cbRoom, cbDebt) - strikeBal);
           const skRoom = Math.min(strikeCreditLine, strikeColl * price * strikeMaxDrawLtv) - strikeBal;
@@ -1166,7 +1243,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           // b) PAY DOWN (payDown, broken): Strike first (13%), then Coinbase — to ZERO, not to a buffer. The buffer
           //    is kept as Coinbase COLLATERAL by the sweep instead. The 0.005 residual sweep is the clearStrike
           //    precedent (half a cent — never "correct" it to 1e-9).
-          if (state === 'payDown' || state === 'broken') {
+          // BL14 — AT THE GOAL, in any zone: the same pay-down, Strike first, then Coinbase, to zero.
+          if (state === 'payDown' || state === 'broken' || atGoal) {
             const a = allocatePayDown(surplus, strikeBal, cbDebt);
             strikeBal -= a.toStrikeUsd;
             cbDebt -= a.toCbUsd;
@@ -1177,9 +1255,14 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
             cbRepaidUsd += a.toCbUsd;
             surplus = a.leftUsd;
           }
-          // c) the rest buys, into the Coinbase pool.
-          btcBoughtUsd = surplus;
-          if (surplus > 0 && price > 0) cbColl += surplus / price;
+          // c) the rest buys, into the Coinbase pool — except at the goal (BL14): the plan buys nothing there, and what is
+          //    left once both loans are repaid stays with the owner.
+          if (atGoal) {
+            goalHeldUsd = surplus;
+          } else {
+            btcBoughtUsd = surplus;
+            if (surplus > 0 && price > 0) cbColl += surplus / price;
+          }
         } else {
           if (stopMonth === null && liqMonth === null) stopMonth = m;
           const si = strikeBal * smr;
@@ -1260,7 +1343,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // Strike; a refinance there pays a 2% fee on debt about to be repaid) or paused (the support ceiling can
         // still show room below support, and moving debt onto Coinbase there raises its LTV at today's price
         // exactly when Coinbase is most exposed).
-        if (liqMonth === null && m % cycle === 0 && strikeBal > 0
+        if (liqMonth === null && m % cycle === 0 && strikeBal > 0 && !atGoal   // BL14 — never at the goal (the pay-down's rule)
           && (policy === null || state === 'accumulate' || state === 'hold')) {
           const headroom = policy !== null
             ? Math.max(0, Math.min(ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop), cap * cbColl * price - cbDebt))
@@ -1599,6 +1682,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     }
     totalRestoreUsd += restoreUsd;
     totalPayDownUsd += payDownUsd;
+    totalGoalHeldUsd += goalHeldUsd;
     totalCashToBillsUsd += cashToBillsUsd;
     totalCashToCureUsd += cashToCureUsd;
     totalStrikeCureColdBtc += strikeCureColdBtc;
@@ -1624,6 +1708,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       cashReserveUsd: cashReserve,   // 0 when the policy is not applied
       cashToBillsUsd, cashToCureUsd,
       strikeCall, strikeCureColdBtc, strikeLiquidatedBtc,
+      netCoinsBtc: netCoins, atGoal: goal !== null ? atGoal : null, goalHeldUsd,
     });
 
     // THE MONTH-END SEIZURE — month 0's reading (an opening already past 86%), and the policy-off engine's. It is
@@ -1660,6 +1745,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let baseBtc = inputs.strikeCollateralBtc + inputs.cbCollateralBtc + openingColdBtc;
   const surplus = Math.max(0, income - expenses);
   let baselineUnfundedUsd = 0;
+  let baselineGoalHeldUsd = 0;   // BL14 — what the never-draw world kept at the goal, once both its loans were repaid
   for (let m = 1; m <= months; m++) {
     baseCbDebt *= 1 + cmr;
     // The same income path as the strategy (absent ⇒ the constant surplus, byte-identical).
@@ -1669,6 +1755,11 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     // (absent ⇒ byte-identical), it all capitalises and the whole surplus buys. Otherwise the verdict compares two
     // financing rules: an income-mode run that never acts would differ from the never-draw world it IS.
     let baseBuyUsd = monthSurplus;
+    // BL14 — the never-draw world keeps the SAME goal, read at the same point (after Coinbase's interest, before the month
+    // acts), so a run that never acts still IS it: at the goal its surplus repays Strike, then Coinbase, and buys nothing.
+    const baseAtGoal = goal !== null && atGoalOf(netCoinsBtc({
+      strikeBtc: baseBtc, cbBtc: 0, coldBtc: 0, strikeBalanceUsd: baseStrikeBal, cbDebtUsd: baseCbDebt, price: pricePath[m],
+    }), goal);
     if (minFromIncome) {
       const si = baseStrikeBal * smr;
       const paid = Math.min(si, monthSurplus);
@@ -1676,6 +1767,15 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       baseBuyUsd -= paid;
     } else {
       baseStrikeBal *= 1 + smr;
+    }
+    if (baseAtGoal) {
+      const a = allocatePayDown(baseBuyUsd, baseStrikeBal, baseCbDebt);
+      baseStrikeBal -= a.toStrikeUsd;
+      baseCbDebt -= a.toCbUsd;
+      if (baseStrikeBal < 0.005) baseStrikeBal = 0;
+      if (baseCbDebt < 0.005) baseCbDebt = 0;
+      baselineGoalHeldUsd += a.leftUsd;
+      baseBuyUsd = 0;
     }
     if (pricePath[m] > 0) baseBtc += baseBuyUsd / pricePath[m];
     // The baseline's own gap: the part of the bill its income can't cover, with nothing else to pay it.
@@ -1694,7 +1794,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     firstTopUpMonth, topUpExhaustedMonth, firstUnheldMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
     totalStrikeToCbBtc, totalColdRetrievedBtc: coldRetrievedBtc,
     firstStrikeTopUpMonth, strikeTopUpExhaustedMonth, totalStrikeTopUpBtc, firstSurvivalYieldMonth,
-    baselineEquity, baselineBtc: baseBtc, baselineUnfundedUsd,
+    baselineEquity, baselineBtc: baseBtc, baselineUnfundedUsd, baselineGoalHeldUsd, goalNetBtc: goal, totalGoalHeldUsd,
     openingColdBtc,
     openingBroken,
     totalColdBtc: coldBtc, totalColdFromCb: coldFromCb, totalColdFromStrike: coldFromStrike, firstColdMonth,

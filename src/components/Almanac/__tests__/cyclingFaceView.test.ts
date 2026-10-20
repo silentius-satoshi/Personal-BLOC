@@ -87,6 +87,9 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   strikeCall: 'none',
   strikeCureColdBtc: 0,
   strikeLiquidatedBtc: 0,
+  netCoinsBtc: null,
+  atGoal: null,
+  goalHeldUsd: 0,
   ...o,
 });
 

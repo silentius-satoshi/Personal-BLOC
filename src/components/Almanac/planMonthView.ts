@@ -3,7 +3,7 @@ import type { PlacementPlan } from '../../simulation/placement';
 import { MOVE_THRESHOLD_BTC } from '../../simulation/placement';
 import { cbSeizurePrice } from '../../simulation/cbMetrics';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { fmtBelowPct, shownBtc, shownUsd, policyIgnoredNote } from './supportPolicyView';
+import { fmtBelowPct, shownBtc, shownUsd, policyIgnoredNote, goalActs, goalDefenseOf } from './supportPolicyView';
 import { fmtUSDCents, fmtLtvPct, toCents } from '../../utils/format';
 import { planSchedule, type Action, type ActionKind } from './decisionView';
 import { fmtTurnDate } from './cyclingFaceView';
@@ -209,6 +209,11 @@ const overAtMonthEnd = cbOverLimitAtMonthEnd;
  *  spare income FIRST (after the bills and a minimum paid from income), so a month still over at month-end that repays
  *  Coinbase nothing had none to spare (STATUS sweeps it). */
 const SPARE_REPAYS = 'Spare income repays it before the plan borrows again';
+/** BL14 (δ3) — at a goal month the plan does not borrow again while it stays there: the N8 rule drops the promise. */
+const GOAL_SPARE_REPAYS = 'Spare income repays it';
+const spareRepays = (row: Pick<CyclingRow, 'atGoal'>): string => (row.atGoal === true ? GOAL_SPARE_REPAYS : SPARE_REPAYS);
+/** BL14 (δ2) — the unpaid body at a goal month: the line had room; the goal skipped the draw. */
+export const GOAL_UNPAID_BODY = "At your goal the plan borrows nothing for the bills, so income and the cash reserve fall short at today's price.";
 const NO_SPARE = 'No spare income repays it this month';
 const BACK_WITHIN = "Back within your plan's limit this month";
 
@@ -261,7 +266,7 @@ export function planStatus(sim: CyclingResult, plan: PlacementPlan, m: number, f
     fixes.push(`Your limit: ${pct}% of what Coinbase's collateral is worth at support (${fmtUSDCents(f.support0)} per ₿ today).`);
     // Month 1's run: spare income repays it; or there is none to spare; or — over today by less than the month's rise in
     // support — the run is back within it at month-end without a repayment (the band reads that month-end).
-    const body = shownUsd(row.cbRepaidUsd) ? `${SPARE_REPAYS} — ${when}.`
+    const body = shownUsd(row.cbRepaidUsd) ? `${spareRepays(row)} — ${when}.`
       : overAtMonthEnd(row) ? `${NO_SPARE} — ${when}.`
         : `${BACK_WITHIN}.`;
     return { tone: 'warn', title: `Coinbase is ${fmtUSDCents(X)} over your plan's limit`, body, fixes };
@@ -270,18 +275,71 @@ export function planStatus(sim: CyclingResult, plan: PlacementPlan, m: number, f
     return {
       tone: 'warn',
       title: `Still ${fmtUSDCents(-(row.cbCeilingHeadroomUsd ?? 0))} over your plan's limit at month-end`,
-      body: shownUsd(row.cbRepaidUsd) ? `${SPARE_REPAYS}.` : `${NO_SPARE}.`,
+      body: shownUsd(row.cbRepaidUsd) ? `${spareRepays(row)}.` : `${NO_SPARE}.`,
       fixes: [],
     };
   }
   if (shownUsd(row.unfundedUsd)) {
-    return { tone: 'warn', title: `Bills ${fmtUSDCents(row.unfundedUsd)} short this month`, body: 'Income, the line and the cash reserve fall short at today\'s price.', fixes: [] };
+    return {
+      tone: 'warn', title: `Bills ${fmtUSDCents(row.unfundedUsd)} short this month`,
+      body: row.atGoal === true ? GOAL_UNPAID_BODY : 'Income, the line and the cash reserve fall short at today\'s price.', fixes: [],
+    };
   }
   const prev = sim.rows.find((r) => r.m === m - 1);
   if (m > 1 && prev && overAtMonthEnd(prev)) {
     return { tone: 'good', title: BACK_WITHIN, body: null, fixes: [] };
   }
   return { tone: 'good', title: "Within your plan's limits", body: null, fixes: [] };
+}
+
+// ── THE GOAL (BL14) — one line beneath the status: net coins against the owner's goal ─────────────────────────────
+
+/** Net coins and the goal, to the same number of places: three, or as many more (up to eight) as it takes for a figure
+ *  below the goal never to print as the goal. `reached` is the engine's own verdict (`atGoalOf`, which forgives float
+ *  dust): a figure at the goal by that rule prints to three places, never as eight digits of dust. */
+export function goalPair(net: number, goal: number, reached: boolean = net >= goal): { net: string; goal: string } {
+  for (let d = 3; d <= 8; d++) {
+    const a = net.toFixed(d);
+    const b = goal.toFixed(d);
+    if (reached || a !== b || d === 8) return { net: a, goal: b };
+  }
+  return { net: net.toFixed(8), goal: goal.toFixed(8) };
+}
+
+/** A net-coins figure from `goalPair`, with its sign before the ₿ — owing more than every coin is worth reads "−₿0.200",
+ *  never "₿-0.200". */
+export function netBtcText(figure: string): string {
+  return figure.startsWith('-') ? `−₿${figure.slice(1)}` : `₿${figure}`;
+}
+
+/**
+ * BL14 (G1-C) — THIS MONTH's and Daily's goal line: the plan's own figure for the month — net coins at its decision, at
+ * today's price (the run is flat, D4) once the month's Coinbase interest is added — against the owner's goal; at it, what
+ * the month does instead. "This month", never "today": the Dashboard's tile reads today's position at the live price, so
+ * with a Coinbase loan open the two differ by a month's interest as well as by the price ("Why this plan?" says so).
+ * `null` with no goal. It never takes the status's place (the limits keep it) and names no move of its own: the rows
+ * above it say what is repaid. Facts, never "should" (D6).
+ */
+export function planGoalLine(row: CyclingRow, goal: number | null): string | null {
+  if (goal === null || row.atGoal === null || row.netCoinsBtc === null) return null;
+  const p = goalPair(row.netCoinsBtc, goal, row.atGoal);
+  if (!row.atGoal) return `Net coins this month: ${netBtcText(p.net)} of your ₿${p.goal} goal, at today's price.`;
+  const at = `At your goal (net coins this month: ${netBtcText(p.net)} of ₿${p.goal})`;
+  const acts = goalActs(goalDefenseOf(row));   // δ-L2 — a month whose crash defense drew on Strike says so
+  // The legs the month ACTUALLY repaid — no order word, as `repaidTail`: a loan over its limit is restored first (Coinbase
+  // before Strike), so the goal's own order (Strike, then Coinbase) is not always the month's. The rows above name the sums.
+  const sk = shownUsd(row.strikeRepaidUsd);
+  const cb = shownUsd(row.cbRepaidUsd);
+  const kept = shownUsd(row.goalHeldUsd) ? `${fmtUSDCents(row.goalHeldUsd)} of spare income stays with you` : null;
+  if (sk || cb) {
+    const legs = sk && cb ? 'Strike and Coinbase' : sk ? 'Strike' : 'Coinbase';
+    return `${at}: the plan ${acts} — spare income repays ${legs}${kept !== null ? `, and ${kept}` : ''}.`;
+  }
+  // A loan still open and nothing repaid: the bills (or a minimum paid from income) took all of it — say so.
+  if (shownUsd(row.strikeBalance) || shownUsd(row.cbDebt)) {
+    return `${at}: the plan ${acts} — no spare income is left this month to repay a loan.`;
+  }
+  return `${at}: the plan holds — it ${acts}${kept !== null ? `, and ${kept}` : ''}.`;
 }
 
 // ── AFTER — where the month leaves both loans ─────────────────────────────────────────────────────────────────
@@ -700,12 +758,26 @@ export function planSwitchNote(cbStop: number): string {
 /** "Why this plan?" — the zone, then the Decision face's OWN sentences for that month's actions (`planSchedule`'s row:
  *  the same words the face prints), then what the limit is for — only while the engine applies the policy (refused,
  *  the limits are measured at today's price, as the status says). */
-export function planMonthSummary(sim: CyclingResult, plan: PlacementPlan, m: number, supportAtRow: number): string {
+export function planMonthSummary(
+  sim: CyclingResult, plan: PlacementPlan, m: number, supportAtRow: number, goal: number | null = null,
+): string {
   const row = sim.rows.find((r) => r.m === m);
   const sched = planSchedule(sim, plan, fmtUSDCents).find((r) => r.m === m);   // the face's words, to the cent (BL19)
   if (!row || !sched) return '';
   const r = supportAtRow > 0 ? row.price / supportAtRow : NaN;
-  const zone = Number.isFinite(r) ? `Price is ${r.toFixed(2)}× support. ` : '';
+  // BL14 — with a goal set, the month's figure and how it is read (today's price, plus the month's Coinbase interest when a
+  // loan carries into it — why it can sit under the Dashboard tile's "today"); at the goal, why the month buys nothing.
+  let goalWords = '';
+  if (goal !== null && row.atGoal !== null && row.netCoinsBtc !== null) {
+    const prev = sim.rows.find((x) => x.m === m - 1);
+    const read = prev !== undefined && shownUsd(prev.cbDebt)
+      ? "at today's price once this month's Coinbase interest is added" : "at today's price";
+    const p = goalPair(row.netCoinsBtc, goal, row.atGoal);
+    goalWords = row.atGoal
+      ? `Net coins this month, ${read}, are ${netBtcText(p.net)} — at or above your ₿${p.goal} goal, so the plan ${goalActs(goalDefenseOf(row))}. `
+      : `Net coins this month, ${read}, are ${netBtcText(p.net)} — under your ₿${p.goal} goal. `;
+  }
+  const zone = `${Number.isFinite(r) ? `Price is ${r.toFixed(2)}× support. ` : ''}${goalWords}`;
   const doing = sched.actions.length > 0
     ? `This month the plan would: ${sched.actions.map((a) => a.text).join(' ')}`
     : 'This month the plan does nothing.';

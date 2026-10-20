@@ -217,6 +217,8 @@
   font-weight: 600;
 }
 .schedNone { color: var(--text-faint); }
+/* BL14 — a month at the owner's goal: a mark beside the zone's letter. */
+.schedGoal { margin-left: 3px; color: var(--text-secondary); font-weight: 400; }
 /* A crash row's note and its console link — a row of its own beneath the row button (C2). */
 .crashRow td {
   padding: 0 6px 10px;

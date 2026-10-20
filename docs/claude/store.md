@@ -125,6 +125,34 @@ persist merge fills the defaults, and a demo or e2e blob without them shows the 
 planRun's `planBreakerCacheOf` (the engine's own `validOpeningBreaker`, dated `yyyy-mm-dd`): a damaged cache reads as
 none, and the next fresh fold rewrites it. See § The plan of record (Run 2).
 
+### BL14 — the plan's goal amount (batch 1, build 2; `planInputsSlice`; store unchanged, NO bump)
+```typescript
+planGoalNetBtc:    number | null;   // default null = no goal — the owner's goal in NET COINS, ₿ (lib/planGoal)
+setPlanGoalNetBtc: (v: number | null) => void;   // through planGoalOf; ONE emitPlanSets per change, none when unchanged
+```
+One more SYNCED plan field beside the six (spec `pbloc-spec-batch-1-v1` v0.6 §2.2): in `SETTINGS_FIELDS`, so a plan event
+on `plan-events:v1` (no new channel), in the plan backup, and EXPOSED to a trusted viewer (`VIEWER_SETTINGS_FIELDS` — G2-A:
+the Dashboard's goal tile); never in the safe snapshot, a fixed list of ratios. A set-to-null event is "no goal", so a
+clear beats an older goal from another device. Every reader takes it through ONE rule, `planGoalOf` (a finite number above
+zero, to the satoshi, at most 21 million; anything else — null, absent, zero, negative, junk from a restored backup — is
+no goal); `lib/planGoal.ts` is pure with zero imports, the `planPolicy.ts` precedent. The setter stores the rule's value;
+the raw writers — a restore, the fold, a trusted snapshot — can carry anything, which is why no reader takes the field
+raw. Both seed resets clear it (`clearViewerData`,
+`resetPlanToSeeds`). A trusted viewer's snapshot raw-sets it (`applyViewerSettings` — no event). No store version bump:
+`migrateState` defaults it `?? null`, and the persist merge fills it on a blob without the key. A backup from before build
+2 leaves the goal as it is (`applyPlanBackup` writes only the keys a file carries — the six's precedent); one from this
+build is refused by an older build. **The counts:** 46 settings keys (`SETTINGS_FIELDS` = `buildSettingsPayload`'s), 42
+plan-event fields + the 4 prefs, 108 persisted blob keys, 41 trusted settings keys (46 − the 5 strips).
+- **Its one editor** is Settings → Your plan (`YourPlanSection`'s `GoalField`, owner-only under `!viewerMode`): "Your
+  goal — net coins", saved when the field is left or Enter is pressed, never per keystroke (`parseGoalInput`: empty
+  clears; an amount above zero sets; anything else says what to type and changes nothing). After a save the field shows
+  what the plan KEPT (`useStore.getState()`, read back), so an edit refused before the plan loads (5c) snaps back, as the
+  sliders do (δ-L10). Its hint says what the engine does (δ-L9): "At your goal the plan buys nothing and borrows only to
+  defend Coinbase in a crash: your paycheck pays the bills, then your cash reserve if you set one, and any they can't
+  cover go unpaid; spare income repays a loan over its limit first, then Strike, then Coinbase, and once both are repaid
+  it stays with you." Pinned by `planGoalStore.test.ts` (GOAL EDITOR — the setter only there; GOAL READ — every reader
+  through `planGoalOf`) and `yourPlanGoal.test.ts`.
+
 ---
 
 ## Dated Collateral Model — ⚠ SUPERSEDED at v20 by reading-anchored Strike collateral

@@ -13,7 +13,9 @@ import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import type { PathKind } from '../../simulation/cyclePath';
 import type { WorstBy } from '../../simulation/planSearch';
 import { STRIKE_HOLD_DAYS, atTriggerLine } from '../Tools/crashPlaybookView';
-import { DISPLAY_DUST_BTC, fmtBelowPct, policyIgnoredNote, shownBtc, shownUsd } from './supportPolicyView';
+import { DISPLAY_DUST_BTC, fmtBelowPct, policyIgnoredNote, shownBtc, shownUsd, goalActs } from './supportPolicyView';
+import { netCoinsBtc, atGoalOf } from '../../simulation/goal';
+import type { PlacementInput } from '../../simulation/placement';
 import { fmtTurnDate, type NeverDrawVerdict } from './cyclingFaceView';
 import type { BreakerSeed } from './supportPolicyInputs';
 import { fmtUSD } from '../../utils/format';
@@ -45,7 +47,17 @@ export interface ScheduleRow {
   keepAtSupportBtc: number | null;
   zone: PolicyState | null;
   crash: boolean;
+  /** BL14 — the month acted at the owner's goal (net coins at or above it): it borrowed and bought nothing. */
+  atGoal: boolean;
 }
+
+/** BL14 — a goal month's mark, said in full (the schedule's zone cell, its title and aria-label): the plan borrows and buys
+ *  nothing — or, in a month whose crash defense drew on Strike (its row lists the debt shift, δ-L2), it buys nothing and
+ *  borrows only for that defense. */
+export const goalMarkLabel = (r: Pick<ScheduleRow, 'actions'>): string =>
+  `At your goal — the plan ${goalActs(r.actions.some((a) => a.kind === 'debtShift'))}`;
+/** BL14 — the printout's word for a goal month, beside its zone. */
+export const GOAL_MARK_TEXT = 'at your goal';
 
 /** A crash month's moves are the playbook's, not placement's — the face points at the Emergency Console for them. */
 const CRASH_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>([
@@ -233,6 +245,7 @@ export function planSchedule(sim: CyclingResult, plan: PlacementPlan, usd: UsdFm
     keepAtSupportBtc: sim.policyApplied ? plan.strikeKeepBtc : null,
     zone: sim.policyApplied ? sim.rows[0]?.policyZone ?? null : null,
     crash: false,
+    atGoal: false,   // today's row is THE MOVE's, and the goal never moves a coin
   }];
   for (const row of sim.rows) {
     if (row.m === 0) continue;
@@ -244,6 +257,7 @@ export function planSchedule(sim: CyclingResult, plan: PlacementPlan, usd: UsdFm
       keepAtSupportBtc: row.strikeKeepBtc,
       zone: row.policyZone,
       crash: actions.some((a) => CRASH_KINDS.has(a.kind)),
+      atGoal: row.atGoal === true,
     });
   }
   return rows;
@@ -294,7 +308,8 @@ export function scheduleToText(
   const out: string[] = [header, '', move, ''];
   for (const r of rows) {
     if (r.actions.length === 0) continue;
-    out.push(`${r.label}${r.zone !== null ? ` (${r.zone})` : ''}`);
+    const marks = [r.zone, r.atGoal ? GOAL_MARK_TEXT : null].filter((x): x is string => x !== null);
+    out.push(`${r.label}${marks.length > 0 ? ` (${marks.join(' · ')})` : ''}`);
     for (const a of r.actions) out.push(`  - ${a.text}`);
     if (r.crash) out.push(`  ! ${crashNote(consoleRuns)}`);
     out.push('');
@@ -392,7 +407,30 @@ export interface MoveCardContext {
   hasCbLoan: boolean;
   /** A Coinbase loan is switched on, so the Emergency Console runs (D3, Run 4 — the LTV-triggered strategy until then). */
   consoleRuns: boolean;
+  /** BL14 (δ4) — the plan's next decision is at the owner's goal (`atGoalThisMonthOf`: THIS MONTH's own figure — THE
+   *  MOVE's coins and debts at its price, after a month of Coinbase's interest — so the card stays the same on every path and
+   *  agrees with THIS MONTH's goal line). The plan borrows nothing while it stays there, so the over-limit line drops "before
+   *  it borrows again" (the N8 rule). False (or absent) with no goal. */
+  atGoalThisMonth?: boolean;
 }
+
+/** BL14 (δ4) — net coins THIS MONTH, as the engine reads them at month 1 on a flat path: THE MOVE's own position (moves
+ *  between Strike, Coinbase and cold never change net coins) at its price, once a month of Coinbase's interest is added,
+ *  before Strike's — THIS MONTH's goal line's figure. Null when unreadable. */
+export function netCoinsThisMonthOf(
+  input: Pick<PlacementInput, 'strikeCollateralBtc' | 'cbCollateralBtc' | 'coldBtc' | 'strikeBalance' | 'cbDebt' | 'price'>,
+  cbAprPct: number,
+): number | null {
+  return netCoinsBtc({
+    strikeBtc: input.strikeCollateralBtc, cbBtc: input.cbCollateralBtc, coldBtc: input.coldBtc,
+    strikeBalanceUsd: input.strikeBalance, cbDebtUsd: input.cbDebt * (1 + cbAprPct / 100 / 12), price: input.price,
+  });
+}
+
+/** BL14 (δ4) — that figure against the goal (the engine's own rule, `atGoalOf`). False with no goal. */
+export const atGoalThisMonthOf = (
+  input: Parameters<typeof netCoinsThisMonthOf>[0], cbAprPct: number, goal: number | null,
+): boolean => goal !== null && atGoalOf(netCoinsThisMonthOf(input, cbAprPct), goal);
 
 const pctInt = (x: number): string => `${Math.round(x * 100)}%`;
 const line = (key: string, tone: MoveTone, text: string): MoveLine => ({ key, tone, text });
@@ -513,7 +551,7 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
   if (plan.state !== 'cbPastLiquidation' && shownUsd(plan.cbOverCeilingUsd)) {
     lines.push(line('overLimit', 'warn',
       `Coinbase is ${fmtUSD(plan.cbOverCeilingUsd)} over its limit at support — the policy repays that from spare `
-      + 'income before it borrows again.'));
+      + `income${ctx.atGoalThisMonth === true ? '' : ' before it borrows again'}.`));
   }
 
   // ── the cliff (S2) ─────────────────────────────────────────────────────────────────────────────────────────
@@ -817,7 +855,8 @@ export function outcomeTiles(
       key: 'vsNeverDraw', label: 'vs never drawing',
       value: shownUsd(Math.abs(delta)) ? `${delta >= 0 ? '+' : '−'}${fmtUSD(Math.abs(delta))}` : 'even',
       sub: `all-in equity${basisClause}`,
-      tone: verdict.kind === 'liquidated' ? 'bad' : verdict.wins ? 'good' : 'warn',
+      // BL14 — a tie (with a goal only) is neither good nor bad.
+      tone: verdict.kind === 'liquidated' ? 'bad' : verdict.kind === 'even' ? 'plain' : verdict.wins ? 'good' : 'warn',
     },
     {
       key: 'liquidation', label: 'Coinbase liquidation',

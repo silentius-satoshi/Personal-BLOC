@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 107 persisted data keys (+6, the plan of record; +1, 5c\'s planLoaded; +3, Run 2\'s device-local planBreakerCache, planNoteDismissed, viewerStrikeDepositISO; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
+  it('blob key-set is exactly the 108 persisted data keys (+6, the plan of record; +1, BL14\'s planGoalNetBtc; +1, 5c\'s planLoaded; +3, Run 2\'s device-local planBreakerCache, planNoteDismissed, viewerStrikeDepositISO; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -70,7 +70,9 @@ describe('characterization · persisted blob (partializeState)', () => {
       'nostrBunkerUri', 'nostrLogin', 'nostrPubkey', 'nostrRelays', 'nostrSigningMethod', 'onboardingComplete',
       'pendingViewerRevocations', 'pinnedScenario',   // device-local revocation retry queue + scenario pin
       'planBreakerCache',   // Run 2 (§4.3): the breaker's offline cache — device-local, never synced
-      'planDirty', 'planEvents', 'planLoaded',   // Phase 4c: plan-events channel (device-local persisted); 5c: planLoaded
+      'planDirty', 'planEvents',   // Phase 4c: plan-events channel (device-local persisted)
+      'planGoalNetBtc',   // BL14 (Batch 1, build 2): the plan's goal in net coins — a synced plan field
+      'planLoaded',   // 5c
       'planNoteDismissed',   // Run 2 (D8): the one-time note — device-local, never synced
       'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',   // the plan of record (Run 1)
       'policyPayDownAbove', 'policyStrikeStopAtSupportPct',
@@ -127,13 +129,14 @@ describe('characterization · persisted blob (partializeState)', () => {
       policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,   // the plan of record — C1
       policyBearBufferMonths: 12, policyCashReserveMonths: 0,
       planNoteDismissed: false, planBreakerCache: null, viewerStrikeDepositISO: null,   // Run 2 — device-local, never synced
+      planGoalNetBtc: null,   // BL14 — no goal on a fresh store
     });
   });
 });
 
 // ── Suite 2 — settings payload (buildSettingsPayload) ────────────────────────
 describe('characterization · settings payload (buildSettingsPayload)', () => {
-  it('is exactly 45 keys (+6, the plan of record)', () => {
+  it('is exactly 46 keys (+6, the plan of record; +1, BL14\'s goal)', () => {
     const p = buildSettingsPayload(useStore.getState());
     expect(Object.keys(p).sort()).toEqual([
       'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -145,13 +148,14 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
       'creditLine', 'expenses',
       'hasCbLoan',
       'hiddenTabs', 'income', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrRelays',
+      'planGoalNetBtc',   // BL14 (Batch 1, build 2)
       'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',
       'policyPayDownAbove', 'policyStrikeStopAtSupportPct', 'simpleMode',
       'strikeLiquidationLtvPct', 'tabOrder', 'viewers',
     ]);
   });
 
-  it('deep-equals the seed (advisorStartDate normalized → 44 entries)', () => {
+  it('deep-equals the seed (advisorStartDate normalized → 45 entries)', () => {
     const p = buildSettingsPayload(useStore.getState()) as Record<string, unknown>;
     expect(p.advisorStartDate).toMatch(ISO_DATE);
     delete p.advisorStartDate;
@@ -170,6 +174,7 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
       backupVerifiedAt: null, viewers: [], nextViewerIndex: 0,
       policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,
       policyBearBufferMonths: 12, policyCashReserveMonths: 0,
+      planGoalNetBtc: null,   // BL14 — no goal
     });
   });
 });
@@ -180,7 +185,8 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
 // must never learn the log exists. ANY diff to these literals means the campaign reached viewers (it must
 // not) — treat a change here as a red flag to investigate, not a fixture to update.
 // The plan of record (Run 1, D9) is the one CONSCIOUS change since: a trusted viewer receives the owner's six policy
-// settings (EXPOSE — viewerSnapshot.test pins the key set), so the viewer's faces start from the owner's plan.
+// settings (EXPOSE — viewerSnapshot.test pins the key set), so the viewer's faces start from the owner's plan. And BL14
+// (Batch 1, build 2 — G2-A, the owner's call): the goal rides the trusted snapshot too, for the Dashboard's goal tile.
 describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () => {
   it('C-safe: full shape (asOf normalized)', () => {
     const safe = buildViewerSnapshotPayload(useStore.getState(), 'safe') as Record<string, unknown>;
@@ -210,7 +216,7 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
     delete settings.advisorStartDate;
     expect(trusted).toEqual({
       snapshotVersion: 2, privacyMode: 'trusted',
-      // settings = the 45 minus VIEWER_SNAPSHOT_STRIP's 5 keys (viewers/nextViewerIndex/nostrRelays/backupVerifiedAt/coldStorageBtcAsOf) → 40; 39 below, advisorStartDate normalized out.
+      // settings = the 46 minus VIEWER_SNAPSHOT_STRIP's 5 keys (viewers/nextViewerIndex/nostrRelays/backupVerifiedAt/coldStorageBtcAsOf) → 41; 40 below, advisorStartDate normalized out.
       settings: {
         income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000, advisorActualBlocBalance: 0,
         advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
@@ -224,6 +230,7 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
         advisorSkipBtcBuying: false,
         policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,   // D9 EXPOSE
         policyBearBufferMonths: 12, policyCashReserveMonths: 0,
+        planGoalNetBtc: null,   // BL14 G2-A EXPOSE — the goal tile's goal
       },
       records: { entries: [], deletions: {} },
       strike: { usd: null, btcAvail: null, rate: null },

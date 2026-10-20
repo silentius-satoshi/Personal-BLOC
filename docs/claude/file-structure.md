@@ -108,8 +108,10 @@ src/
     monteCarlo.ts               # Policy v2 — the lenses: the futures' BATCH RUNNER — the ENGINE side of the §2 wall (imports
                                 # ONLY ./cyclingSim and ./ownership, never a belief). futureOutcome(inputs, prices) → yours
                                 # (deriveOwnership of the last row, THREE args — btcHeld already holds cold), cold
-                                # (last.coldBtc), beatsNeverDraw (allInEquity > baselineAllInEquity — verdictVsNeverDraw's
-                                # `wins`, R9), seized (liqMonth OR firstOpenPastLltvMonth — at a month-end or on the way down,
+                                # (last.coldBtc), beatsNeverDraw (the engine's ONE rule, `beatsNeverDraw` — allInEquity >
+                                # baselineAllInEquity, and with a goal never a gap under the dust floor; verdictVsNeverDraw's
+                                # `wins`, R9) + tiesNeverDraw (BL14 — `neverDrawTie`, never true with no goal; the summary
+                                # counts them apart), seized (liqMonth OR firstOpenPastLltvMonth — at a month-end or on the way down,
                                 # R8), seizedMonth (Run 2, W-3: the EARLIER of the two; null when neither), policyApplied;
                                 # runFutures(inputs, paths, startISO) → FuturesSummary { count, months, yoursBtc / coldBtc
                                 # as p10 / p50 / p90, beatsNeverDraw / seized as counts, seizedWithinYear (month 12
@@ -233,6 +235,22 @@ src/
                                 # and `strikeMinPaidUsd` (the part income paid; 0 when it rolls). `validOpeningBreaker`
                                 # is EXPORTED: the main screens' breaker cache is read through it (planRun's
                                 # planBreakerCacheOf), so a cache the run would discard never steers THE MOVE
+                                # BL14 (batch 1, build 2): `goalNetBtc?: number | null` — the plan's goal in NET COINS, a
+                                # REAL input (every plan reader passes the owner's, through planGoalOf), policy- and
+                                # cycle-only; absent/null/junk ⇒ byte-identical. Read once a month after Coinbase's
+                                # interest and any seizure, before the month acts (./goal); at or above it the month draws,
+                                # buys and refinances nothing and spare income repays Strike, then Coinbase, through the
+                                # pay-down's own code. Row `netCoinsBtc` / `atGoal` (null with no goal) / `goalHeldUsd` (the
+                                # leftover once both loans are repaid); result `goalNetBtc` (the goal applied),
+                                # `totalGoalHeldUsd`, `baselineGoalHeldUsd` — both counted in allInEquity /
+                                # baselineAllInEquity, each only above 0 — and the ONE verdict rule, `neverDrawTie` /
+                                # `beatsNeverDraw` (`NEVER_DRAW_TIE_USD` = DUST_USD; a tie only with a goal). See
+                                # engines.md § The plan's goal amount
+    goal.ts                     # BL14 — net coins and the goal test, the PURE leaf the engine's month decision and the
+                                # Dashboard's goal tile share: netCoinsBtc({ strikeBtc, cbBtc, coldBtc, strikeBalanceUsd,
+                                # cbDebtUsd, price }) (null when unreadable — no positive finite price, or a part that isn't
+                                # finite) and atGoalOf(net, goal) (at or above, within GOAL_EPS = 1e-12 relative). 🔴 + − × ÷
+                                # only, ZERO imports — cyclingSim imports it, so G1's import walk reaches it
     supportPolicy.ts            # SUPPORT-ANCHORED POLICY leaf — imports only the zero-import ./ltv (support
                                 # arrives as a plain number; the §2 wall holds). policyZone (k = price ÷ support →
                                 # paused/accumulate/hold/payDown, junk → 'paused'), ceilingHeadroomUsd (room at
@@ -574,7 +592,7 @@ src/
                                 # setters); viewer += viewerStrikeDepositISO (raw-set by viewerSync's trusted apply, reset
                                 # by clearViewerData) — the three device-local keys (§ Zustand Store Shape)
     payloads.ts                 # Phase 1b — the two PURE snapshot builders, moved verbatim out of useStore:
-                                # buildSettingsPayload(s) (the 45-key settings payload — single source for the
+                                # buildSettingsPayload(s) (the 46-key settings payload, BL14's goal included — single source for the
                                 # trusted viewer snapshot + the plan backup; 4e: no longer a relay payload of its own)
                                 # + buildViewerSnapshotPayload(s, tier)
                                 # (C-safe ratios / C-trusted full). `import type { StoreState } from './useStore'`
@@ -655,12 +673,20 @@ src/
                                 # PLAN_POLICY_SEED (the six store keys at C1, for the seed resets) · clampPlanPolicy(k, v)
                                 # (a finite number into its range; anything else → the default) · planPolicyOf(state)
                                 # (the six, read THROUGH the clamp — a restore writes what no setter wrote). No off
-                                # switch: there is no seventh field. See § The plan of record (Run 1)
+                                # switch: there is no seventh policy field (BL14's goal is the plan's own field, in
+                                # planGoal.ts below). See § The plan of record (Run 1)
                                 # The plan of record's Run 4: PLAN_CB_DEFENSE_PCT 70 (the plan's Coinbase defense line —
                                 # planClamp's PLAN_CB_LTV_CAP_PCT reads it, ONE constant) · planCbLimitOf(s) — the plan's
                                 # Coinbase limit at support as the plan runs it, a fraction, from store-shaped state (the
                                 # clamp, then held to the defense line); Safety's selector and the safe snapshot read it,
                                 # and safetyAtSupport.test pins it equal to planPolicySettingsOf(…).cbStopEffPct / 100
+    planGoal.ts                 # BL14 (batch 1, build 2) — the plan's goal amount: PURE, ZERO imports (the planPolicy.ts
+                                # precedent). PLAN_GOAL_FIELD ('planGoalNetBtc' — one plan event per change; null = no
+                                # goal) · PLAN_GOAL_MAX_BTC (21M) · planGoalOf(v) — THE read rule every reader goes through
+                                # (a finite number above zero, to the satoshi, at most 21M; anything else, junk from a
+                                # restored backup included, is no goal) · parseGoalInput(raw) — Settings' field: empty →
+                                # null (clears), an amount above zero → it, anything else → undefined (changes nothing).
+                                # See store.md § BL14
     recoveryGrid.ts             # R2b-3 — PURE logic for WordGrid's input mode (12-box capture). Imports wordlist
                                 # (@scure/bip39/wordlists/english.js) + validateWords (nostr-tools/nip06) + RECOVERY_WORD_COUNT.
                                 # distributePaste(tokens,focusedIndex) → 'fill-from-start' (12 exact) | [] (0/1 token →
@@ -942,7 +968,8 @@ src/
       futuresView.ts            # EVERY WORD of the futures (the faces compose none — I31). On screen the 1,000 are
                                 # "simulations" (Run 2, W-4): no word built here says "future" — the code's names keep it
                                 # (L-I13). futuresReadout (the owner's four numbers under the applied policy — You own · In
-                                # your cold storage · Beats never borrowing · Coinbase seizes; the coin subs "where 8 of 10
+                                # your cold storage · Beats never borrowing (BL14: its sub-line adds "· N% tie" when any
+                                # simulation ties, which only a goal makes) · Coinbase seizes; the coin subs "where 8 of 10
                                 # simulations end · half end above x ₿" — W-5, a no-break space holding ₿ to its figure;
                                 # a "none" range names no middle — O-1 — else the chance
                                 # alone and its note, R1) · futuresCardLine (the card's line, in sentences: "Over the next 5
@@ -1467,7 +1494,12 @@ src/
                                 # saved support policy (D2). SupportPolicySliders over the saved plan (usePlanPolicy):
                                 # onChange={setPlanPolicy} onReset={resetPlanPolicy}, resetLabel="Back to the defaults
                                 # (C1)", offSwitch={false}, readouts through effectivePolicySettings(raw, PLAN_CLAMP).
-                                # Styles come from SettingsMain's module (a `styles` prop — no CSS of its own). ⚠
+                                # BL14 (batch 1, build 2): + the GOAL group — GOAL_HINT, and GoalField, the goal's ONE
+                                # editor: "Your goal — net coins", saved on blur or Enter (never per keystroke) through
+                                # parseGoalInput → setPlanGoalNetBtc; after a save it shows what the plan kept (a 5c-refused
+                                # edit snaps back); "No goal" clears it; anything else says GOAL_BAD and changes nothing.
+                                # Styles come from SettingsMain's module (a `styles` prop), plus — for the goal field —
+                                # its own YourPlanSection.module.css and NumberInput's module. ⚠
                                 # Owner-only: emitPlanSets has no viewer guard, so SettingsMain mounts it (and its row)
                                 # behind !viewerMode — SETTINGS pins both, and that no other file names the setters
       RevealRecoveryKey.tsx     # Access Phase 2 → R2c-1 — lost-my-backup escape hatch, VIEW-ONLY (+ .module.css).
@@ -1853,7 +1885,8 @@ src/
                                 # PLAN_CRASH_TITLE on a crash day — isCrashDay, the console's gate: the Coinbase loan
                                 # since the plan of record's Run 4, D3), the month's rows
                                 # (planMonthActions: venue dots + VenueText), Strike's minimum (income: planMinimumLine +
-                                # its chip; roll: a "Strike interest" row) and "Why this plan?" (planMonthSummary). The
+                                # its chip; roll: a "Strike interest" row) and "Why this plan?" (planMonthSummary) — and,
+                                # BL14, the goal line under the status (planGoalLine on month 1; none with no goal). The
                                 # bars' targets are planLedgerTargets(row 1) — drawn: the bills' draw + a defense's draw;
                                 # paid: spare income's repayments + a refinance's payment to Strike + a defense's payment
                                 # to Coinbase + the margin cure — against the Ledger's paydowns on BOTH loans (Δ4).
@@ -2005,7 +2038,8 @@ src/
                                 # of the strategy year from the plan's run — the card's month k is the run's month
                                 # k − currentMonth + 1 — a past month from the Ledger, D14); the track is monthTrack. Then
                                 # the status (planStatus with its "To be within it today" catch-up, or on a crash day the
-                                # console's line under PLAN_CRASH_TITLE), the breaker line, the to-do rows (planMonthActions
+                                # console's line under PLAN_CRASH_TITLE), the breaker line, the goal line (BL14 — planGoalLine
+                                # on the run's own month and goal; none with no goal), the to-do rows (planMonthActions
                                 # — THE MOVE's legs "today", then the Decision face's schedule rows, with venue dots and
                                 # VenueText), the minimum's foot (income: planMinimumLine + its PAID / DUE / MISSED chip;
                                 # roll: planInterestRollsLine) and the NDP line, the after box (planAfter, with the meter),

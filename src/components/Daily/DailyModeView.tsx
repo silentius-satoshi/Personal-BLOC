@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth, getNdpStatus } from '../../simulation/runAdvisor';
 import { usePlanMonth } from '../Almanac/usePlanMonth';
 import {
-  planMonthSummary, planMonthActions, planStatus, planRowDot, planRowNoteColor, planRowAmountColor, planMinimumOwed,
+  planMonthSummary, planMonthActions, planStatus, planRowDot, planRowNoteColor, planRowAmountColor, planMinimumOwed, planGoalLine,
   planMinimumLine, planInterestRollsNote, planLedgerTargets, planBars, planBarsCaption, planNdpEstimateUsd, planNdpBalance, VENUE_COLOR,
   PLAN_CRASH_TITLE, planMoveBringsCbWithin,
 } from '../Almanac/planMonthView';
@@ -139,6 +139,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const pm = usePlanMonth();
   const pr1 = pm.run.sim.rows[1] ?? pm.run.sim.last;
   const pmRows = planMonthActions(pm.run.sim, pm.run.placement, 1);
+  const pmGoalLine = planGoalLine(pr1, pm.run.engineInputs.goalNetBtc ?? null);   // BL14 — null with no goal
   // D13 — a crash day outranks the month's status, as on THIS MONTH (the console's gate and inputs).
   const crashDay = isCrashDay({
     hasCbLoan, cbDebt: effectiveCbBalance, cbCollateralBtc,
@@ -437,6 +438,8 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             </div>
             {/* The month's one status — the same builder as THIS MONTH (title only; the catch-up lives there). */}
             {pmStatus.title && <p className={`${styles.pbStatus} ${styles[`pbStatus_${pmStatus.tone}`]}`}>{pmStatus.title}</p>}
+            {/* BL14 (G1-C) — the goal line, as on THIS MONTH (the same run's month 1). */}
+            {pmGoalLine && <p className={styles.pbFoot} style={{ marginLeft: 0 }}>{pmGoalLine}</p>}
             {/* The plan of record's month 1 — THIS MONTH's own rows (the Decision face's schedule, one table). */}
             {pmRows.map((a) => {
               const d = planRowDot(a);
@@ -466,7 +469,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             ))}
             <details className={styles.pbWhy}>
               <summary>Why this plan?</summary>
-              <div className={styles.pbNotebox}>{planMonthSummary(pm.run.sim, pm.run.placement, 1, pm.run.supportPath[1] ?? pm.run.supportPath[0])}</div>
+              <div className={styles.pbNotebox}>{planMonthSummary(pm.run.sim, pm.run.placement, 1, pm.run.supportPath[1] ?? pm.run.supportPath[0], pm.run.engineInputs.goalNetBtc ?? null)}</div>
             </details>
           </div>
 

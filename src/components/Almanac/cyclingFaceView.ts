@@ -1,5 +1,5 @@
 import {
-  allInEquity, baselineAllInEquity, type CyclingRow, type CyclingResult, type CyclingMode,
+  allInEquity, baselineAllInEquity, neverDrawTie, type CyclingRow, type CyclingResult, type CyclingMode,
 } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
 import { CB_FEE_TIER1_PCT, CB_LLTV } from '../../simulation/runCoinbaseLoan';
@@ -8,7 +8,8 @@ import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import {
-  strikeCallSummary, strikeCallSentence, shownUsd, shownBtc, billsRemainderTail, type StrikeCallSummary,
+  strikeCallSummary, strikeCallSentence, shownUsd, shownBtc, billsRemainderTail, goalStopWords, goalDefenseOf, goalKeptTail,
+  type StrikeCallSummary,
 } from './supportPolicyView';
 
 /**
@@ -82,7 +83,7 @@ export { fmtLtvPct } from '../../utils/format';
 export function playbookNote(
   sim: Pick<CyclingResult, 'policyApplied' | 'totalTopUpBtc' | 'totalTopUpFromColdBtc' | 'totalTopUpFromStrikeBtc'
     | 'totalDefenseDrawnUsd' | 'defenseCount' | 'firstTopUpMonth' | 'firstDefenseMonth' | 'firstUnheldMonth'
-    | 'liqMonth' | 'seizedOnTheWayDown'>,
+    | 'liqMonth' | 'seizedOnTheWayDown'> & { rows?: ReadonlyArray<Pick<CyclingRow, 'm' | 'atGoal'>> },
   capPct: number,
 ): string | null {
   if (!sim.policyApplied) return null;
@@ -106,8 +107,19 @@ export function playbookNote(
     ? ` Coinbase was still ${sim.seizedOnTheWayDown ? 'seized on the way down' : 'liquidated'} in month ${sim.liqMonth}.`
     : sim.firstUnheldMonth !== null
       ? ` From month ${sim.firstUnheldMonth} the playbook could not hold the ${capPct}% defense line — the residual is unhedged.`
-      : ` The ${capPct}% defense line held${shifted ? '; the refinance shifts the debt back to Coinbase as the price recovers.' : '.'}`;
+      : ` The ${capPct}% defense line held${shifted ? (goalAfterShift(sim) ? GOAL_REFINANCE_CLAUSE : REFINANCE_CLAUSE) : '.'}`;
   return `Crash playbook: ${parts.join('; ')}${start}.${outcome}`;
+}
+
+const REFINANCE_CLAUSE = '; the refinance shifts the debt back to Coinbase as the price recovers.';
+/** BL14 (δ-L7) — at the goal the refinance never runs (it would borrow on Coinbase): spare income repays the shifted debt. */
+export const GOAL_REFINANCE_CLAUSE = '; the refinance shifts the debt back to Coinbase as the price recovers, except at your '
+  + 'goal, where spare income repays it instead.';
+
+/** A month at the goal after the first debt shift — when the refinance would have shifted it back. False with no goal. */
+function goalAfterShift(sim: { firstDefenseMonth: number | null; rows?: ReadonlyArray<Pick<CyclingRow, 'm' | 'atGoal'>> }): boolean {
+  const first = sim.firstDefenseMonth;
+  return first !== null && (sim.rows ?? []).some((r) => r.m > first && r.atGoal === true);
 }
 
 /**
@@ -330,8 +342,16 @@ export const OPENING_CASH_FLOW_NOTE = "Today's opening position — nothing is d
  *  • nothing bought, nothing repaid (a $0 paycheck) — "No bitcoin bought this month."
  * Both figures go through the ONE dust floor (`shownUsd`), so a figure under 50¢ is never named.
  */
-export function noBillsNote(row: Pick<CyclingRow, 'btcBoughtUsd' | 'payDownUsd' | 'restoreUsd'>): string {
+export function noBillsNote(
+  row: Pick<CyclingRow, 'btcBoughtUsd' | 'payDownUsd' | 'restoreUsd'>
+    & Partial<Pick<CyclingRow, 'atGoal' | 'goalHeldUsd' | 'defenseDrawnUsd'>>,
+): string {
   const repaid = row.payDownUsd + row.restoreUsd;
+  // BL14 — a fourth shape: at the goal nothing buys, in any zone; say so, then what spare income repaid or kept.
+  if (row.atGoal === true) {
+    return `No bills to fund. ${goalStopWords(goalDefenseOf(row))}`
+      + (shownUsd(repaid) ? ` ${fmtUSD(repaid)} of spare income paid debt down.` : '') + goalKeptTail(row);
+  }
   if (!shownUsd(row.btcBoughtUsd)) {
     return shownUsd(repaid)
       ? `No bills to fund. ${fmtUSD(repaid)} of spare income paid debt down, so no bitcoin bought this month.`
@@ -772,11 +792,12 @@ export function fixedMilestoneMonths(horizonMonths: number): number[] {
   return MILESTONE_MONTHS.filter((m) => m <= horizonMonths);
 }
 
-export type NeverDrawVerdictKind = 'liquidated' | 'baseline' | 'wins' | 'loses';
+export type NeverDrawVerdictKind = 'liquidated' | 'baseline' | 'wins' | 'loses' | 'even';
 
 export interface NeverDrawVerdict {
   /** Liquidation outranks everything; `hold` IS the never-draw baseline (C3), so there is nothing to
-   *  compare; otherwise the run wins or loses on end equity. */
+   *  compare; otherwise the run wins or loses on end equity — or, with a goal, TIES (`even`: under the dust floor,
+   *  BL14 — `neverDrawTie`). Never `even` without a goal. */
   kind: NeverDrawVerdictKind;
   /** The ALL-IN equity comparison (spec v1.4 #21 — unpaid bills and reserve cash counted on BOTH sides),
    *  independent of `kind`: the Net-equity tile colours on it even when the run liquidated. ⚠ The tile's VALUE
@@ -790,29 +811,41 @@ export interface NeverDrawVerdict {
 }
 
 type AllInFields = Pick<CyclingResult,
-  'totalUnfundedUsd' | 'totalCashToBillsUsd' | 'totalCashToCureUsd' | 'baselineUnfundedUsd'>;
+  'totalUnfundedUsd' | 'totalCashToBillsUsd' | 'totalCashToCureUsd' | 'baselineUnfundedUsd'>
+  & Partial<Pick<CyclingResult, 'totalGoalHeldUsd' | 'baselineGoalHeldUsd'>>;
 
 /** Which all-in adjustments are REAL — through the one dust floor, so ~1e-10 of float residue never flips the verdict
- *  head to "…after unpaid bills" (v1.2 #11). ONE predicate for `allIn` and for `verdictBasisClause`. */
-function allInParts(sim: AllInFields): { unpaid: boolean; cash: boolean } {
+ *  head to "…after unpaid bills" (v1.2 #11). ONE predicate for `allIn` and for `verdictBasisClause`. BL14: `kept` — the
+ *  spare income either side kept at the goal (absent ⇒ none, so a run with no goal reads exactly as before). */
+function allInParts(sim: AllInFields): { unpaid: boolean; cash: boolean; kept: boolean } {
   return {
     unpaid: shownUsd(sim.totalUnfundedUsd) || shownUsd(sim.baselineUnfundedUsd),
     cash: shownUsd(sim.totalCashToBillsUsd) || shownUsd(sim.totalCashToCureUsd),
+    kept: shownUsd(sim.totalGoalHeldUsd ?? 0) || shownUsd(sim.baselineGoalHeldUsd ?? 0),
   };
 }
+
+/** BL14 — the basis clause's goal part: the comparison counts the spare income kept at the goal, on both sides. */
+export const KEPT_BASIS_CLAUSE = ', counting the spare income kept at your goal';
 
 /**
  * The verdict head's basis clause when the all-in adjustments are real — '' otherwise. ⚠ "after unpaid bills" alone
  * would be false for a run whose reserve cash only cured a Strike call with every bill paid, so the clause names what
- * was actually counted. (Reserve cash spent on bills implies the baseline left those same months unpaid.)
+ * was actually counted. (Reserve cash spent on bills implies the baseline left those same months unpaid.) BL14: the
+ * spare income kept at the goal is named last, when either side kept some.
  */
 export function verdictBasisClause(sim: AllInFields): string {
   const p = allInParts(sim);
-  return p.unpaid && p.cash ? ', after unpaid bills and reserve cash'
+  const base = p.unpaid && p.cash ? ', after unpaid bills and reserve cash'
     : p.unpaid ? ', after unpaid bills'
     : p.cash ? ', after reserve cash'
     : '';
+  return p.kept ? `${base}${KEPT_BASIS_CLAUSE}` : base;
 }
+
+/** BL14 — the faces' verdict head for a tie (`even`): no signed figure, since there is no gap to sign. The basis
+ *  clause follows it, as it follows a win or a loss. */
+export const neverDrawTieHead = (label: string): string => `${label} ties — the same equity as paying bills from income`;
 
 /**
  * The verdict against the never-draw baseline on the SAME price path, on the ALL-IN basis. The model drops a bill
@@ -821,14 +854,18 @@ export function verdictBasisClause(sim: AllInFields): string {
  */
 export function verdictVsNeverDraw(
   sim: Pick<CyclingResult, 'liqMonth' | 'last' | 'baselineEquity' | 'baselineBtc'
-    | 'totalUnfundedUsd' | 'totalCashToBillsUsd' | 'totalCashToCureUsd' | 'baselineUnfundedUsd'>,
+    | 'totalUnfundedUsd' | 'totalCashToBillsUsd' | 'totalCashToCureUsd' | 'baselineUnfundedUsd'>
+    & Partial<Pick<CyclingResult, 'goalNetBtc' | 'totalGoalHeldUsd' | 'baselineGoalHeldUsd'>>,
   mode: CyclingMode,
 ): NeverDrawVerdict {
   const run = allInEquity(sim);
   const base = baselineAllInEquity(sim);
-  const wins = run > base;
+  // BL14 — with a goal, a gap under the dust floor is a tie: never a win (or a loss) decided by rounding.
+  const tie = neverDrawTie(sim);
+  const wins = run > base && !tie;
   const kind: NeverDrawVerdictKind = sim.liqMonth !== null ? 'liquidated'
     : mode === 'hold' ? 'baseline'
+    : tie ? 'even'
     : wins ? 'wins' : 'loses';
   const parts = allInParts(sim);
   return {
@@ -836,7 +873,7 @@ export function verdictVsNeverDraw(
     wins,
     equityDelta: run - base,
     btcDelta: sim.last.btcHeld - sim.baselineBtc,
-    allIn: parts.unpaid || parts.cash,
+    allIn: parts.unpaid || parts.cash || parts.kept,
   };
 }
 

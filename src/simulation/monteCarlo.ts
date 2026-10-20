@@ -8,7 +8,8 @@
  *     `btcHeld` already counts the cold pool);
  *   • cold — what sits in cold storage (`last.coldBtc`);
  *   • beats never drawing — the faces' verdict rule: all-in equity above the never-draw baseline's, on the same path
- *     (`verdictVsNeverDraw`'s `wins`);
+ *     (`verdictVsNeverDraw`'s `wins`, through the engine's ONE rule, `beatsNeverDraw`); with a goal, a gap under the dust
+ *     floor is a TIE (BL14 — `neverDrawTie`), counted apart, never as a win;
  *   • seized — Morpho took the Coinbase loan, either read at a month-end (`liqMonth`) or ON THE WAY DOWN
  *     (`firstOpenPastLltvMonth`, the engine's own test, computed with the policy on or off). Under the applied policy
  *     the two agree; without it the month-end reading rescues loans Morpho had already taken, and only the second test
@@ -22,13 +23,15 @@
  * the chance of a seizure alone (measured on REPRO over 20 years, policy off: `liqMonth` in 0.6% of the futures, the
  * way-down test in 95.1%).
  */
-import { runCyclingSim, allInEquity, baselineAllInEquity, type CyclingInputs } from './cyclingSim';
+import { runCyclingSim, beatsNeverDraw, neverDrawTie, type CyclingInputs } from './cyclingSim';
 import { deriveOwnership } from './ownership';
 
 export interface FutureOutcome {
   yoursBtc: number;
   coldBtc: number;
   beatsNeverDraw: boolean;
+  /** BL14 — the comparison tied (with a goal only: a gap under the dust floor). Never true with no goal. */
+  tiesNeverDraw: boolean;
   seized: boolean;
   /** When Morpho first takes the loan: the earlier of `liqMonth` and `firstOpenPastLltvMonth` (Run 2, W-3); null when
    *  neither fires. */
@@ -46,6 +49,8 @@ export interface FuturesSummary {
   coldBtc: Spread;
   /** How many futures end with more all-in equity than never drawing, on the same path. */
   beatsNeverDraw: number;
+  /** BL14 — how many TIE with never drawing (a goal reached early makes the plan the never-draw world); 0 with no goal. */
+  tiesNeverDraw: number;
   /** How many futures lose the Coinbase loan to Morpho — at a month-end or on the way down. */
   seized: number;
   /** Of those, how many go by month 12 — within the first year, month 12 included (Run 2, W-3). */
@@ -72,7 +77,8 @@ export function futureOutcome(inputs: FuturesInputs, prices: number[]): FutureOu
   return {
     yoursBtc: deriveOwnership(last.btcHeld, last.debt, last.price).yoursBtc,
     coldBtc: last.coldBtc,
-    beatsNeverDraw: allInEquity(r) > baselineAllInEquity(r),
+    beatsNeverDraw: beatsNeverDraw(r),
+    tiesNeverDraw: neverDrawTie(r),
     seized: seizedMonth !== null,
     seizedMonth,
     policyApplied: r.policyApplied,
@@ -98,6 +104,7 @@ export function runFutures(inputs: FuturesInputs, paths: readonly number[][], st
   const cold: number[] = [];
   const seizedMonths: number[] = [];
   let beats = 0;
+  let ties = 0;
   let seized = 0;
   let applied = false;
   for (let i = 0; i < paths.length; i++) {
@@ -105,6 +112,7 @@ export function runFutures(inputs: FuturesInputs, paths: readonly number[][], st
     yours.push(o.yoursBtc);
     cold.push(o.coldBtc);
     if (o.beatsNeverDraw) beats += 1;
+    if (o.tiesNeverDraw) ties += 1;
     if (o.seized) seized += 1;
     if (o.seizedMonth !== null) seizedMonths.push(o.seizedMonth);
     if (i === 0) applied = o.policyApplied;
@@ -116,6 +124,7 @@ export function runFutures(inputs: FuturesInputs, paths: readonly number[][], st
     yoursBtc: spreadOf(yours),
     coldBtc: spreadOf(cold),
     beatsNeverDraw: beats,
+    tiesNeverDraw: ties,
     seized,
     seizedWithinYear: seizedMonths.filter((m) => m <= 12).length,
     seizedHalfByMonth: seizedMonths.length > 0 ? seizedMonths[Math.ceil(seizedMonths.length / 2) - 1] : null,

@@ -32,7 +32,8 @@ import {
   buildChartSeries, cliffPath, chartDomain, xExtent, pathOnSupport, type DecisionChartSeries,
 } from './decisionChartView';
 import {
-  moveCard, moveCardText, planSchedule, planOutcome, coinbaseLoanLine, scheduleToText, crashNote, consoleLinkLabel,
+  moveCard, moveCardText, planSchedule, planOutcome, coinbaseLoanLine, scheduleToText, crashNote, consoleLinkLabel, goalMarkLabel,
+  atGoalThisMonthOf,
   decisionDisclaimer, pathSublabel, pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles,
   scheduleFileName, manualPriceNote, stressNote, fmtBtc3, BELOW_SUPPORT_NOTE, DECISION_FRAMING, ON_SUPPORT_NOTE,
   SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY, seedsFromMove,
@@ -40,6 +41,7 @@ import {
 } from './decisionView';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import { usePlanPolicy } from './usePlanPolicy';
+import { planGoalOf } from '../../lib/planGoal';
 import ControlDock, { type DockPanel } from './ControlDock';
 import { decisionDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
@@ -319,6 +321,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
     strikeDepositISO: strikeDepositOf(st),   // Strike's 60-day hold's one fact — the journal's, or a viewer's copy (D9)
     strikeMinFromIncome: st.blocMinPaymentSource === 'income',   // D-R2-7 — the owner's minimum, as every run reads it
+    goalNetBtc: planGoalOf(st.planGoalNetBtc),   // BL14 — the owner's saved goal, as THIS MONTH reads it (one plan)
     viewerMode: st.viewerMode,   // the dock's Line is locked for a viewer, as the card's SliderInput is (R1)
   })));
 
@@ -443,10 +446,11 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     openingBreaker: breakerSeed?.state,
     holdMonths,
     strikeMinFromIncome: s.strikeMinFromIncome,
+    goalNetBtc: s.goalNetBtc,
   }), [
     startDate, seedFromMove, placement, s.strikeCollateralBtc, s.strikeBalance, runLine, s.cbCollateralBtc, cbDebt,
     s.openingColdBtc, s.income, s.expenses, s.blocApr, s.cbAprPct, supportPolicy, breakerSeed, holdMonths,
-    s.strikeMinFromIncome,
+    s.strikeMinFromIncome, s.goalNetBtc,
   ]);
 
   // The crown reads the SAME inputs as the displayed run (D8). No cycle: `engineInputs` never reads the path.
@@ -490,7 +494,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   useEffect(() => { setLens(1); }, [
     monthIdx, pricePath, cbDebt, seedFromMove, placement, s.strikeCollateralBtc, s.strikeBalance, runLine,
     s.cbCollateralBtc, s.openingColdBtc, s.income, s.expenses, s.blocApr, s.cbAprPct, supportPolicy, breakerSeed,
-    holdMonths, s.strikeMinFromIncome,
+    holdMonths, s.strikeMinFromIncome, s.goalNetBtc,
   ]);
 
   const selRow = sim.rows[monthIdx] ?? sim.last;
@@ -527,10 +531,13 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     cbLtvTargetPct: s.cbLtvTargetPct,
     hasCbLoan: s.hasCbLoan,
     consoleRuns,
+    // BL14 (δ4) — THIS MONTH's own figure from THE MOVE's facts, never the displayed path's month 1, so the card is the same
+    // on every path; the goal acts only where the policy applies, as the engine's does.
+    atGoalThisMonth: sim.policyApplied && atGoalThisMonthOf(placementInput, s.cbAprPct, s.goalNetBtc),
   }), [
     sim.policyApplied, policySettings, sim.policyIgnoredReason, placement, hold, breakerRead, runLine, s.creditLine,
     suggested, s.expenses, placementInput, s.cbLtvTriggerPct, s.cbLtvTargetPct, s.hasCbLoan, consoleRuns,
-    moveWhatIf,
+    moveWhatIf, s.cbAprPct, s.goalNetBtc,
   ]);
   const onLineAction = (a: LineAction) => {
     if (a.kind === 'tryLine') set('creditLine', a.lineUsd);
@@ -800,6 +807,10 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
                         <span style={{ color: ZONE_COLOR[r.zone] }} title={ZONE_LABEL[r.zone]} aria-label={ZONE_LABEL[r.zone]}>
                           {ZONE_LETTER[r.zone]}
                         </span>
+                      )}
+                      {/* BL14 — a month at the owner's goal: the plan borrowed and bought nothing. */}
+                      {r.atGoal && (
+                        <span className={styles.schedGoal} title={goalMarkLabel(r)} aria-label={goalMarkLabel(r)}>◎</span>
                       )}
                     </td>
                   </tr>

@@ -12,6 +12,11 @@ import { PriceChart } from '../SimpleMode/PriceChart';
 import { RadialGauge } from './RadialGauge';
 import { VenueBar } from './VenueBar';
 import { OwnershipBar } from './OwnershipBar';
+import { GoalTile } from './GoalTile';
+import { goalTileView } from './goalTileView';
+import { planGoalOf } from '../../lib/planGoal';
+import { netCoinsBtc } from '../../simulation/goal';
+import { planCbCollateralOf } from '../Almanac/planRun';
 import { RolePill, useGrantedRoles } from './RolePill';
 import styles from './ViewerHomeView.module.css';
 
@@ -126,6 +131,11 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
   // The gauge sub-lines render pre-computed absolutes from computeViewerSafety, so there is no existing
   // resolved-price binding to reuse — this is the same source useViewerSafety reads internally.
   const venuePrice = useStore((st) => st.btcPrice);
+  // BL14 (G1-C) — the goal tile's two extra reads: the saved goal (through its one read rule; a trusted viewer's arrives
+  // with the snapshot, G2-A) and Coinbase's coins AS THE PLAN COUNTS THEM (`planCbCollateralOf`: none with the loan
+  // switched off), so the tile's net coins are the plan's own definition, at the live price.
+  const goal = useStore((st) => planGoalOf(st.planGoalNetBtc));
+  const planCbBtc = useStore((st) => planCbCollateralOf(st));
 
   const creditSub = f ? `${fmtUSD(f.credit.used)} of ${fmtUSD(f.credit.total)}\n${fmtUSD(f.credit.avail)} available`
                       : CREDIT_SUB[s.creditLevel];
@@ -134,6 +144,13 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
   // D7 / D9 (Run 4) — Coinbase at support against the plan's limit, under the gauge: with the price on the trusted path,
   // without it on the safe one (the snapshot carries ratios only).
   const cbAtSupportSub = s.cbAtSupport ? `\n${cbAtSupportLine(s.cbAtSupport)}` : '';
+  // BL14 — the goal tile's figures: trusted mode only (the gate below), and only with a goal set.
+  const goalView = s.mode === 'trusted' && f && goal !== null
+    ? goalTileView(netCoinsBtc({
+      strikeBtc: venueStrikeBtc, cbBtc: planCbBtc, coldBtc: venueColdBtc,
+      strikeBalanceUsd: f.strike.balance, cbDebtUsd: f.cb.balance, price: venuePrice,
+    }), goal)
+    : null;
   const cbSub = (f ? `Liq at ~${fmtUSD(f.cb.liqPrice)}\n${fmtUSD(f.cb.balance)} balance`
                    : CB_SUB[s.cbLevel]) + cbAtSupportSub;
 
@@ -224,6 +241,12 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
               btcPrice={venuePrice}
             />
           )}
+
+          {/* BL14 (G1-C, G2-A) — the goal tile: TRUSTED-only like the two bars above (a safe viewer's snapshot carries no
+              amount and no goal), and only with a goal set. Net coins today — Strike's and the plan's Coinbase coins and
+              cold, less Strike's balance and Coinbase's ACCRUED balance (0 with no loan) at the live price — one
+              definition with the plan's (simulation/goal). It never names a plan move: that is THIS MONTH's to say. */}
+          {goalView && <GoalTile view={goalView} />}
         </div>
       </div>
 
