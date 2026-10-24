@@ -74,10 +74,11 @@ const keyed = (o: Partial<MoveCardContext>, key: string) => card(o).lines.find((
 
 // ── I13 · completeness ───────────────────────────────────────────────────────────────────────────────────────
 
-/** Every kind a ROW can produce, in the engine's month order. `strikeToCold` is today-only (the plan, not a row). */
+/** Every kind a ROW can produce, in the engine's month order. `strikeToCold` is a stand-down month's step 5 (BL32) — and
+ *  Today's leg. */
 const ENGINE_KINDS: ActionKind[] = [
-  'draw', 'cashToBills', 'unpaid', 'payMinimum', 'repayStrike', 'repayCoinbase', 'buy', 'strikeToCoinbase', 'refinance',
-  'coldToCoinbase', 'strikeReleaseToCoinbase', 'debtShift', 'coldToStrike', 'defenseShort', 'cashCure',
+  'draw', 'cashToBills', 'unpaid', 'payMinimum', 'repayStrike', 'repayCoinbase', 'buy', 'strikeToCoinbase', 'strikeToCold',
+  'refinance', 'coldToCoinbase', 'strikeReleaseToCoinbase', 'debtShift', 'coldToStrike', 'defenseShort', 'cashCure',
   'coldCure', 'strikeSale', 'coinbaseToCold', 'liquidation',
 ];
 
@@ -89,6 +90,8 @@ describe('⭐ I13 — every ACTION_FIELDS entry that fires appears in the schedu
     { strikeCollateralBtc: 2, cbDebt: 50_000, cbCollateralBtc: 1 },
     // Run 2 (D-R2-7) — the owner pays Strike's minimum from income: the ONLY source of a payMinimum action.
     { strikeCollateralBtc: 2, strikeMinFromIncome: true },
+    // BL32 — debt-free at a goal under its coins: the stand-down, the ONLY source of a month's Strike → cold.
+    { strikeCollateralBtc: 2, strikeBalance: 0, cbDebt: 0, cbCollateralBtc: 1, goalNetBtc: 1 },
   ];
   for (const c of a5Cases()) for (const over of OWNER_FIXTURES) {
     runs.push(() => runCyclingSim({ ...c.on, ...over }), () => runCyclingSim({ ...c.off, ...over }));

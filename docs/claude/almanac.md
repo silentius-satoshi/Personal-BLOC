@@ -941,12 +941,17 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   4. **not drawing:** Strike interest; bills income → cash → unfunded; Strike's minimum from what the bills left when
      the owner pays it from income (`strikeMinFromIncome`, the plan of record's Run 2 — an unpaid part capitalises);
      restore (Coinbase first — except after a liquidation, see Restore above); payDown/broken → pay down; the rest
-     buys. (In a drawing month income pays the minimum after the bill's unfunded part and before the buy.)
+     buys — except at the goal (BL14), where the pay-down runs in any zone and the rest is kept (`goalHeldUsd`), never
+     bought. (In a drawing month income pays the minimum after the bill's unfunded part and before the buy.)
   5. **migration** (the RATCHET FIX): keep `strikeKeepCollateralBtc(line, bal, strikeStop, S)` =
      `max(line, bal) / (strikeStop × S)` — the FULL line at support, not today's
      balance at today's price (the old `keepForMargin` ran while the balance was $0). Strike's retrieval rules:
      all-or-nothing, only at ≤ `STRIKE_RETRIEVE_MAX_LTV` (40%) before and < 50% after, never inside the 60-day hold
-     that follows ANY cold → Strike move (`strikeHoldUntil = m + 2`), never while paused/broken;
+     that follows ANY cold → Strike move (`strikeHoldUntil = m + 2`), never while paused/broken — except at the goal's
+     STAND-DOWN (BL32): at the goal with both loans repaid (`goalStandsDown`, read here, after step 4's pay-down — the one
+     flag step 9 reads too) the keep is 0 (`strikeKeepCollateralBtc(…, standDown)`), no pause, breaker or earlier seizure
+     gates it, and the release goes straight to cold (`strikeToColdBtc`), never into Coinbase; the hold, the release
+     rules and the cadence still apply (`engines.md` § The plan's goal amount → "The stand-down");
   6. **refinance, accumulate/hold only**, ALWAYS ceiling-capped (fee-inclusive): none in payDown/broken (a 2% fee on
      debt about to be repaid) or paused (the support ceiling can still show room below support, and moving debt
      onto Coinbase there raises its LTV at today's price exactly when it is most exposed);
@@ -961,7 +966,8 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   9. **sweep** (the FORWARD-LOOKING COINBASE RESERVE), keep = `cbKeepCollateralBtc(cbDebt, buffer, S, cbStop, cap,
      price)`: Coinbase keeps what it needs AT SUPPORT plus the buffer, so it
      never enters a drawdown holding less than it needs at the line. Not while paused (the collateral is needed
-     where it is) or broken (the premise "safe at support" is suspect);
+     where it is) or broken (the premise "safe at support" is suspect) — except at the stand-down (step 5's flag, BL32):
+     keep 0 (`cbKeepCollateralBtc(…, standDown)`), in any zone, past a seizure too;
   10. LTV / breach unchanged.
 - ⚠ **M1:** `strikeMarginMonth` is read AFTER step 8, and a resolved call ends at ≤ 65%, so under the policy the
   call is reported by `strikeCall` / `firstStrikeCallMonth` and the flag stays null unless a sale leaves a
@@ -989,12 +995,14 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   **NEVER stressed, NEVER phase-shifted**: the stress lens moves the price, not the line.
 - **Decision-face fields (Run A).** FOUR additive `CyclingRow` fields, and TWO optional opening inputs.
   - `sweptToColdBtc` — step 9's Coinbase → cold move THIS month. ⚠ A FLOW beside cumulative neighbours: Σ over the
-    run = the last row's `coldFromCb + coldFromStrike`. ⚠ `sweepToCold` RETURNS what it moved and **both** call
+    run — with BL32's `strikeToColdBtc`, step 5's Strike → cold at the stand-down — = the last row's
+    `coldFromCb + coldFromStrike`. ⚠ `sweepToCold` RETURNS what it moved and **both** call
     sites accumulate it — the classic one is reached only by a policy-OFF run, so the footings are pinned on BOTH
     arms (a policy-on-only pin lets a dropped `+=` there survive).
   - `refinancedUsd` / `refinancedFeeUsd` — step 6's cash and its capitalised fee. Σ = `totalRefinancedUsd` /
     `totalCbFees`.
-  - `strikeKeepBtc` — step 5's keep when that gated block evaluated it and it is finite, else `null`. Policy-only.
+  - `strikeKeepBtc` — step 5's keep when that gated block evaluated it and it is finite, else `null`. Policy-only. 0 at
+    the stand-down (BL32), which evaluates it in any zone.
   - `openingBreaker?` / `openingStrikeHoldMonths?` — **THE POLICY'S MEMORY, seeded from PRICES** (D14). Absent or
     JUNK ⇒ byte-identical (`validOpeningBreaker` / `validHold`; junk reads as absent). ⚠ **NOT test-only** — the
     Decision face and THIS MONTH / Daily (`planMonthRun`, Run 2) set them, so they must never join the forbidden-input
@@ -1547,7 +1555,9 @@ THIS MONTH's log overlay kept it until Run 3 (gone since — § The plan of reco
     support path and find it the same, so they prove only that the horizon can't change the move. That the face and the
     hook gather the same facts rests on ONE (one builder) and the wiring's ONE (Δ7: each of THE MOVE's 15 facts —
     `strikeDepositOf(st)` and the minimum's source among them — is read by the same expression in the Decision face's
-    selector and the hook's). Kill criterion 2 itself was measured on screen (spec §13.6, four households).
+    selector and the hook's; since BL32 the goal is one of THE MOVE's facts too — both selectors read
+    `planGoalOf(st.planGoalNetBtc)`, pinned by the wiring's GOAL rather than ONE's list). Kill criterion 2 itself was
+    measured on screen (spec §13.6, four households).
 - **The hook — `usePlanMonth`.** The store's live position, the saved plan, today's price and the policy's memory, run
   through `planMonthRun`. Today per render (Δ3): an installed PWA resumes without remounting, and the start date, S₀, the
   hold, the breaker fold and the Coinbase accrual all key on it, so a screen left open re-plans once a day. (The
@@ -1857,13 +1867,14 @@ field: `store.md` § BL14; the Dashboard tile: `viewer.md` § BL14.
   in their selector (a primitive, so `useShallow` stays stable); every engine-inputs memo passes `goalNetBtc` and depends
   on it, and every lens reset lists it (`resetMirror.test.ts`). The stress run, the futures job and the crown read
   `engineInputs`, so they run the goal too. `EngineFacts` and `PlanMonthFacts` (`planRun.ts`) REQUIRE it, so THIS MONTH
-  and the Decision card can't drift.
+  and the Decision card can't drift — and, since BL32, `PlacementFacts` too: THE MOVE's input takes the goal (it stands
+  down on it), and the Decision face's placement memo passes it and depends on it.
 - **THIS MONTH and Daily — the goal line** (`planGoalLine(row, goal)`, under the status). Under the goal: "Net coins
   this month: ₿0.497 of your ₿2.000 goal, at today's price." At it: "At your goal (net coins this month: ₿0.497 of
   ₿0.400): the plan borrows and buys nothing — spare income repays Coinbase." — naming the legs the month ACTUALLY repaid
   (a loan over its limit is restored first, so the goal's own order isn't always the month's); "— no spare income is
   left this month to repay a loan" when the bills or a minimum took it all; and "the plan holds — it borrows and buys
-  nothing, and $X of spare income stays with you" once both loans are repaid. `goalPair` prints both figures to three
+  nothing, and $X of spare income stays with you" once both loans are repaid (at exactly 0 that month also stands down — § BL32; a balance under the 50¢ dust floor reads as repaid here but is still a loan, so that month doesn't). `goalPair` prints both figures to three
   places, or as many more (to eight) as it takes for a figure under the goal never to print as the goal; `netBtcText`
   puts a sign before the ₿ ("−₿0.200"). "This month", never "today": the run reads the month's decision — today's price
   after a month of Coinbase's interest — so with a Coinbase loan open the figure sits a little under the Dashboard tile's
@@ -1895,7 +1906,8 @@ field: `store.md` § BL14; the Dashboard tile: `viewer.md` § BL14.
   - THE MOVE's over-limit line drops "before it borrows again" when THIS MONTH's own figure is at the goal:
     `atGoalThisMonth: sim.policyApplied && atGoalThisMonthOf(placementInput, cbAprPct, goal)` — THE MOVE's coins and debts
     at its price plus a month of Coinbase's interest (`netCoinsThisMonthOf`), so the card is the same on every path and
-    agrees with THIS MONTH (δ4 — words only: THE MOVE's move doesn't change, and G3 stays open);
+    agrees with THIS MONTH (δ4 — words only. G3 has since been called B, BL32: THE MOVE's placement reads the goal to
+    stand down — § BL32);
   - the crash playbook's note, when a goal month follows the first shift: "…the refinance shifts the debt back to Coinbase
     as the price recovers, except at your goal, where spare income repays it instead." (`GOAL_REFINANCE_CLAUSE`; δ-L7).
 - **The never-draw verdict at the goal** (δ-L6, δ-L8). `verdictVsNeverDraw` reads the engine's one rule (`neverDrawTie`):
@@ -1913,6 +1925,62 @@ field: `store.md` § BL14; the Dashboard tile: `viewer.md` § BL14.
   the refusal.
 - Tests: `goalViews.test.ts` (23), `goalTile.test.tsx` (3), `yourPlanGoal.test.ts` (3), `planRun.test.ts` and
   `planRunWiring.test.ts` (+3 each) — § Test Suite → "BL14 — the plan's goal amount".
+
+#### BL32 — the stand-down (batch 1, build 2b; store unchanged, NO bump)
+
+Spec `pbloc-spec-batch-1-v1` v0.10 §2.2 (G3, called B — BL32). The rule in the engine and THE MOVE: `engines.md` § The
+plan's goal amount → "The stand-down". At the goal with both loans repaid — exactly zero — the plan keeps nothing on
+Strike or Coinbase: every coin goes to cold storage. ONE phrase says so everywhere, `GOAL_STAND_DOWN_WORDS`
+(`supportPolicyView.ts`): "the plan keeps nothing on Strike or Coinbase: every coin goes to cold storage". Every new
+sentence but the cold card's reads the stand-down itself — THE MOVE's `standDown` or the row's `goalStandDown`, never
+the dollars shown — so with no goal every sentence is as before. The cold card's sentence reads the run's goal: with a
+loan still open it is there too, saying what happens once both loans are repaid.
+
+- **THE MOVE's card at the stand-down** (`moveCard`):
+  - the why line — "At your goal with both loans repaid, the plan keeps nothing on Strike or Coinbase: every coin goes to
+    cold storage." — in place of what Strike and Coinbase keep; with nothing left to move, the aligned line — "Nothing to
+    move — every coin is already in cold storage.";
+  - the plan is `'ready'` even below support or with the model treated as broken, so no paused or broken state line;
+    the breaker line still reports the breaker ("no new debt");
+  - δ2 — the moves line lists only what moves: never "keep X ₿ on Strike" beside "keeps nothing on Strike". Inside
+    Strike's hold it reads "Today: move 1.000 ₿ from Coinbase to cold", and the hold line says when Strike's coins go
+    ("Strike's 60-day hold runs through … — move then."). With a loan open, "keep X ₿ on Strike" as before;
+  - δ1 — no line words: once the plan keeps nothing on Strike nothing backs the line (Strike lends at most half its
+    collateral's value), and a bigger line changes nothing (both keeps are 0 at any line) — so no "Your $X line already
+    covers two months of bills." and no "A $X line would cover … / Try $X". The what-if pair stays: "Modeling a $X
+    line." with "Back to $Y" is the way back;
+  - no short line, no over-limit line and no cliff: nothing is owed.
+- **The schedule:** a stand-down month's step 5 is `ACTION_FIELDS`' `strikeToCold` — "Release X ₿ of Strike collateral
+  to cold storage." (+ " (small — can wait)" under 0.01 ₿) — after step 5's Strike → Coinbase and before the refinance;
+  Today's leg is `todayActions`' (no marker — N5). The keep column prints "—" for the zero keep. The Today row's ◎ stays
+  the months' (Today places collateral and borrows or buys nothing either way). The printout lists the same actions.
+- **THIS MONTH and Daily:** a month's "Strike → cold storage" row carries "month-end" ("small, can wait" under 0.01 ₿),
+  like the other placement moves; Today's still reads "today".
+- **"Why this plan?"** (`planMonthSummary`), in a month that stood down, adds "With both loans repaid, the plan keeps
+  nothing on Strike or Coinbase: every coin goes to cold storage." after the goal sentence — from the row's
+  `goalStandDown`, never re-derived from the balances it shows: 30¢ still owed rounds to "$0" and is still a loan, so the
+  sentence never prints there.
+- **The cold-storage card** (Cycling and Strategy): with a goal the run applied (`sim.goalNetBtc`), `policyColdNote(s,
+  goal)` adds "At your goal with both loans repaid, the plan keeps nothing on Strike or Coinbase: every coin goes to cold
+  storage, at any price."; without one, the words as before.
+- **δ3 — the Ownership face's limit line** ("Where the position stands"): in a month that stood down with nothing on
+  Strike, `strikeLimitTail` (`ownershipFaceView.ts`; the face renders it) reads "Limit is bound by collateral — at your
+  goal with both loans repaid, nothing is pledged to Strike." — never "the full line is backed again above $0": no price
+  backs a line with nothing pledged. Every other month the face's words byte for byte, a stand-down inside Strike's hold
+  (coins still on Strike) included; a fresh install's empty Strike still reads "… above $0" — the zero-state pass's, in
+  the backlog, not the stand-down's.
+- **No Coinbase loan:** the stand-down's coins never pass through Coinbase, so `coinbaseLoanLine` never says the plan
+  opens one.
+- **The round trip (logged, accepted):** at the goal with a loan this month's spare income will repay, today's move
+  still keeps for it — into Coinbase, perhaps — and month 1, having repaid it, stands down and sweeps those coins to cold.
+  THIS MONTH shows both moves, and "Why this plan?" says why the second.
+- **Still open** (neither is false):
+  - ii — the cold card's first sentence keeps "unless the model is treated as broken", and its stand-down sentence says
+    "at any price" but not "broken or not" (it is unconditional);
+  - iii — THIS MONTH's goal line, in a month that stands down, reads "the plan holds — it borrows and buys nothing" while
+    its rows move coins to cold: "hold" is the app's word for no new debt (the hold zone sweeps to cold too).
+- Tests: `goalStandDown.test.ts` (19, new), `goalViews.test.ts` (+11: STAND WORDS ×4, STAND ROWS ×5, STAND LIMIT,
+  STAND COLD), `planRunWiring.test.ts` (+1), `planRun.test.ts` (GOAL renamed) — § Test Suite → "BL32 — the stand-down".
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -1986,7 +2054,8 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   `broken` from the same `breakerSeed` the run's `openingBreaker` gets, the run's line, and Strike's hold. The card's
   price, support, debt and stop are read from that object, so it can never price its cliff against a different
   number than the move it shows. States: `'unavailable'` → `'cbPastLiquidation'` → `'broken'` → `'paused'` →
-  `'ready'`. **Path-invariant by construction** — the card closes with "This move is measured at today's support and
+  `'ready'` — at the goal's stand-down (BL32) neither `'broken'` nor `'paused'` applies: the plan is `'ready'`, with
+  `standDown` (§ BL32). **Path-invariant by construction** — the card closes with "This move is measured at today's support and
   today's price, so switching paths below doesn't change it." (B3; the owner's copy never says "THE MOVE").
   **Policy v2 Run B (B3):** the cliff line never names a seizure price under the dust floor, and says "less than 1%" /
   "more than 99%" (`fmtBelowPct`, F11). Right after it comes the price alert at the owner's trigger, or "Coinbase is at
@@ -2013,14 +2082,16 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   the fetch is in flight (G5 — `historical` is `[]` until it lands, which is not "didn't load"), and `null` once it
   settled with nothing usable ("Price history didn't load…"). History lands after mount, so the runs re-run once and
   an engaged stress resets once (§7 — expected).
-- **The schedule** — `planSchedule(sim, placement)`: Today reads the PLAN; months ≥ 1 read `ACTION_FIELDS` verbatim.
+- **The schedule** — `planSchedule(sim, placement)`: Today reads the PLAN; months ≥ 1 read `ACTION_FIELDS` verbatim (a
+  stand-down month's Strike → cold among them — BL32).
   Columns Month · Moves (a wrapped list — never a horizontal scroll) · **Strike keep** · Zone (`ZONE_*`; BL14: a goal
   month's ◎ beside the letter, `goalMarkLabel` its title and aria-label — § BL14). **D2:** the
   keep header is `SCHEDULE_KEEP_HEADER` ("Strike keep") on ONE line — `.colKeep` is 88px (11 mono capitals ≈ 73px +
   12px padding; Moves keeps ≥ 121px at a 375px viewport), measured by an e2e at 390px and 375px. The old "Keep ₿ at
   support" wrapped in its 76px column beside "Zone" and read as one phrase. A quiet key under the schedule's header
   line, `SCHEDULE_KEEP_KEY` — "Strike keep: what your full line needs on Strike at support." — says what the column
-  is: THE MOVE's phrase for the same formula, `strikeKeepBtc` = max(line, balance) / (skStop × support) (Z12). On
+  is: THE MOVE's phrase for the same formula, `strikeKeepBtc` = max(line, balance) / (skStop × support) (Z12) — 0 at
+  the stand-down (BL32), which the column prints as "—", like every keep under the display floor. On
   screen only: the printout has no keep column. **C2:** the
   WHOLE row is the button (`<tr role="button" tabIndex={0}>`, Enter / Space → the inspected month, the dock's Month); a crash row's note
   (`crashNote`, D13 — the SAME sentence the printout carries) and its "→ Emergency Console" link go on a SIBLING row

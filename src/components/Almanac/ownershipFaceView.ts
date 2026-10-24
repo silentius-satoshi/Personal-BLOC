@@ -209,6 +209,24 @@ export function strikeCallVerdict(cap: StrikeCapReading): VerdictLine | null {
   }
 }
 
+/**
+ * What binds Strike's limit at the selected month — the tail of the Ownership face's "Where the position stands".
+ * BL32: a month that stood down at the goal with nothing left on Strike says so — no price backs a line with no collateral
+ * behind it, so "the full line is backed again above $0" would be false. Every other month keeps the face's words, a
+ * fresh install's empty Strike included (the zero-state pass's).
+ */
+export function strikeLimitTail(
+  cap: { binding: 'collateral' | 'line'; fullyBackedPrice: number },
+  row: Pick<CyclingRow, 'goalStandDown' | 'strikeCollateralBtc'>,
+  usd: (n: number) => string,
+): string {
+  if (cap.binding !== 'collateral') return 'Limit is bound by the credit line.';
+  if (row.goalStandDown && !(row.strikeCollateralBtc > 0)) {
+    return 'Limit is bound by collateral — at your goal with both loans repaid, nothing is pledged to Strike.';
+  }
+  return `Limit is bound by collateral — the full line is backed again above ${usd(cap.fullyBackedPrice)}.`;
+}
+
 /** One sentence per strategy. ⚠ `hold` IS the never-draw baseline (C3) — the note says so, and no view may
  *  present "hold vs baseline" as a win or a loss. */
 export const MODE_NOTE: Record<CyclingMode, string> = {

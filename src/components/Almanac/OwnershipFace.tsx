@@ -30,7 +30,7 @@ import {
 } from './cyclingFaceView';
 import {
   ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, strikeCallVerdict, liquidationVerdict,
-  MODE_NOTE,
+  strikeLimitTail, MODE_NOTE,
 } from './ownershipFaceView';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
@@ -802,8 +802,7 @@ export default function OwnershipFace() {
                   : liqDist > 0
                     ? `Nearest liquidation ${fmtUSD(nearestLiq)}, ${fmtLtvPct(liqDist)} below ${fmtUSD(selRow.price)}.`
                     : `Price is at or below the nearest liquidation (${fmtUSD(nearestLiq)}).`}
-              {' '}Limit is bound by {cap.binding === 'collateral' ? 'collateral' : 'the credit line'}
-              {cap.binding === 'collateral' ? ` — the full line is backed again above ${fmtK(cap.fullyBackedPrice)}.` : '.'}
+              {' '}{strikeLimitTail(cap, selRow, fmtK)}
             </div>
           </section>
 

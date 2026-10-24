@@ -71,13 +71,16 @@ export function sweepKeepBtc(cbDebt: number, bufferUsd: number, support: number,
  * so the card can never become a second placement rule.
  * Junk → +∞ (keep everything — the `sweepKeepBtc` convention; the engine's `move = coll − keep` is then
  * negative, so nothing migrates, exactly as a NaN/∞ keep behaved before the extraction).
+ * BL32 — `standDown` (`goalStandsDown`: at the goal with both loans repaid) → 0: nothing is owed, so nothing is kept for the
+ * line. Junk still keeps everything. Absent ⇒ false, byte-identical.
  */
 export function strikeKeepCollateralBtc(
-  creditLine: number, strikeBalance: number, skStop: number, support: number,
+  creditLine: number, strikeBalance: number, skStop: number, support: number, standDown = false,
 ): number {
   if (!(support > 0) || !(skStop > 0) || !allFinite(creditLine, strikeBalance, skStop, support)) {
     return Number.POSITIVE_INFINITY;
   }
+  if (standDown) return 0;
   return Math.max(creditLine, strikeBalance) / (skStop * support);
 }
 
@@ -85,12 +88,14 @@ export function strikeKeepCollateralBtc(
  * STEP 9'S KEEP — what Coinbase must hold: what it needs AT SUPPORT plus the bear buffer (`sweepKeepBtc`), and
  * never less than its DEFENSE line needs at today's price. The max of the two is what the sweep leaves behind.
  * ⚠ ONE DEFINITION, shared with THE MOVE (see `strikeKeepCollateralBtc`). Junk → +∞ (sweep nothing).
+ * BL32 — `standDown` → 0: with nothing owed there is no buffer to keep. Junk still keeps everything. Absent ⇒ false.
  */
 export function cbKeepCollateralBtc(
-  cbDebt: number, bufferUsd: number, support: number, cbStop: number, cap: number, price: number,
+  cbDebt: number, bufferUsd: number, support: number, cbStop: number, cap: number, price: number, standDown = false,
 ): number {
   const atSupport = sweepKeepBtc(cbDebt, bufferUsd, support, cbStop);
   if (!(cap > 0) || !(price > 0) || !allFinite(cbDebt, cap, price)) return Number.POSITIVE_INFINITY;
+  if (standDown && Number.isFinite(atSupport)) return 0;
   return Math.max(atSupport, cbDebt / (cap * price));
 }
 

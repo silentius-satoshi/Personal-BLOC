@@ -83,7 +83,7 @@ describe('⭐ ATS — Coinbase at today\'s support, against the plan\'s limit', 
           if (!(debt > DUST_USD)) continue;
           const plan = placementPlan(placementInputOf({
             runLine: 10_000, strikeBalance: 0, strikeCollateralBtc: 0, cbDebt: debt, cbCollateralBtc: coll, coldBtc: 0,
-            price: support * 1.5, support, policySettings, expenses: 3_000, inHold: false, broken: true,
+            price: support * 1.5, support, policySettings, expenses: 3_000, inHold: false, broken: true, goalNetBtc: null,
           }));
           expect(plan.state, 'ATS premise: nothing moves').toBe('broken');
           const r = cbAtSupportOf({ hasCbLoan: true, debt, collateralBtc: coll, support, limit })!;
@@ -226,7 +226,7 @@ describe('⭐ MOVE — Safety reads the position as it stands; when this month\'
               if (cbDebt / (cbColl * price) >= 0.86) continue;
               const plan = placementPlan(placementInputOf({
                 runLine: 50_000, strikeBalance: skBal, strikeCollateralBtc: skColl, cbDebt, cbCollateralBtc: cbColl, coldBtc: 0,
-                price, support: S, policySettings: ps, expenses: 3_500, inHold, broken: false,
+                price, support: S, policySettings: ps, expenses: 3_500, inHold, broken: false, goalNetBtc: null,
               }));
               const r = cbAtSupportOf({ hasCbLoan: true, debt: cbDebt, collateralBtc: cbColl, support: S, limit: ps.cbStopEffPct / 100 });
               const cardOver = plan.cbOverCeilingUsd >= DUST_USD;
@@ -252,7 +252,7 @@ describe('⭐ MOVE — Safety reads the position as it stands; when this month\'
     // An inert plan moves nothing — its zero over-limit figure never reads as a fix (unavailable: no price).
     const inert = placementPlan(placementInputOf({
       runLine: 50_000, strikeBalance: 0, strikeCollateralBtc: 3, cbDebt: 50_000, cbCollateralBtc: 1, coldBtc: 0,
-      price: 0, support: S, policySettings: ps, expenses: 3_500, inHold: false, broken: false,
+      price: 0, support: S, policySettings: ps, expenses: 3_500, inHold: false, broken: false, goalNetBtc: null,
     }));
     expect([inert.state, inert.cbOverCeilingUsd], 'MOVE premise: inert, nothing over').toEqual(['unavailable', 0]);
     expect(planMoveBringsCbWithin(inert), 'MOVE an inert plan fixes nothing').toBe(false);

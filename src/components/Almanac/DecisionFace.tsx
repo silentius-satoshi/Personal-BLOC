@@ -400,9 +400,10 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     expenses: s.expenses,
     inHold: hold.inHold,
     broken: breakerSeed?.state.broken ?? false,
+    goalNetBtc: s.goalNetBtc,
   }), [
     runLine, s.strikeBalance, s.strikeCollateralBtc, cbDebt, s.cbCollateralBtc, s.openingColdBtc, anchorPrice,
-    supportPath, policySettings, s.expenses, hold.inHold, breakerSeed,
+    supportPath, policySettings, s.expenses, hold.inHold, breakerSeed, s.goalNetBtc,
   ]);
   const placement = useMemo(() => placementPlan(placementInput), [placementInput]);
 

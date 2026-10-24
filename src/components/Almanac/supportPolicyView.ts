@@ -640,6 +640,10 @@ export function goalKeptTail(row: Partial<Pick<CyclingRow, 'goalHeldUsd'>>): str
   return shownUsd(kept) ? ` ${fmtUSD(kept)} of spare income stays with you.` : '';
 }
 
+/** BL32 (G3-B) — THE STAND-DOWN, in words: at the goal with both loans repaid, nothing is kept back for Strike's line or
+ *  Coinbase's buffer. ONE phrase — THE MOVE's card, the cold-storage card and "Why this plan?" all say it so. */
+export const GOAL_STAND_DOWN_WORDS = 'the plan keeps nothing on Strike or Coinbase: every coin goes to cold storage';
+
 // ── why a month did not borrow ───────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -946,11 +950,14 @@ export function policyTileSub(s: EffectivePolicySettings, cbLtvCapPct: number): 
 }
 
 /** The cold-storage card's sentence while the policy applies (its sweep replaces the buffer's). ⚠ "unless the model is
- *  treated as broken": the engine never sweeps while broken, even with price back above support. */
-export function policyColdNote(s: EffectivePolicySettings): string {
+ *  treated as broken": the engine never sweeps while broken, even with price back above support.
+ *  BL32 — with a goal the run applied (`sim.goalNetBtc`), one more sentence: at the goal with both loans repaid the plan
+ *  stands down, below support and broken alike. Without one, the words are unchanged. */
+export function policyColdNote(s: EffectivePolicySettings, goal: number | null = null): string {
   const buffer = s.bearBufferMonths > 0 ? ` plus ${monthsLabel(s.bearBufferMonths)} of bills` : '';
   return `The support policy decides what goes to cold: Coinbase keeps what it needs at support${buffer}; the rest goes `
-    + 'to cold whenever price is at or above support, unless the model is treated as broken.';
+    + 'to cold whenever price is at or above support, unless the model is treated as broken.'
+    + (goal !== null ? ` At your goal with both loans repaid, ${GOAL_STAND_DOWN_WORDS}, at any price.` : '');
 }
 
 /**

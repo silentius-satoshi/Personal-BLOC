@@ -3,21 +3,26 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { planMonthRun, firstMonthUnderLimit, type PlanMonthFacts, type PlanMonthRun } from '../planRun';
 import { PLAN_POLICY_DEFAULTS } from '../../../lib/planPolicy';
-import { planGoalLine, planMonthSummary, goalPair, netBtcText, planStatus, GOAL_UNPAID_BODY } from '../planMonthView';
+import {
+  planGoalLine, planMonthSummary, goalPair, netBtcText, planStatus, GOAL_UNPAID_BODY, planMonthActions,
+} from '../planMonthView';
 import { buildSupportPath } from '../supportPolicyInputs';
 import {
   planSchedule, scheduleToText, GOAL_MARK_TEXT, goalMarkLabel, moveCard, atGoalThisMonthOf, netCoinsThisMonthOf, outcomeTiles,
-  type MoveCardContext,
+  coinbaseLoanLine, type MoveCardContext,
 } from '../decisionView';
 import {
   policyPauseReason, policyReading, policyHeadline, neverDrawsNote, drawPauseClause, policyStopSentence, goalStopWords,
   goalHeadlineTail, effectivePolicySettings, DEFAULT_SUPPORT_POLICY_SETTINGS, ZONE_LABEL, GOAL_BUY_ZONE_LABEL,
+  GOAL_STAND_DOWN_WORDS, policyColdNote,
 } from '../supportPolicyView';
 import {
   noBillsNote, playbookNote, verdictVsNeverDraw, verdictBasisClause, neverDrawTieHead, KEPT_BASIS_CLAUSE,
   GOAL_REFINANCE_CLAUSE,
 } from '../cyclingFaceView';
 import { policyUnpaidNote, GOAL_UNPAID_CAUSE } from '../supportPolicyView';
+import { strikeLimitTail } from '../ownershipFaceView';
+import { strikeAvailableCredit } from '../../../simulation/strikeCredit';
 import { futuresReadout } from '../futuresView';
 import type { FuturesSummary } from '../../../simulation/monteCarlo';
 import { PLAN_CLAMP } from '../planClamp';
@@ -462,5 +467,187 @@ describe('⭐ GOAL VERDICT — the never-draw verdict at the goal: a tie is a ti
     const beats = (x: FuturesSummary) => futuresReadout(x).rows.find((r) => r.label === 'Beats never borrowing')!;
     expect([beats(s).value, beats(s).sub]).toEqual(['15%', 'of the simulations, all-in · 80% tie']);
     expect(beats({ ...s, tiesNeverDraw: 0 }).sub).toBe('of the simulations, all-in');
+  });
+});
+
+// ── BL32 (G3-B, build 2b) — the stand-down's words ───────────────────────────────────────────────────────────────
+
+/** Debt-free with coins on both venues, at a goal under its ₿2.5: today stands down. */
+const STAND = (over: Partial<PlanMonthFacts> = {}): PlanMonthFacts =>
+  facts({ strikeBalance: 0, cbDebt: 0, strikeCollateralBtc: 1, cbCollateralBtc: 1, coldBtc: 0.5, goalNetBtc: 2, ...over });
+const STAND_WHY = `At your goal with both loans repaid, ${GOAL_STAND_DOWN_WORDS}.`;
+
+describe('⭐ STAND WORDS — THE MOVE\'s card at the stand-down (BL32)', () => {
+  it('⭐ STAND WORDS — the one phrase', () => {
+    expect(GOAL_STAND_DOWN_WORDS).toBe('the plan keeps nothing on Strike or Coinbase: every coin goes to cold storage');
+  });
+
+  it('⭐ STAND WORDS — the why line says the plan keeps nothing; the moves go to cold; never the keeps\' sentence', () => {
+    const run = planMonthRun(STAND());
+    expect([run.placement.standDown, run.placement.after.strikeCollateralBtc, run.placement.after.cbCollateralBtc],
+      'STAND premise: today stands down').toEqual([true, 0, 0]);
+    const card = moveCard(moveCtx(run));
+    const text = (key: string) => card.lines.find((l) => l.key === key)?.text;
+    expect(text('why')).toBe(STAND_WHY);
+    expect(text('moves')).toBe('Today: move 1.000 ₿ to cold · move 1.000 ₿ from Coinbase to cold');
+    expect(text('state')).toBe('Strike releases this today.');
+    for (const l of card.lines) expect(l.text, `STAND ${l.key}`).not.toMatch(/keeps what your|months of bills of room|needs at support/);
+    expect(card.lines.some((l) => l.key === 'short'), 'STAND nothing is short of a line it keeps nothing for').toBe(false);
+    // δ1 — nothing backs the line once the plan keeps nothing on Strike, so no "covers two months of bills" and no "Try $X"
+    // (a bigger line changes nothing: both keeps are zero at any line). The what-if's way back stays.
+    expect(card.lines.some((l) => l.key === 'line'), 'STAND no line words at the stand-down').toBe(false);
+    const whatIf = moveCard({ ...moveCtx(run), runLineUsd: 30_000 }).lines.find((l) => l.key === 'line')!;
+    expect([whatIf.text, whatIf.action?.kind]).toEqual(['Modeling a $30,000 line.', 'backToLine']);
+    // Without the goal, the same owner's card keeps the line's coins on Strike and the buffer on Coinbase.
+    const none = planMonthRun(STAND({ goalNetBtc: null }));
+    const noneCard = moveCard(moveCtx(none));
+    expect(noneCard.lines.find((l) => l.key === 'why')!.text).toMatch(/^Strike keeps what your \$40,000 line needs at support/);
+    expect(noneCard.lines.find((l) => l.key === 'line')!.text).toBe('Your $40,000 line already covers two months of bills.');
+  });
+
+  it('⭐ STAND WORDS — inside Strike\'s hold: Coinbase\'s coins go today, the hold line says when Strike\'s can', () => {
+    const run = planMonthRun(STAND({ hold: { inHold: true, throughISO: '2026-11-30' } }));
+    const card = moveCard({ ...moveCtx(run), holdThroughISO: '2026-11-30', holdDepositISO: '2026-10-01' });
+    const text = (key: string) => card.lines.find((l) => l.key === key)?.text;
+    expect(text('why')).toBe(STAND_WHY);
+    // δ2 — the plan keeps nothing on Strike: its coins wait out the hold, and the hold line says when they go. Never
+    // "keep 1.000 ₿ on Strike" beside "keeps nothing on Strike".
+    expect(text('moves')).toBe('Today: move 1.000 ₿ from Coinbase to cold');
+    expect(text('state')).toMatch(/^Strike's 60-day hold runs through 2026-11-30 \(you logged a Strike deposit on 2026-10-01\) — move then\.$/);
+    expect(card.lines.some((l) => l.key === 'line'), 'STAND no line words inside the hold either').toBe(false);
+    // A dollar still owed on Strike: no stand-down, and the card keeps the line's coins on Strike in so many words.
+    const owing = planMonthRun(STAND({ strikeCollateralBtc: 3, strikeBalance: 1 }));
+    expect(owing.placement.standDown).toBe(false);
+    expect(moveCard(moveCtx(owing)).lines.find((l) => l.key === 'moves')!.text).toMatch(/^Today: keep 1\.236 ₿ on Strike · /);
+  });
+
+  it('⭐ STAND WORDS — already all in cold: "every coin is already in cold storage"; a loan open keeps the old words', () => {
+    const cold = planMonthRun(STAND({ strikeCollateralBtc: 0, cbCollateralBtc: 0, coldBtc: 2.5 }));
+    const card = moveCard(moveCtx(cold));
+    expect(card.lines.find((l) => l.key === 'aligned')!.text).toBe('Nothing to move — every coin is already in cold storage.');
+    expect(card.lines.find((l) => l.key === 'why')!.text).toBe(STAND_WHY);
+    // A dollar still owed on Strike: no stand-down — the card is word for word the no-goal card.
+    const open = planMonthRun(STAND({ strikeBalance: 1 }));
+    expect(open.placement.standDown).toBe(false);
+    expect(moveCard(moveCtx(open))).toEqual(moveCard(moveCtx(planMonthRun(STAND({ strikeBalance: 1, goalNetBtc: null })))));
+  });
+});
+
+describe('⭐ STAND ROWS — a stand-down month in the schedule, on THIS MONTH and in "Why this plan?" (BL32)', () => {
+  /** Strike owes $1,000 today; month 1's spare income repays it, so month 1 stands down after its pay-down. */
+  const LATE = (): PlanMonthFacts => STAND({ strikeBalance: 1_000 });
+
+  it('⭐ STAND ROWS — Today stands down: its Strike → cold row is "today"; months after move nothing', () => {
+    const run = planMonthRun(STAND());
+    const rows = planMonthActions(run.sim, run.placement, 1);
+    const sk = rows.find((r) => r.kind === 'strikeToCold')!;
+    expect([sk.label, sk.note, sk.amount]).toEqual(['Strike → cold storage', 'today', '₿1.000']);
+    expect(run.sim.rows.slice(1).every((r) => r.goalStandDown && r.strikeToColdBtc === 0 && r.sweptToColdBtc === 0)).toBe(true);
+  });
+
+  it('⭐ STAND ROWS — the month that repays the last loan stands down: its own Strike → cold, named in the schedule and on THIS MONTH', () => {
+    const run = planMonthRun(LATE());
+    expect(run.placement.standDown, 'ROWS premise: today a loan is open').toBe(false);
+    const m1 = run.sim.rows[1];
+    expect([m1.atGoal, m1.goalStandDown, m1.strikeBalance, m1.cbDebt], 'ROWS premise: month 1 repays and stands down')
+      .toEqual([true, true, 0, 0]);
+    expect(m1.strikeToColdBtc, 'ROWS premise: Strike still held coins').toBeGreaterThan(0.01);
+    const sched = planSchedule(run.sim, run.placement).find((r) => r.m === 1)!;
+    const kinds = sched.actions.map((a) => a.kind);
+    expect(kinds).toContain('repayStrike');
+    expect(kinds, 'ROWS straight to cold, never through Coinbase').not.toContain('strikeToCoinbase');
+    expect(sched.actions.find((a) => a.kind === 'strikeToCold')!.text)
+      .toBe(`Release ${m1.strikeToColdBtc.toFixed(3)} ₿ of Strike collateral to cold storage.`);
+    const row = planMonthActions(run.sim, run.placement, 1).find((r) => r.kind === 'strikeToCold' && r.note !== 'today')!;
+    expect([row.label, row.note]).toEqual(['Strike → cold storage', 'month-end']);
+  });
+
+  it('⭐ STAND ROWS — a stand-down month\'s Strike → cold under 0.01 ₿ is marked as able to wait, in both places', () => {
+    // ₿0.004 on Strike, debt-free at the goal: too little to move today, so month 1 releases it.
+    const run = planMonthRun(STAND({ strikeCollateralBtc: 0.004, cbCollateralBtc: 0, coldBtc: 2.5 }));
+    expect([run.placement.standDown, run.placement.worthMoving], 'ROWS premise: nothing worth moving today').toEqual([true, false]);
+    expect(run.sim.rows[1].strikeToColdBtc).toBeCloseTo(0.004, 12);
+    const act = planSchedule(run.sim, run.placement).find((r) => r.m === 1)!.actions.find((a) => a.kind === 'strikeToCold')!;
+    expect(act.text).toBe('Release 0.004 ₿ of Strike collateral to cold storage. (small — can wait)');
+    const row = planMonthActions(run.sim, run.placement, 1).find((r) => r.kind === 'strikeToCold')!;
+    expect(row.note).toBe('small, can wait');
+  });
+
+  it('⭐ STAND ROWS — "Why this plan?" says why every coin goes to cold, from the engine\'s own flag; never without it', () => {
+    const late = planMonthRun(LATE());
+    const sum = planMonthSummary(late.sim, late.placement, 1, SUP[1], 2);
+    expect(sum).toContain(`at or above your ₿2.000 goal, so the plan borrows and buys nothing. With both loans repaid, ${GOAL_STAND_DOWN_WORDS}. `);
+    // A month still owing (a goal it is at, a loan open): no such sentence.
+    const owing = planMonthRun(STAND({ strikeBalance: 30_000 }));
+    expect(owing.sim.rows[1].goalStandDown, 'premise: still owing').toBe(false);
+    expect(planMonthSummary(owing.sim, owing.placement, 1, SUP[1], 2)).not.toContain(GOAL_STAND_DOWN_WORDS);
+    const none = planMonthRun(STAND({ goalNetBtc: null }));
+    expect(planMonthSummary(none.sim, none.placement, 1, SUP[1], null)).not.toContain(GOAL_STAND_DOWN_WORDS);
+    // 30¢ still owed on Strike with nothing spare to repay it: under the dust floor, so every figure reads $0 — but it is a
+    // loan, the engine keeps the line's coins, and the words never say otherwise (they read the engine's flag).
+    const dust = planMonthRun(STAND({ strikeBalance: 0.3, income: 4_000 }));
+    const d1 = dust.sim.rows[1];
+    expect([d1.atGoal, d1.goalStandDown, shownUsd(d1.strikeBalance), d1.strikeBalance > 0], 'premise: a dust loan').toEqual([true, false, false, true]);
+    expect(planMonthSummary(dust.sim, dust.placement, 1, SUP[1], 2)).not.toContain(GOAL_STAND_DOWN_WORDS);
+    expect(dust.placement.standDown, 'and THE MOVE keeps the line\'s coins too').toBe(false);
+  });
+
+  it('⭐ STAND ROWS — no Coinbase loan: the stand-down never says the plan opens one (its coins never pass through Coinbase)', () => {
+    const noCb = (goalNetBtc: number | null) => planMonthRun(STAND({ cbCollateralBtc: 0, strikeCollateralBtc: 2, goalNetBtc }));
+    const none = noCb(null);
+    expect(coinbaseLoanLine(none.sim, none.placement, false), 'premise: without the goal the plan opens a Coinbase loan')
+      .toMatch(/^You have no Coinbase loan yet\. This plan opens one/);
+    const stood = noCb(2);
+    expect(stood.placement.standDown).toBe(true);
+    expect(coinbaseLoanLine(stood.sim, stood.placement, false)).toBeNull();
+    expect(stood.sim.rows.every((r) => r.strikeToCbBtc === 0)).toBe(true);
+    // Inside Strike's hold today, so its coins move in a later MONTH of the run — straight to cold there too.
+    const held = planMonthRun(STAND({ cbCollateralBtc: 0, strikeCollateralBtc: 2, hold: { inHold: true, throughISO: '2026-11-30' } }));
+    expect([held.placement.standDown, held.placement.strikeLeg, held.placement.worthMoving], 'premise: held, nothing moves today')
+      .toEqual([true, 'hold', false]);
+    const later = held.sim.rows.find((r) => r.strikeToColdBtc > 0);
+    expect(later?.m, 'premise: a later month releases Strike\'s coins').toBeGreaterThan(0);
+    expect(coinbaseLoanLine(held.sim, held.placement, false)).toBeNull();
+    expect(held.sim.rows.every((r) => r.strikeToCbBtc === 0)).toBe(true);
+  });
+});
+
+describe('⭐ STAND LIMIT — the Ownership face\'s limit line at a stand-down month (BL32, δ3)', () => {
+  it('⭐ STAND LIMIT — nothing pledged to Strike: never "backed again above $0"; every other month the words as before', () => {
+    const r = runCyclingSim({
+      ...SP_REPRO, strikeCollateralBtc: 2, strikeBalance: 0, strikeCreditLine: 40_000, cbCollateralBtc: 1.5, cbDebt: 0,
+      openingColdBtc: 0.5, supportPolicy: policyFor(supportPathFor(SP_START, 12), V2_DEFAULTS),
+      pricePath: supportPathFor(SP_START, 12).map((x) => 1.4 * x), goalNetBtc: 3,
+    });
+    const m1 = r.rows[1];
+    expect([r.policyApplied, m1.goalStandDown, m1.strikeCollateralBtc], 'LIMIT premise: month 1 stands down, Strike emptied')
+      .toEqual([true, true, 0]);
+    const cap = strikeAvailableCredit(40_000, m1.strikeCollateralBtc, m1.price, m1.strikeBalance);
+    expect([cap.binding, cap.fullyBackedPrice], 'LIMIT premise: bound by collateral it no longer has').toEqual(['collateral', 0]);
+    expect(strikeLimitTail(cap, m1, fmtUSD))
+      .toBe('Limit is bound by collateral — at your goal with both loans repaid, nothing is pledged to Strike.');
+    // Every other month, the face's words: coins on Strike (a stand-down inside Strike's hold included), the line binding,
+    // and an empty Strike that did not stand down (a fresh install — the zero-state pass's, in the backlog).
+    const old = 'Limit is bound by collateral — the full line is backed again above $80,000.';
+    expect(strikeLimitTail({ binding: 'collateral', fullyBackedPrice: 80_000 }, { goalStandDown: false, strikeCollateralBtc: 1 }, fmtUSD)).toBe(old);
+    expect(strikeLimitTail({ binding: 'collateral', fullyBackedPrice: 80_000 }, { goalStandDown: true, strikeCollateralBtc: 1 }, fmtUSD)).toBe(old);
+    expect(strikeLimitTail({ binding: 'line', fullyBackedPrice: 50_000 }, { goalStandDown: true, strikeCollateralBtc: 0 }, fmtUSD))
+      .toBe('Limit is bound by the credit line.');
+    expect(strikeLimitTail({ binding: 'collateral', fullyBackedPrice: 0 }, { goalStandDown: false, strikeCollateralBtc: 0 }, fmtUSD))
+      .toBe('Limit is bound by collateral — the full line is backed again above $0.');
+    // The face renders the helper, never its own copy of the words.
+    const face = readFileSync(join(process.cwd(), 'src/components/Almanac/OwnershipFace.tsx'), 'utf8');
+    expect(face).toContain("{' '}{strikeLimitTail(cap, selRow, fmtK)}");
+    expect(face).not.toContain('the full line is backed again above');
+  });
+});
+
+describe('⭐ STAND COLD — the cold-storage card names the stand-down with a goal (BL32)', () => {
+  const S = effectivePolicySettings({ ...DEFAULT_SUPPORT_POLICY_SETTINGS }, { cbLtvCapPct: 70, strikeCapEffPct: 60 });
+  it('⭐ STAND COLD — one more sentence with the goal the run applied; without one, the words as before', () => {
+    expect(policyColdNote(S, 2)).toBe(`${policyColdNote(S)} At your goal with both loans repaid, ${GOAL_STAND_DOWN_WORDS}, at any price.`);
+    expect(policyColdNote(S, null)).toBe(policyColdNote(S));
+    const src = (f: string) => readFileSync(join(process.cwd(), 'src/components/Almanac', f), 'utf8');
+    for (const f of ['CyclingFace.tsx', 'UnifiedFace.tsx']) expect(src(f), f).toContain('{policyColdNote(policySettings, sim.goalNetBtc)}');
   });
 });

@@ -1765,8 +1765,10 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
 describe('⭐ Decision face · I22 — the keeps have ONE definition each', () => {
   it('⭐ the engine calls both leaves and inlines neither expression', () => {
     const src = readFileSync(new URL('../cyclingSim.ts', import.meta.url), 'utf8');
-    expect(src).toMatch(/strikeKeepCollateralBtc\(strikeCreditLine, strikeBal, policy\.skStop, S\)/);
-    expect(src).toMatch(/cbKeepCollateralBtc\(cbDebt, policy\.bufferUsd, S, policy\.cbStop, cap, price\)/);
+    // BL32 — each told the month's stand-down, the one flag both steps read (`goalStandsDown`).
+    expect(src).toMatch(/strikeKeepCollateralBtc\(strikeCreditLine, strikeBal, policy\.skStop, S, goalStandDown\)/);
+    expect(src).toMatch(/cbKeepCollateralBtc\(cbDebt, policy\.bufferUsd, S, policy\.cbStop, cap, price, goalStandDown\)/);
+    expect(src.match(/goalStandDown = goalStandsDown\(atGoal, strikeBal, cbDebt\)/g), 'BL32 the flag is read ONCE').toHaveLength(1);
     // The expressions the leaves replaced must not survive anywhere — THE MOVE would then be a second rule.
     expect(src).not.toMatch(/Math\.max\(strikeCreditLine, strikeBal\)\s*\/\s*\(/);
     expect(src).not.toMatch(/sweepKeepBtc\(cbDebt, policy\.bufferUsd/);

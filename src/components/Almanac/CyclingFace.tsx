@@ -943,7 +943,7 @@ export default function CyclingFace() {
             </div>
             {applied ? (
               <p className={styles.noteQuiet}>
-                {policyColdNote(policySettings)}
+                {policyColdNote(policySettings, sim.goalNetBtc)}
                 {policyReserveNote(sim)}
                 {coldMovesSentence(firstColdLabel, reserveShown, NOTHING_MOVES_YET)}
               </p>

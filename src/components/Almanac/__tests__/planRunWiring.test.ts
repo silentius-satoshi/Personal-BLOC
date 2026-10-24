@@ -174,6 +174,12 @@ describe('⭐ GOAL — BL14: the owner\'s goal reaches every run, and every scre
     expect(run, 'GOAL hook passes it').toMatch(/goalNetBtc: s\.goalNetBtc,/);
     expect(depsOf(run), 'GOAL hook depends on the selector').toMatch(/\bs\b/);
   });
+  it('⭐ GOAL — THE MOVE gets the goal too (BL32): the Decision face\'s placement memo passes it and depends on it', () => {
+    const memo = memoBody(FACE, 'placementInput');
+    expect(memo, 'GOAL premise: the memo').toMatch(/placementInputOf\(\{/);
+    expect(memo, 'GOAL the move input passes it').toMatch(/goalNetBtc: s\.goalNetBtc,/);
+    expect(depsOf(memo), 'GOAL the move input depends on it').toMatch(/s\.goalNetBtc/);
+  });
   it('⭐ GOAL — THIS MONTH and Daily print the one goal line from their run\'s own goal, and hand it to "Why this plan?"', () => {
     expect(CARD, 'GOAL card reads the run\'s goal').toMatch(/const goal = pm\.run\.engineInputs\.goalNetBtc \?\? null;/);
     expect(CARD, 'GOAL card line').toMatch(/const goalLine = row \? planGoalLine\(row, goal\) : null;/);

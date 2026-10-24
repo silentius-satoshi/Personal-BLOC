@@ -69,13 +69,19 @@ src/
                                 # leaves runCyclingSim calls, so the card, the run and the schedule are one plan —
                                 # never a second placement rule. Direct routing (Coinbase filled to its keep, the
                                 # rest straight to cold) reaches the engine's end state in one hop; an equivalence
-                                # sweep over 20,000 random positions pins month 1 ≡ plan.after.
+                                # sweep over 20,001 random positions pins month 1 ≡ plan.after.
                                 # 🔴 THE STATES, IN THIS ORDER: 'unavailable' → 'cbPastLiquidation' → 'broken' →
                                 # 'paused' → 'ready'. A seizure is the most urgent fact and BELOW support it is
                                 # the likeliest, so a pause must never hide it (the card would never name the 86%
                                 # line or the Emergency Console). 'broken' reads the breaker seed — the SAME seed
                                 # the run's openingBreaker gets — because a broken model is the engine's own zone
                                 # and steps 5 and 9 never run there. Every state but 'ready' is inert.
+                                # BL32 (G3-B, batch 1 build 2b): `goalNetBtc?` (read through goal.ts's goalOf) →
+                                # `standDown` — at the goal with both loans repaid (goalStandsDown, on TODAY's
+                                # position) neither 'broken' nor 'paused' applies: the plan is 'ready', both keeps are
+                                # told so (0) and every coin goes to cold, Strike's straight there — Strike's hold
+                                # still holds its coins. STAND I3 (goalStandDown.test.ts, 3,000 positions) pins
+                                # month 1 ≡ after at the stand-down
                                 # 🔴 `opening` vs `after`: `after` is the end state steps 5 and 9 reach (the I3
                                 # contract); `opening` is what the owner ACTUALLY holds once today's move is made
                                 # or deferred — `after` when seeded, today's holdings otherwise. The run seeds
@@ -246,11 +252,20 @@ src/
                                 # baselineAllInEquity, each only above 0 — and the ONE verdict rule, `neverDrawTie` /
                                 # `beatsNeverDraw` (`NEVER_DRAW_TIE_USD` = DUST_USD; a tie only with a goal). See
                                 # engines.md § The plan's goal amount
+                                # BL32 (build 2b): THE STAND-DOWN — goalStandsDown read ONCE a month at step 5, after
+                                # the pay-down; steps 5 and 9 read that flag and keep nothing (both keeps told so), in
+                                # any zone, past a seizure too; Strike's release goes STRAIGHT to cold. Row
+                                # `strikeToColdBtc` (a flow, in coldFromStrike) and `goalStandDown`; the goal read
+                                # through goal.ts's goalOf
     goal.ts                     # BL14 — net coins and the goal test, the PURE leaf the engine's month decision and the
                                 # Dashboard's goal tile share: netCoinsBtc({ strikeBtc, cbBtc, coldBtc, strikeBalanceUsd,
                                 # cbDebtUsd, price }) (null when unreadable — no positive finite price, or a part that isn't
                                 # finite) and atGoalOf(net, goal) (at or above, within GOAL_EPS = 1e-12 relative). 🔴 + − × ÷
                                 # only, ZERO imports — cyclingSim imports it, so G1's import walk reaches it
+                                # BL32 (build 2b): + goalOf(v) — the goal as the plan reads it (a finite number above
+                                # zero, else none; the engine's and THE MOVE's ONE read) · goalStandsDown(atGoal,
+                                # strikeBalanceUsd, cbDebtUsd) — at the goal with both balances EXACTLY 0. Tested in
+                                # __tests__/goalAmount.test.ts and __tests__/goalStandDown.test.ts (STAND …)
     supportPolicy.ts            # SUPPORT-ANCHORED POLICY leaf — imports only the zero-import ./ltv (support
                                 # arrives as a plain number; the §2 wall holds). policyZone (k = price ÷ support →
                                 # paused/accumulate/hold/payDown, junk → 'paused'), ceilingHeadroomUsd (room at
@@ -258,6 +273,7 @@ src/
                                 # + strikeKeepCollateralBtc (step 5's keep: max(line, bal) / (skStop × S)) and
                                 # cbKeepCollateralBtc (step 9's keep: max(sweepKeepBtc, debt / (cap × price))) —
                                 # 🔴 ONE DEFINITION EACH, shared with the Decision face's THE MOVE (junk → +∞).
+                                # BL32: both take `standDown` (goalStandsDown) → 0 — junk still +∞.
                                 # collateralToSellForLtv, resolveStrikeCall (cash → cold → sale to the cure LTV;
                                 # ≥ partial-liq → immediate; an emptied Strike is 'none' — no phantom sales),
                                 # nextBreakerState (2 month-ends < 0.9 × S, LATCHED — the ONE trip rule),
@@ -858,6 +874,8 @@ src/
                                 # The plan of record's Run 4 (D3): consoleRuns = s.hasCbLoan (the LTV-triggered strategy
                                 # until then) — the crash rows' console link, the crash note on screen and in the
                                 # printout, and THE MOVE's console clause read it; the face reads no cbPaymentStrategy
+                                # BL32: the placement memo passes goalNetBtc: s.goalNetBtc and depends on it (THE MOVE
+                                # stands down on it)
       decisionView.ts           # Decision face (Run A) — the SCHEDULE and THE MOVE's copy, pure. ACTION_FIELDS is
                                 # ONE field → action table in the engine's month order (a field added to CyclingRow
                                 # without a row here is a step the printed schedule silently drops; a completeness
@@ -909,6 +927,11 @@ src/
                                 # tab's banner. + suggestedLineWords(ownerLineUsd, suggestedUsd, hasLoan, triggerPct,
                                 # targetPct) → { covers, text } — THE MOVE's line words, ONE copy: the Smart BLOC
                                 # sidebar reads it too
+                                # BL32 (build 2b): ACTION_FIELDS gains a MONTH `strikeToCold` (the stand-down's step 5 —
+                                # "Release X ₿ of Strike collateral to cold storage.", "(small — can wait)" under
+                                # 0.01 ₿); moveCard at plan.standDown — the why and aligned lines in
+                                # GOAL_STAND_DOWN_WORDS' terms, the moves line lists only what moves (δ2), and no line
+                                # words (δ1 — the what-if pair stays)
       decisionChartView.ts      # Decision face (Run A) — the chart series, pure. buildChartSeries (the seam is
                                 # EXACT: history's last point IS forward's first; the support line spans both
                                 # halves — history via supportAtDates, forward via the engine's own path; history
@@ -923,6 +946,14 @@ src/
                                 # falls back to one tick PER DATA POINT, so the axis always takes explicit ticks.
                                 # + pathOnSupport(path, support, months) — the legend note's test: sameSeries over
                                 # months 1…horizon, bit for bit (month 0 is spot), never a tolerance
+      ownershipFaceView.ts      # Ownership face — pure: chartOwnershipRows (the three charts' series; yours / owed
+                                # through deriveOwnership, 3-arg), ownershipGained, ownershipHero, modeConstraints,
+                                # unfundedNote, liquidationVerdict, strikeCallVerdict, MODE_NOTE. BL32 (δ3):
+                                # strikeLimitTail(cap, row, usd) — the tail of "Where the position stands": a month that
+                                # stood down with nothing on Strike reads "Limit is bound by collateral — at your goal
+                                # with both loans repaid, nothing is pledged to Strike." (never "backed again above $0");
+                                # every other month the face's words. OwnershipFace renders it. Tested in
+                                # __tests__/ownershipFaceView.test.ts and goalViews.test.ts (STAND LIMIT)
       supportPolicyInputs.ts    # Support policy — the faces' ONLY §2 crossing for it: buildSupportPath(start, months)
                                 # = plBandAt('floor', start, m), bit-equal to the on-the-line price path from month 1;
                                 # supportPolicyFor(settings, path, bills, strikeLiqPct, mode) → the engine input, or
@@ -1017,6 +1048,9 @@ src/
                                 # sliders, so Settings' "Your plan" and every face's card, and the Advisor tab's sidebar)
                                 # · planRuleRows(settings, expenses) → { key, label, value }[] — each setting as the plan
                                 # runs it (settingReadouts; a limit held to its defense line shows that line)
+                                # BL32: GOAL_STAND_DOWN_WORDS — the stand-down in words, ONE phrase (THE MOVE's card, the
+                                # cold card, "Why this plan?") · policyColdNote(s, goal = null) — with the run's applied
+                                # goal one more sentence; without one, the words as before
       planClamp.ts              # The plan of record (Run 1) — the plan's ONE clamp: PLAN_CB_LTV_CAP_PCT (70, the
                                 # Coinbase defense line), PLAN_STRIKE_CAP_PCT / PLAN_STRIKE_CAP_EFF (the Strike cap's
                                 # defaults) and PLAN_CLAMP. Since the plan of record's Run 2 the Decision face's aliases
@@ -1051,6 +1085,8 @@ src/
                                 # (the plan of record's Run 4) — the saved plan as every plan reader runs it (C1 under it,
                                 # range-clamped, its stops held to PLAN_CLAMP): planMonthRun and the Advisor tab's sidebar
                                 # read it
+                                # BL32: PlacementFacts REQUIRES goalNetBtc — placementInputOf passes it, so THE MOVE
+                                # stands down on the same goal the run reads
       planMonthView.ts          # The plan of record's month AS WORDS (Run 2 — §4.3, §4.5, §4.7). PURE: every sentence THIS
                                 # MONTH and Daily's plan card show is built here (I31 — the cards compose none). STATUS —
                                 # planStatus: within the limits (one green line), or over with today's fact, the time back
@@ -1106,6 +1142,8 @@ src/
                                 # · planMoveBringsCbWithin(plan) (Run 4, D-R4-1) — this month's move brings Coinbase within its
                                 # limit (seeded, and no over-limit left on the placement's opening): THIS MONTH and Daily
                                 # hand it to the Safety card, whose at-support line then names the move
+                                # BL32: a month's Strike → cold row reads month-end ("small, can wait" under 0.01 ₿);
+                                # planMonthSummary adds the stand-down's sentence from the row's goalStandDown
       usePlanMonth.ts           # The plan of record's month for the main screens (Run 2): gathers the store's live
                                 # position (Coinbase through planCbCollateralOf / planCbLoanBalanceOf), the saved plan
                                 # (usePlanPolicy), today's price, the minimum's source and the policy's memory — Strike's

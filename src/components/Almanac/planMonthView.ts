@@ -3,7 +3,9 @@ import type { PlacementPlan } from '../../simulation/placement';
 import { MOVE_THRESHOLD_BTC } from '../../simulation/placement';
 import { cbSeizurePrice } from '../../simulation/cbMetrics';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { fmtBelowPct, shownBtc, shownUsd, policyIgnoredNote, goalActs, goalDefenseOf } from './supportPolicyView';
+import {
+  fmtBelowPct, shownBtc, shownUsd, policyIgnoredNote, goalActs, goalDefenseOf, GOAL_STAND_DOWN_WORDS,
+} from './supportPolicyView';
 import { fmtUSDCents, fmtLtvPct, toCents } from '../../utils/format';
 import { planSchedule, type Action, type ActionKind } from './decisionView';
 import { fmtTurnDate } from './cyclingFaceView';
@@ -84,7 +86,8 @@ const WORDS: Record<ActionKind, RowWords> = {
     amount: (a, r) => buyBtc(r.price > 0 ? (a.usd ?? 0) / r.price : 0),
   },
   strikeToCoinbase:        { label: 'Strike → Coinbase', tone: 'plain', note: monthEnd, amount: btcOf },
-  strikeToCold:            { label: 'Strike → cold storage', tone: 'plain', amount: btcOf },
+  // BL32 — Today's leg, and a stand-down month's step 5 (month-end, like the other placement moves).
+  strikeToCold:            { label: 'Strike → cold storage', tone: 'plain', note: monthEnd, amount: btcOf },
   refinance: {
     label: 'Strike debt → Coinbase', tone: 'plain',
     note: (_a, r) => (shownUsd(r.refinancedFeeUsd) ? `fee ${fmtUSDCents(r.refinancedFeeUsd)}` : null), amount: usdOf,
@@ -776,6 +779,9 @@ export function planMonthSummary(
     goalWords = row.atGoal
       ? `Net coins this month, ${read}, are ${netBtcText(p.net)} — at or above your ₿${p.goal} goal, so the plan ${goalActs(goalDefenseOf(row))}. `
       : `Net coins this month, ${read}, are ${netBtcText(p.net)} — under your ₿${p.goal} goal. `;
+    // BL32 — the month stood down (the engine's own flag, never re-derived from the balances shown): say why its coins
+    // all go to cold.
+    if (row.goalStandDown) goalWords += `With both loans repaid, ${GOAL_STAND_DOWN_WORDS}. `;
   }
   const zone = `${Number.isFinite(r) ? `Price is ${r.toFixed(2)}× support. ` : ''}${goalWords}`;
   const doing = sched.actions.length > 0

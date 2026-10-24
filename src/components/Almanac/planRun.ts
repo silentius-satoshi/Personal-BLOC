@@ -69,6 +69,9 @@ export interface PlacementFacts {
   expenses: number;
   inHold: boolean;
   broken: boolean;
+  /** BL32 — the owner's goal in net coins (already through `planGoalOf`), or null. REQUIRED, like `EngineFacts`' — THE MOVE
+   *  stands down on it (at the goal with both loans repaid), so every plan reader passes the same goal to both builders. */
+  goalNetBtc: number | null;
 }
 
 export function placementInputOf(f: PlacementFacts): PlacementInput {
@@ -89,6 +92,7 @@ export function placementInputOf(f: PlacementFacts): PlacementInput {
     payDownAbove: f.policySettings.payDownAbove,
     inHold: f.inHold,
     broken: f.broken,
+    goalNetBtc: f.goalNetBtc,
   };
 }
 
@@ -218,6 +222,7 @@ export function planMonthRun(f: PlanMonthFacts): PlanMonthRun {
     expenses: f.expenses,
     inHold: f.hold.inHold,
     broken: f.breakerSeed?.state.broken ?? false,
+    goalNetBtc: f.goalNetBtc,
   });
   const placement = placementPlan(placementInput);
   const pricePath = Array.from({ length: PLAN_RUN_MONTHS + 1 }, () => f.price);

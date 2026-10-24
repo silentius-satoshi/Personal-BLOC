@@ -13,7 +13,9 @@ import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import type { PathKind } from '../../simulation/cyclePath';
 import type { WorstBy } from '../../simulation/planSearch';
 import { STRIKE_HOLD_DAYS, atTriggerLine } from '../Tools/crashPlaybookView';
-import { DISPLAY_DUST_BTC, fmtBelowPct, policyIgnoredNote, shownBtc, shownUsd, goalActs } from './supportPolicyView';
+import {
+  DISPLAY_DUST_BTC, fmtBelowPct, policyIgnoredNote, shownBtc, shownUsd, goalActs, GOAL_STAND_DOWN_WORDS,
+} from './supportPolicyView';
 import { netCoinsBtc, atGoalOf } from '../../simulation/goal';
 import type { PlacementInput } from '../../simulation/placement';
 import { fmtTurnDate, type NeverDrawVerdict } from './cyclingFaceView';
@@ -117,6 +119,12 @@ export const ACTION_FIELDS: readonly ActionField[] = [
     kind: 'strikeToCoinbase', field: 'strikeToCbBtc', unit: 'btc',
     text: (r) => `Release ${fmtBtc3(r.strikeToCbBtc)} ₿ of Strike collateral into Coinbase.`
       + (r.strikeToCbBtc < MOVE_THRESHOLD_BTC ? ' (small — can wait)' : ''),
+  },
+  {
+    // BL32 — the stand-down's step 5: Strike releases straight to cold (Today's words, `todayActions`, for a month's row).
+    kind: 'strikeToCold', field: 'strikeToColdBtc', unit: 'btc',
+    text: (r) => `Release ${fmtBtc3(r.strikeToColdBtc)} ₿ of Strike collateral to cold storage.`
+      + (r.strikeToColdBtc < MOVE_THRESHOLD_BTC ? ' (small — can wait)' : ''),
   },
   {
     kind: 'refinance', field: 'refinancedUsd', unit: 'usd',
@@ -245,7 +253,9 @@ export function planSchedule(sim: CyclingResult, plan: PlacementPlan, usd: UsdFm
     keepAtSupportBtc: sim.policyApplied ? plan.strikeKeepBtc : null,
     zone: sim.policyApplied ? sim.rows[0]?.policyZone ?? null : null,
     crash: false,
-    atGoal: false,   // today's row is THE MOVE's, and the goal never moves a coin
+    // Today's row is THE MOVE's: it reads the goal only to stand down (BL32), which THE MOVE's card says in words — the
+    // mark stays the months' (a month at the goal borrows and buys nothing; Today places collateral and does neither).
+    atGoal: false,
   }];
   for (const row of sim.rows) {
     if (row.m === 0) continue;
@@ -468,7 +478,11 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
   // listing legs there described a position that will not exist.
   const parts: string[] = [];
   if (plan.state === 'ready' && plan.worthMoving) {
-    if (shownBtc(plan.after.strikeCollateralBtc)) parts.push(`keep ${fmtBtc3(plan.after.strikeCollateralBtc)} ₿ on Strike`);
+    // BL32 — at the stand-down the plan keeps nothing on Strike: coins still there wait out Strike's hold, and the hold
+    // line says when they go — never "keep … on Strike" beside "keeps nothing on Strike".
+    if (shownBtc(plan.after.strikeCollateralBtc) && !plan.standDown) {
+      parts.push(`keep ${fmtBtc3(plan.after.strikeCollateralBtc)} ₿ on Strike`);
+    }
     if (shownBtc(plan.strikeToCbBtc)) parts.push(`move ${fmtBtc3(plan.strikeToCbBtc)} ₿ to Coinbase`);
     if (shownBtc(plan.strikeToColdBtc)) parts.push(`move ${fmtBtc3(plan.strikeToColdBtc)} ₿ to cold`);
     if (shownBtc(plan.cbToColdBtc)) parts.push(`move ${fmtBtc3(plan.cbToColdBtc)} ₿ from Coinbase to cold`);
@@ -485,8 +499,10 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
     : (room > 0 && billsKnown
       ? `Coinbase keeps what its ${fmtUSD(ctx.cbDebt)} debt plus ${room} months of bills need at support`
       : `Coinbase keeps what its ${fmtUSD(ctx.cbDebt)} debt needs at support`);
-  lines.push(line('why', 'plain',
-    `Strike keeps what your ${fmtUSD(ctx.runLineUsd)} line needs at support (${fmtUSD(ctx.support)}); ${cbClause}.`));
+  // BL32 — at the stand-down nothing is kept for the line or the buffer, so the keeps' sentence would be false.
+  lines.push(line('why', 'plain', plan.standDown
+    ? `At your goal with both loans repaid, ${GOAL_STAND_DOWN_WORDS}.`
+    : `Strike keeps what your ${fmtUSD(ctx.runLineUsd)} line needs at support (${fmtUSD(ctx.support)}); ${cbClause}.`));
 
   // ── the state line ─────────────────────────────────────────────────────────────────────────────────────────
   // 🔴 F4 — an EXHAUSTIVE switch with a `never` default. As an if/else-if chain a state with no branch fell into
@@ -524,8 +540,9 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
         `Nothing worth moving yet — ${fmtBtc3(movedBtc)} ₿ is under the ${MOVE_THRESHOLD_BTC} ₿ threshold; `
         + "next month's re-plan picks it up."));
     } else if (plan.strikeLeg === 'nothing' && movedBtc < DISPLAY_DUST_BTC && !shownUsd(plan.cbOverCeilingUsd)) {
-      lines.push(line('aligned', 'plain',
-        'Nothing to move — Strike and Coinbase hold no more than they need at support.'));
+      lines.push(line('aligned', 'plain', plan.standDown
+        ? 'Nothing to move — every coin is already in cold storage.'   // BL32 — both keeps are zero, so both hold none
+        : 'Nothing to move — Strike and Coinbase hold no more than they need at support.'));
     }
     break;
   }
@@ -677,6 +694,10 @@ function lineLines(ctx: MoveCardContext, hasLoan: boolean): MoveLine[] {
     }
     return out;
   }
+  // BL32 (δ1) — at the stand-down nothing backs the line: the plan keeps nothing on Strike, and Strike lends at most half
+  // its collateral's value. "Covers two months of bills" would be false, and "Try $X" changes nothing (both keeps are 0 at
+  // any line) — so no line words. The what-if above stays: it is the way back.
+  if (ctx.plan.standDown) return [];
   const w = suggestedLineWords(ctx.ownerLineUsd, ctx.suggestedLineUsd, hasLoan, ctx.cbLtvTriggerPct, ctx.cbLtvTargetPct);
   return w.covers
     ? [line('line', 'good', w.text)]

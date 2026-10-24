@@ -11,6 +11,7 @@ import {
 import { STRIKE_MARGIN_CALL_LTV } from './emergencyModel';
 import { CB_LLTV } from './runCoinbaseLoan';
 import { ltvOf } from './ltv';
+import { goalOf, netCoinsBtc, atGoalOf, goalStandsDown } from './goal';
 
 /**
  * THE MOVE — the support policy's collateral placement for THIS month, previewed at today's inputs.
@@ -28,6 +29,11 @@ import { ltvOf } from './ltv';
  * DIRECT ROUTING. The engine puts the WHOLE Strike excess on Coinbase (step 5) and then sweeps whatever Coinbase
  * holds beyond its keep on to cold (step 9). This leaf reaches the same end state in one hop: Coinbase is filled
  * up to its keep, and the rest — plus any Coinbase surplus — goes straight to cold.
+ *
+ * BL32 (G3-B) — THE STAND-DOWN. At the goal with both loans repaid (`goalStandsDown`, today's position against the goal
+ * through the engine's own `goalOf` / `netCoinsBtc` / `atGoalOf`), both keeps are zero — the SAME two functions, told so —
+ * and neither the pause nor the breaker holds a coin back: every coin goes to cold, Strike's straight there, as the
+ * engine's stand-down month routes it too. Strike's 60-day hold still holds its coins. `standDown` tells the card.
  *
  * 🔴 PURE LEAF. No power law, no cycle model, no store, no React, no `components/`. Support and the hold arrive
  * as plain values. It never names a test-only engine input.
@@ -76,6 +82,10 @@ export interface PlacementInput {
    * seeded the run from a move the engine refuses to make.
    */
   broken: boolean;
+  /** BL32 — the owner's goal in net coins (already through `planGoalOf`), as the run gets it; read through the engine's
+   *  `goalOf`. It moves THE MOVE only at the stand-down (at the goal with both loans repaid). Absent, null or junk ⇒ no
+   *  goal, byte-identical. */
+  goalNetBtc?: number | null;
 }
 
 export type PlacementState = 'ready' | 'paused' | 'broken' | 'cbPastLiquidation' | 'unavailable';
@@ -116,6 +126,9 @@ export interface PlacementPlan {
   worthMoving: boolean;
   /** Something worth moving moves today, so the run starts from `after` (D10). */
   seeded: boolean;
+  /** BL32 — THE STAND-DOWN: today's position is at the goal with both loans repaid, so both keeps are zero and the pause
+   *  and the breaker hold nothing back — every coin goes to cold. False in every inert state. */
+  standDown: boolean;
 }
 
 const fin = (...xs: number[]): boolean => xs.every((x) => Number.isFinite(x));
@@ -150,6 +163,7 @@ function inert(
     cbOverCeilingUsd: 0,
     worthMoving: false,
     seeded: false,
+    standDown: false,
     ...extra,
   };
 }
@@ -178,24 +192,36 @@ export function placementPlan(input: PlacementInput): PlacementPlan {
   const overAt = (coll: number): number =>
     Math.max(0, -ceilingHeadroomUsd(cbDebt, coll, support, cbStop));
 
+  // BL32 — THE STAND-DOWN, the engine's own rule: at the goal with both loans repaid. Nothing is owed, so the line and the
+  // buffer keep nothing, and the pause and the breaker below (they hold coins back for the loans) don't apply.
+  const standDown = goalStandsDown(
+    atGoalOf(netCoinsBtc({
+      strikeBtc: strikeCollateralBtc, cbBtc: cbCollateralBtc, coldBtc,
+      strikeBalanceUsd: strikeBalance, cbDebtUsd: cbDebt, price,
+    }), goalOf(input.goalNetBtc)),
+    strikeBalance, cbDebt,
+  );
+
   // 🔴 THE ORDER IS THE DESIGN: 'unavailable' → 'cbPastLiquidation' → 'broken' → 'paused' → 'ready'.
   // A seizure is the most urgent fact and BELOW support it is the likeliest, so a pause must never hide it —
   // the card would otherwise never mention the 86% line or the Emergency Console.
-  // The engine's `liqMonth` would already be 0 — there is nothing to place.
+  // The engine's `liqMonth` would already be 0 — there is nothing to place. (Never at the stand-down: a debt is owed.)
   if (cbDebt > 0 && ltvOf(cbDebt, cbCollateralBtc, price) >= CB_LLTV) {
     return inert('cbPastLiquidation', zone, input, { cbOverCeilingUsd: overAt(cbCollateralBtc) });
   }
-  // A broken model is the engine's own zone: it overrides the price zone, and steps 5 and 9 never run.
-  if (broken) {
+  // A broken model is the engine's own zone: it overrides the price zone, and steps 5 and 9 never run — except at the
+  // stand-down (BL32), whose keeps don't read support.
+  if (broken && !standDown) {
     return inert('broken', zone, input, { cbOverCeilingUsd: overAt(cbCollateralBtc) });
   }
-  // Below support the collateral is needed where it is: steps 5 and 9 never run.
-  if (zone === 'paused') {
+  // Below support the collateral is needed where it is: steps 5 and 9 never run — except at the stand-down (BL32), where
+  // there is no loan for it to be needed by.
+  if (zone === 'paused' && !standDown) {
     return inert('paused', zone, input, { cbOverCeilingUsd: overAt(cbCollateralBtc) });
   }
 
   // ── step 5, previewed ──────────────────────────────────────────────────────────────────────────────────────
-  const keep = strikeKeepCollateralBtc(creditLine, strikeBalance, skStop, support);
+  const keep = strikeKeepCollateralBtc(creditLine, strikeBalance, skStop, support, standDown);
   const strikeKeepBtc = Number.isFinite(keep) ? keep : null;
   const excess = Math.max(0, strikeCollateralBtc - keep);
   const releasableBtc = strikeReleasableBtc({
@@ -209,7 +235,7 @@ export function placementPlan(input: PlacementInput): PlacementPlan {
   const moved = strikeLeg === 'moves' ? excess : 0;
 
   // ── step 9, previewed ──────────────────────────────────────────────────────────────────────────────────────
-  const cbKeep = cbKeepCollateralBtc(cbDebt, bufferUsd, support, cbStop, cbDefenseLtv, price);
+  const cbKeep = cbKeepCollateralBtc(cbDebt, bufferUsd, support, cbStop, cbDefenseLtv, price, standDown);
   const cbKeepBtc = Number.isFinite(cbKeep) ? cbKeep : null;
   const strikeToCbBtc = Math.min(moved, Math.max(0, cbKeep - cbCollateralBtc));
   const strikeToColdBtc = moved - strikeToCbBtc;
@@ -244,6 +270,7 @@ export function placementPlan(input: PlacementInput): PlacementPlan {
     cbOverCeilingUsd: overAt(opening.cbCollateralBtc),
     worthMoving,
     seeded: worthMoving,
+    standDown,
   };
 }
 

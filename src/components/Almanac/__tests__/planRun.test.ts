@@ -47,7 +47,7 @@ describe('⭐ ONE — invariant 2: THIS MONTH and the Decision card build THE MO
         runLine: f.creditLine, strikeBalance: f.strikeBalance, strikeCollateralBtc: f.strikeCollateralBtc,
         cbDebt: f.cbDebt, cbCollateralBtc: f.cbCollateralBtc, coldBtc: f.coldBtc, price: f.price,
         support: run.supportPath[0], policySettings: run.policySettings, expenses: f.expenses,
-        inHold: f.hold.inHold, broken: false,
+        inHold: f.hold.inHold, broken: false, goalNetBtc: f.goalNetBtc,
       }));
       expect(run.placement, 'ONE placement').toEqual(placementPlan(run.placementInput));
     }
@@ -220,14 +220,30 @@ describe('⭐ GOAL — BL14: THIS MONTH and the Decision card run ONE goal', () 
     }
   });
 
-  it('⭐ GOAL — THE MOVE never reads the goal: the placement is the same with any goal (option A)', () => {
-    for (const g of GRID) {
+  it('⭐ GOAL — THE MOVE reads the goal only to stand down (BL32): a loan open, or below the goal, its placement is as with none', () => {
+    // The grid, plus debt-free owners with coins on both venues — the only positions that can stand down.
+    const DEBT_FREE: Partial<PlanMonthFacts>[] = [70_000, 100_000, 160_000, 250_000].map((price) => ({
+      price, strikeBalance: 0, strikeCollateralBtc: 1, cbDebt: 0, cbCollateralBtc: 0.5,
+    }));
+    let stood = 0, same = 0;
+    for (const g of [...GRID, ...DEBT_FREE]) {
       const base = planMonthRun(facts(g));
       for (const goalNetBtc of GOALS) {
         const run = planMonthRun(facts({ ...g, goalNetBtc }));
-        expect(run.placementInput, 'GOAL placement input').toEqual(base.placementInput);
-        expect(run.placement, 'GOAL placement').toEqual(base.placement);
+        expect(run.placementInput, 'GOAL the placement input carries the facts\' goal').toEqual({ ...base.placementInput, goalNetBtc });
+        if (!run.placement.standDown) {
+          expect(run.placement, 'GOAL placement').toEqual(base.placement);
+          same += 1;
+          continue;
+        }
+        stood += 1;
+        const i = run.placementInput;
+        expect([i.strikeBalance, i.cbDebt], 'GOAL premise: both loans repaid').toEqual([0, 0]);
+        expect(i.strikeCollateralBtc + i.cbCollateralBtc + i.coldBtc, 'GOAL premise: at the goal').toBeGreaterThanOrEqual(goalNetBtc!);
+        expect([run.placement.after.strikeCollateralBtc, run.placement.after.cbCollateralBtc], 'GOAL every coin to cold').toEqual([0, 0]);
       }
     }
+    // 4 debt-free owners at three goals, and the 8 grid cells that hold only cold (₿0.5) at the 0.5 goal.
+    expect([stood, same > 400], 'GOAL both reached').toEqual([20, true]);
   });
 });

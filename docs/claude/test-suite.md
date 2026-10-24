@@ -296,7 +296,8 @@ goes red.)
     against #2 after the opening inputs, with `openingBroken` false everywhere. ⚠ `CyclingResult.last` is a full row
     INSIDE the result, so a stored-keys comparison must project it onto the same keys or the added fields read as a
     diff. **Never committed.** Any diff stops the run.
-  - `cyclingSimPolicy.test.ts` — I22 (both leaves called, neither expression inlined; `strikeKeepBtc` ≡ the leaf at
+  - `cyclingSimPolicy.test.ts` — I22 (both leaves called — since BL32 each with the month's stand-down flag,
+    `goalStandDown`, assigned exactly once — neither expression inlined; `strikeKeepBtc` ≡ the leaf at
     that month, through the engine's own `effectivePolicyStops`); ⭐ the three footings on BOTH arms + per-arm
     non-vacuity; `strikeKeepBtc` null with the policy absent; I23 (absent ⇒ identical; ⭐ junk ⇒ as if absent; policy
     OFF inert; ⭐ a seeded broken breaker re-arms at the Nth month with `modelBrokenMonth` still null; ⭐ a seeded
@@ -317,10 +318,12 @@ goes red.)
     seeded with the breaker folded over the realized month-ends, reproduce the continuous run to 1e-9 ₿ on P6, both
     false-recovery paths and a stressed P2. ⭐ NON-VACUITY: unseeded, the $50k false recovery re-borrows, is
     liquidated, and ends behind. Adds `falseRecoveryPath` to `supportPolicyPaths.ts`.
-  - `decisionView.test.ts` — ⭐ **I13** the completeness sweep (12,245 runs / ~490k rows: `a5Cases()` (15) both arms ×
-    five owner fixtures, both grids off and on, the synthetic grid, and the three `callRun` fixtures — the ONLY
+  - `decisionView.test.ts` — ⭐ **I13** the completeness sweep (12,275 runs / ~490k rows: `a5Cases()` (15) both arms ×
+    six owner fixtures, both grids off and on, the synthetic grid, and the three `callRun` fixtures — the ONLY
     source of a cash cure, a cold cure and a Strike sale; every kind reached). The plan of record's Run 2 added the fifth
-    fixture, `strikeMinFromIncome: true` — the ONLY source of a `payMinimum` action (12,215 runs before). ⚠ Collect mismatches, don't `expect`
+    fixture, `strikeMinFromIncome: true` — the ONLY source of a `payMinimum` action (12,215 runs before). BL32 added the
+    sixth, a debt-free owner at a goal under its coins — the ONLY source of a month's `strikeToCold` (12,245 before; the
+    `it`'s title carries the count). ⚠ Collect mismatches, don't `expect`
     in the innermost loop (8M assertions is 110s of suite time; one assertion at the end is 3s), and reuse the
     schedule's own actions rather than re-deriving them. I14 (no `$0`, no `0.000 ₿`), ⭐ I31 (`moveCard`'s every
     line by example, plus a sweep of placement states × the breaker's four readings × with and without a loan),
@@ -1512,7 +1515,8 @@ goes red.)
   - `src/components/Settings/__tests__/yourPlanGoal.test.ts` (3, new): ⭐ GOAL FIELD ×3 (saved on blur and Enter; δ-L10,
     the field reads the store back; the hint's words, δ-L9).
   - Changed: `planRun.test.ts` (+3, ⭐ GOAL — one goal for THIS MONTH and the Decision card over the grid × five goals; no
-    goal byte-identical; THE MOVE never reads it) · `planRunWiring.test.ts` (+3, ⭐ GOAL — the five selectors, memos and
+    goal byte-identical; THE MOVE never reads it — renamed in BL32: it reads the goal only to stand down) ·
+    `planRunWiring.test.ts` (+3, ⭐ GOAL — the five selectors, memos and
     deps; THIS MONTH's and Daily's goal line; the schedule's mark, THE MOVE's goal read and the tile's gate) ·
     `characterization.test.ts` (108 blob keys; the payload 46 keys, 45 entries; the trusted settings 41, 40 normalized) ·
     `planEvents.test.ts` (`PLAN_EVENT_FIELDS` 41 → 42) · `viewerSnapshot.test.ts` (the trusted key set gains
@@ -1522,6 +1526,45 @@ goes red.)
   - e2e, `goal.spec.ts` (3, new): GOAL (Settings sets it; Daily and THIS MONTH read it under and at it; a bad entry
     changes nothing; "No goal" clears it) · TILE (₿0.500 of ₿2.000, "net coins today · 25%", no plan move) · TILE — none
     without a goal.
+- **BL32 — the stand-down** (spec `pbloc-spec-batch-1-v1` v0.10 §2.2, batch 1 build 2b — the reviewer's prototype v2,
+  applied byte for byte; one new unit file, eight changed; the suite 2,844 → 2,875 (+6 skipped), 186 → 187 files; e2e
+  97 → 97 (+2 skipped). 55 planted bugs — 8 in the leaves, 18 in the engine, 9 in THE MOVE, 4 in the builders and the
+  Decision face's wiring, 16 in the words — each an exact-once edit, red at its listed tests (236), the files restored
+  and md5-checked: `Claude outputs/batch-1/build-2b-mutations-v2.json` and `build-2b-report.md`):
+  - `src/simulation/__tests__/goalStandDown.test.ts` (19, new; SYNTHETIC round figures; every engine run asserts
+    `policyApplied` first — off, the goal is off too): ⭐ STAND RULE ×2 (`goalStandsDown` — at the goal and both
+    balances EXACTLY 0, any other balance a loan still open; `goalOf` — a finite number above zero, else none) · ⭐ STAND
+    KEEPS (told to stand down both keeps are 0; junk still keeps everything; absent, the keep as before) · ⭐ STAND MOVE
+    ×3 (debt-free at the goal: both keeps 0, Strike straight to cold, Coinbase emptied, the coins conserved; the pause and
+    the breaker hold nothing back; already all in cold — nothing to move, dust not worth moving) · ⭐ STAND HOLD ×2 (THE
+    MOVE: inside Strike's hold its coins stay, Coinbase's go; the engine: Coinbase's in month 1, Strike's when the hold
+    ends, straight to cold) · ⭐ STAND OPEN ×2 (THE MOVE: a loan open — $0.01 included — a goal above the coins, or no
+    goal: exactly as without a goal, 56 comparisons; the engine: a month that doesn't stand down moves nothing straight to
+    cold and keeps as before, and the cold ledger foots through a stand-down that meets coins still pending from Strike's
+    two-hop migrations) · ⭐ STAND ENGINE ×2 (month 1 releases Strike straight to cold and sweeps Coinbase, then nothing
+    moves — Strike's coins the first to reach cold; below support and broken alike) · ⭐ STAND CADENCE (a face's
+    every-3-months what-if: Coinbase swept in month 1, Strike's coins in month 3, straight to cold) · ⭐ STAND SEIZED ×2
+    (after an on-the-way-down seizure; after month 0's month-end seizure, a surviving debt repaid first — nothing moves
+    until it is 0) · ⭐ STAND MONEY (only the venues move) · ⭐ STAND LEDGER (Σ (Coinbase → cold + Strike → cold) is the
+    cold from both venues) · ⭐ STAND I3 (3,000 random debt-free positions at the goal — every state, held or not, any
+    income: month 1 ≡ THE MOVE's `after`, never through Coinbase — beside the 20,001-position I3 sweep without a goal) ·
+    the at-goal reading THE MOVE uses is the engine's (an ulp under the goal is at it).
+  - `goalViews.test.ts` 23 → 34: ⭐ STAND WORDS ×4 (the one phrase; the why line, the moves to cold, no keeps' sentence,
+    no line words (δ1) and the what-if's way back; inside the hold only what moves (δ2) and the hold line, while a dollar
+    owed keeps "keep X ₿ on Strike"; all in cold, and a loan open keeps the no-goal card) · ⭐ STAND ROWS ×5 (Today's
+    Strike → cold row; the month that repays the last loan stands down — its own Strike → cold, month-end, never through
+    Coinbase; a small one "can wait" in both places; "Why this plan?" from the engine's flag — never with a loan open,
+    never on a 30¢ loan; no Coinbase loan never "opens one", held or not) · ⭐ STAND LIMIT (δ3 — the Ownership face's
+    limit line at a stand-down month; every other month as before; the face renders the helper) · ⭐ STAND COLD (the
+    cold card's sentence with the run's applied goal; the Cycling and Unified faces pass it).
+  - `planRunWiring.test.ts` 22 → 23: ⭐ GOAL — THE MOVE gets the goal too (the Decision face's placement memo passes it
+    and depends on it).
+  - Changed: `planRun.test.ts` (15 → 15: ⭐ GOAL renamed "THE MOVE reads the goal only to stand down (BL32)" — the grid
+    plus four debt-free owners: a loan open, or below the goal, the placement as with none; a stand-down sends every coin
+    to cold; ONE hands the builders the goal) · `decisionView.test.ts` (⭐ I13's sixth owner fixture; `strikeToCold`
+    joins the row kinds — 12,245 → 12,275 runs) · `cyclingSimPolicy.test.ts` (⭐ I22: both engine calls with the flag;
+    the flag assigned once) · fixtures only: `safetyAtSupport` (`goalNetBtc: null` ×3), `cyclingFaceView` and
+    `ownershipFaceView` (`mkRow`).
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s

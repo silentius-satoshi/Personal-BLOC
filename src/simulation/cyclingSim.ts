@@ -4,7 +4,7 @@ import {
   CB_SURVIVAL_BUFFER, strikeReleasableBtc, ceilingLiquidationMultiple, SHIFT_DUST_USD,
 } from './cbDefense';
 import { ltvOf } from './ltv';
-import { netCoinsBtc, atGoalOf } from './goal';
+import { netCoinsBtc, atGoalOf, goalOf, goalStandsDown } from './goal';
 import {
   policyZone, ceilingHeadroomUsd, strikeKeepCollateralBtc, cbKeepCollateralBtc, resolveStrikeCall,
   nextRearmableBreakerState, allocatePayDown,
@@ -348,9 +348,12 @@ export interface CyclingInputs {
    *  interest and any seizure, before the month acts — draws nothing, buys nothing and refinances nothing; its spare
    *  income, after the bills, the minimum and the restore, repays Strike, then Coinbase (the pay-down zone's order, to
    *  zero), and with both repaid the plan holds — what is left stays with the owner (`goalHeldUsd`). The zone, the
-   *  breaker, the restore, the migration, the sweep and every defense run as before: the goal never moves a coin. A month
-   *  below it acts on its zone — no latch (the plan keeps no decision log, D14). The never-draw baseline keeps the same goal,
-   *  so a run that never acts still IS it. Absent, null, or not a finite positive number ⇒ no goal, byte-identical. */
+   *  breaker, the restore and every defense run as before. BL32 (G3-B) — THE STAND-DOWN: at the goal with both loans repaid
+   *  (`goalStandsDown`, after the month's pay-down), the migration and the sweep keep nothing back — both keeps are zero,
+   *  in any zone, broken or past a seizure — so every coin goes to cold: Strike's straight there (`strikeToColdBtc`), under
+   *  its 60-day hold and release rules. Nothing else ever moves a coin for the goal. A month below it acts on its zone — no
+   *  latch (the plan keeps no decision log, D14). The never-draw baseline keeps the same goal, so a run that never acts
+   *  still IS it. Absent, null, or not a finite positive number (`goalOf`) ⇒ no goal, byte-identical. */
   goalNetBtc?: number | null;
   /** Strategy (S1): `cycle` is today's behaviour byte-identical; the others never draw and never
    *  refinance — surplus retires the named leg(s) first, then buys into the Coinbase pool. */
@@ -404,10 +407,14 @@ export interface CyclingRow {
 
   /** Routine migration (sweep cascade): Strike collateral moved to the CB pool this month. */
   strikeToCbBtc: number;
+  /** BL32 — step 5 at the stand-down (`goalStandDown`): Strike collateral released STRAIGHT to cold this month — THE
+   *  MOVE's one hop, so a debt-free owner's coins never pass through Coinbase. 0 in every other month. A FLOW, like
+   *  `sweptToColdBtc`. */
+  strikeToColdBtc: number;
   /** Step 9's Coinbase → cold move THIS month (the classic sweep's and the policy's alike). ⚠ A FLOW, unlike the
-   *  cumulative `coldBtc` / `coldFromCb` / `coldFromStrike` beside it — Σ over the run equals the last row's
-   *  `coldFromCb + coldFromStrike`. Cross-row deltas of the cumulative fields would NOT reproduce it, because the
-   *  emergency top-up retrieves from the same pool. */
+   *  cumulative `coldBtc` / `coldFromCb` / `coldFromStrike` beside it — Σ over the run, with `strikeToColdBtc`'s, equals
+   *  the last row's `coldFromCb + coldFromStrike`. Cross-row deltas of the cumulative fields would NOT reproduce it,
+   *  because the emergency top-up retrieves from the same pool. */
   sweptToColdBtc: number;
   /** Step 6's refinance THIS month: the Strike debt moved to Coinbase (the cash), and Coinbase's origination fee
    *  on it (capitalised on top). Σ over the run equals `totalRefinancedUsd` / `totalCbFees`. */
@@ -415,7 +422,8 @@ export interface CyclingRow {
   refinancedFeeUsd: number;
   /** Step 5's keep — the Strike collateral the FULL line needs AT SUPPORT — when the migration block actually
    *  evaluated it and it is finite; otherwise `null`. Policy-only, so `null` whenever the policy is not applied
-   *  (and on a paused, broken, post-liquidation, off-cadence or in-hold month). */
+   *  (and on a paused, broken, post-liquidation, off-cadence or in-hold month). BL32 — 0 at the stand-down, which
+   *  evaluates it in any zone. */
   strikeKeepBtc: number | null;
   /** Emergency top-up: BTC moved into the CB pool this month from cold + Strike collateral. */
   topUpBtc: number;
@@ -441,7 +449,8 @@ export interface CyclingRow {
   /** Split of the GROSS swept amount by origin (`openingColdBtc + coldFromCb + coldFromStrike −
    *  coldRetrievedBtc` = `coldBtc`; the opening reserve is a THIRD origin these two do not carry).
    *  Coinbase because the loan de-levers; Strike because a FIXED credit line needs ever less
-   *  collateral as price rises (the migrated coins are attributed FIFO when the CB leg sweeps them on). */
+   *  collateral as price rises (the migrated coins are attributed FIFO when the CB leg sweeps them on) — and, at the
+   *  stand-down (BL32), because Strike releases its coins straight to cold. */
   coldFromCb: number;
   coldFromStrike: number;
   btcHeld: number;               // display only — never a denominator
@@ -495,6 +504,9 @@ export interface CyclingRow {
   atGoal: boolean | null;
   /** Spare income the goal kept from buying — what was left once both loans were repaid. 0 otherwise. */
   goalHeldUsd: number;
+  /** BL32 — THE STAND-DOWN: the month was at the goal with both loans repaid when it placed collateral
+   *  (`goalStandsDown`), so it kept nothing on Strike or Coinbase — every coin goes to cold. False with no goal. */
+  goalStandDown: boolean;
 }
 
 export interface CyclingResult {
@@ -952,9 +964,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   // Strike's minimum: rolled into the line (absent / false) or paid from income (the owner's setting) — every mode.
   const minFromIncome = inputs.strikeMinFromIncome === true;
   // BL14 — the plan's goal: policy-only and cycle-only, like the rest of the policy's rules; anything but a finite positive
-  // number is no goal, so the engine without one is byte-identical.
-  const goal: number | null = policy !== null && mode === 'cycle' && typeof inputs.goalNetBtc === 'number'
-    && Number.isFinite(inputs.goalNetBtc) && inputs.goalNetBtc > 0 ? inputs.goalNetBtc : null;
+  // number is no goal (`goalOf` — THE MOVE's rule too, BL32), so the engine without one is byte-identical.
+  const goal: number | null = policy !== null && mode === 'cycle' ? goalOf(inputs.goalNetBtc) : null;
   // Policy v2 — Morpho seizes on the way down: ADOPTED, default ON under the policy (`false` = the month-end reading,
   // TEST-ONLY). Policy-only like the rest, so the policy-off engine never reaches it.
   const seizeOnWay = policy !== null && inputs.seizeOnTheWayDown !== false;
@@ -1044,6 +1055,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     let strikeMinPaidUsd = 0;
     let strikeKeepBtc: number | null = null;
     let goalHeldUsd = 0;
+    let strikeToColdBtc = 0;     // BL32 — Strike → cold, straight, at the stand-down
+    let goalStandDown = false;   // BL32 — read once, after the month's pay-down (below)
 
     // BL14 — month 0 reports the opening's net coins; months ≥ 1 read them again at the decision (below).
     let netCoins: number | null = goal !== null
@@ -1299,18 +1312,32 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           // nothing for the debt Strike is later asked to absorb). Strike's retrieval rules: all-or-nothing, only at
           // ≤ retrieveMax LTV before and < the max-draw LTV after, never inside the 60-day hold that follows
           // collateral going IN, and not while paused or broken.
-          if (state !== 'paused' && state !== 'broken' && liqMonth === null && m % cycle === 0 && price > 0
-            && strikeColl > 0 && m >= strikeHoldUntil) {
-            const keep = strikeKeepCollateralBtc(strikeCreditLine, strikeBal, policy.skStop, S);
+          // BL32 (G3-B) — THE STAND-DOWN, read ONCE here, after the month's pay-down: at the goal with both loans repaid
+          // nothing is owed, so both keeps are zero (step 9 reads the same flag — no draw, refinance, defense or Strike
+          // call can open a loan between the two at the goal), and the pause, the breaker and an earlier seizure hold no
+          // coin back — they protect loans, and there are none. Strike's hold, its release rules and the cadence stand.
+          goalStandDown = goalStandsDown(atGoal, strikeBal, cbDebt);
+          if ((goalStandDown || (state !== 'paused' && state !== 'broken' && liqMonth === null)) && m % cycle === 0
+            && price > 0 && strikeColl > 0 && m >= strikeHoldUntil) {
+            const keep = strikeKeepCollateralBtc(strikeCreditLine, strikeBal, policy.skStop, S, goalStandDown);
             if (Number.isFinite(keep)) strikeKeepBtc = keep;
             const move = strikeColl - keep;
             if (move > 0 && ltvOf(strikeBal, strikeColl, price) <= policy.retrieveMaxLtv
               && ltvOf(strikeBal, strikeColl - move, price) < strikeMaxDrawLtv) {
               strikeColl -= move;
-              cbColl += move;
-              strikeToCbBtc = move;
-              strikeToCbPending += move;
-              totalStrikeToCbBtc += move;
+              if (goalStandDown) {
+                // Straight to cold — THE MOVE's one hop: Coinbase keeps nothing now, and a debt-free owner's coins never
+                // pass through a Coinbase loan (the FIFO pending ledger is for coins that do).
+                coldBtc += move;
+                strikeToColdBtc = move;
+                coldFromStrike += move;
+                if (firstColdMonth === null) firstColdMonth = m;
+              } else {
+                cbColl += move;
+                strikeToCbBtc = move;
+                strikeToCbPending += move;
+                totalStrikeToCbBtc += move;
+              }
             }
           }
         } else if ((coldOn || defend) && liqMonth === null && m % cycle === 0 && price > 0 && strikeColl > 0) {
@@ -1644,8 +1671,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       // than it needs at the line — and never less than the defense line needs at today's price. The buffer stays
       // as COLLATERAL (room under the ceiling), never as unpaid debt. Not below support (the collateral is needed
       // where it is) and not once broken (the premise "safe at support" is suspect).
-      if (m > 0 && state !== 'paused' && state !== 'broken' && liqMonth === null && price > 0 && cbColl > 0) {
-        const keep = cbKeepCollateralBtc(cbDebt, policy.bufferUsd, S, policy.cbStop, cap, price);
+      // BL32 — at the stand-down (step 5's flag) the keep is zero and no zone gate applies: every coin goes to cold.
+      if (m > 0 && (goalStandDown || (state !== 'paused' && state !== 'broken' && liqMonth === null)) && price > 0
+        && cbColl > 0) {
+        const keep = cbKeepCollateralBtc(cbDebt, policy.bufferUsd, S, policy.cbStop, cap, price, goalStandDown);
         const excess = cbColl - keep;
         if (excess > 0) sweptToColdBtc += sweepToCold(m, excess);
       }
@@ -1693,7 +1722,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       cbDebt, strikeBalance: strikeBal, debt: cbDebt + strikeBal,
       strikeDrawn, strikeShortfall, btcBoughtUsd, unfundedUsd, strikeInterestUsd, strikeMinPaidUsd,
       defenseDrawnUsd, cbLtvPreDefense, defenseShortfallUsd, defended: defenseDrawnUsd > 0,
-      strikeToCbBtc, sweptToColdBtc, refinancedUsd, refinancedFeeUsd, strikeKeepBtc,
+      strikeToCbBtc, strikeToColdBtc, sweptToColdBtc, refinancedUsd, refinancedFeeUsd, strikeKeepBtc,
       topUpBtc, topUpFromColdBtc, topUpFromStrikeBtc, coldRetrievedBtc,
       strikeTopUpBtc, strikeReserveBtc, strikeTopUpShortfallBtc, strikeReserveCutBtc,
       strikeCollateralBtc: strikeColl, cbCollateralBtc: cbColl, coldBtc, coldFromCb, coldFromStrike, btcHeld,
@@ -1708,7 +1737,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       cashReserveUsd: cashReserve,   // 0 when the policy is not applied
       cashToBillsUsd, cashToCureUsd,
       strikeCall, strikeCureColdBtc, strikeLiquidatedBtc,
-      netCoinsBtc: netCoins, atGoal: goal !== null ? atGoal : null, goalHeldUsd,
+      netCoinsBtc: netCoins, atGoal: goal !== null ? atGoal : null, goalHeldUsd, goalStandDown,
     });
 
     // THE MONTH-END SEIZURE — month 0's reading (an opening already past 86%), and the policy-off engine's. It is

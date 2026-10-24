@@ -696,7 +696,7 @@ export default function UnifiedFace() {
           </div>
           {applied ? (
             <p className={styles.noteQuiet}>
-              {policyColdNote(policySettings)}
+              {policyColdNote(policySettings, sim.goalNetBtc)}
               {policyReserveNote(sim)}
               {coldMovesSentence(sim.firstColdMonth === null ? null : `at month ${sim.firstColdMonth}`,
                 shownBtc(sim.openingColdBtc), ' Nothing moves to cold on this path.')}

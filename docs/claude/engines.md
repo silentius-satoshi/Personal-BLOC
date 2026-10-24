@@ -387,9 +387,12 @@ before: that is the fix, not a regression.
   collateral is what you would need back.** The model has no way to know that will happen, so it migrates
   on today's line and the face says so.
 - **Coinbase → cold (the sweep).** The loan de-levers as price rises, so collateral above the buffer's
-  floor is surplus. Only this leg touches `coldBtc`. Origin attribution is **FIFO** (`strikeToCbPending`):
+  floor is surplus. Only this leg touches `coldBtc` (one exception, the support policy's stand-down — below). Origin
+  attribution is **FIFO** (`strikeToCbPending`):
   migrated coins are attributed to Strike when they leave for cold, so `coldFromCb` / `coldFromStrike`
-  stay separable even though the CB pool commingles them.
+  stay separable even though the CB pool commingles them. ⚠ **The exception (BL32):** at the goal with both loans repaid,
+  Strike's release goes STRAIGHT to cold (`strikeToColdBtc`), attributed to Strike on the spot — so over a run
+  Σ (`sweptToColdBtc` + `strikeToColdBtc`) = `coldFromCb + coldFromStrike` (§ The plan's goal amount → "The stand-down").
 - **Retrieval (the emergency top-up reverses the Coinbase→cold hop).** `coldRetrievedBtc` is cumulative;
   the pool invariant is now **`openingColdBtc + coldFromCb + coldFromStrike − coldRetrievedBtc ===
   coldBtc`** (the opening reserve is a THIRD origin the two split fields do not carry — the owner's real cold
@@ -656,17 +659,22 @@ spec pbloc-spec-powerlaw-face-v1 — `useMempoolData` is deleted).
 
 ## The plan's goal amount — `goalNetBtc` (BL14; batch 1 build 2; store unchanged, NO bump)
 
-Spec `pbloc-spec-batch-1-v1` v0.6 §2.2. The owner's goal in NET COINS: every coin (Strike, Coinbase, cold) minus what is
+Spec `pbloc-spec-batch-1-v1` v0.6 §2.2 — and, for the stand-down (BL32, build 2b), v0.10 §2.2. The owner's goal in NET
+COINS: every coin (Strike, Coinbase, cold) minus what is
 owed, in bitcoin at the month's price — so borrowing can never reach it. The field and its readers: `store.md` § BL14;
-the words: `almanac.md` § BL14; the Dashboard tile: `viewer.md` § BL14.
+the words: `almanac.md` § BL14 and § BL32; the Dashboard tile: `viewer.md` § BL14.
 
-- **`simulation/goal.ts` — the pure leaf** the engine and the Dashboard tile share: `netCoinsBtc({ strikeBtc, cbBtc,
+- **`simulation/goal.ts` — the pure leaf** the engine, THE MOVE (BL32) and the Dashboard tile share: `goalOf(v)` (the
+  goal as the plan reads it — a finite number above zero, anything else none: the engine's own read, moved here so THE
+  MOVE reads it the same way), `netCoinsBtc({ strikeBtc, cbBtc,
   coldBtc, strikeBalanceUsd, cbDebtUsd, price })` (null when it can't be read — no positive finite price, or a part that
-  isn't finite) and `atGoalOf(net, goal)` (at or above, within `GOAL_EPS` = 1e-12 relative, so a figure computed onto the
-  goal never reads as under it). 🔴 + − × ÷ only and zero imports: `cyclingSim.ts` imports it, so G1's import walk
+  isn't finite), `atGoalOf(net, goal)` (at or above, within `GOAL_EPS` = 1e-12 relative, so a figure computed onto the
+  goal never reads as under it) and `goalStandsDown(atGoal, strikeBalanceUsd, cbDebtUsd)` (BL32 — at the goal with both
+  balances EXACTLY 0). 🔴 + − × ÷ only and zero imports: `cyclingSim.ts` imports it, so G1's import walk
   reaches it.
 - **An input, `goalNetBtc`** (`CyclingInputs`) — REAL, never test-only (`.claude/rules/engine.md`). It applies only with
-  the policy applied, in cycle mode, and as a finite number above zero; anything else is no goal (`CyclingResult.goalNetBtc`
+  the policy applied, in cycle mode, and as a finite number above zero (`goalOf` — THE MOVE's read too, since BL32);
+  anything else is no goal (`CyclingResult.goalNetBtc`
   reports the goal the run applied, null otherwise). Readers pass it through `planGoalOf` (`lib/planGoal`).
 - **Read once a month,** after Coinbase's interest and any on-the-way-down seizure, before the month acts (month 0
   reports the opening and acts on nothing): the row's `netCoinsBtc` and `atGoal` (null with no goal).
@@ -677,9 +685,48 @@ the words: `almanac.md` § BL14; the Dashboard tile: `viewer.md` § BL14.
   once both loans are at zero is KEPT: the row's `goalHeldUsd`. A month below the goal acts on its zone — no latch
   (D14).
 - **What runs as before:** the zone and the breaker (read before the goal), the restore (a loan over its limit is repaid
-  first), the migration, the sweep, and every defense — the debt shift still runs at the goal (it moves debt, never a
-  coin), the only borrowing there. The goal itself never moves a coin between Strike, Coinbase and cold. THE MOVE's
-  placement never reads the goal (G3, open: what THE MOVE keeps on Strike and Coinbase once both loans are repaid).
+  first) and every defense — the debt shift still runs at the goal (it moves debt, never a coin), the only borrowing
+  there — and, while a loan is still open, the migration and the sweep. Once both loans are repaid the plan stands down
+  (next bullet — G3, called B: BL32).
+- **The stand-down (BL32, G3-B; batch 1 build 2b).** At the goal with both loans repaid — repaid meaning EXACTLY 0 — the
+  plan keeps nothing back for Strike's line or Coinbase's buffer: every coin goes to cold storage.
+  - **ONE flag, read once a month** — `goalStandDown = goalStandsDown(atGoal, strikeBal, cbDebt)`, at step 5, after the
+    month's pay-down: the month's own goal reading and the balances the pay-down left (at the goal it settles a residue
+    under half a cent to 0, so a 30¢ balance it couldn't repay is still a loan). Steps 5 and 9 read that one flag, and
+    the two keeps are told it — `strikeKeepCollateralBtc(…, standDown)` and `cbKeepCollateralBtc(…, standDown)` return 0
+    (junk still keeps everything): still ONE definition each, called alike by the engine and THE MOVE.
+  - **In any zone** — paused, broken or past a seizure: the pause, the breaker and a seizure hold coins back for a loan,
+    and there is none. Strike's 60-day hold and its release rules (≤ 40% before, < 50% after — met at a zero balance)
+    still apply. The cadence still applies — on a face's cadence what-if Strike releases on the cadence month, while
+    Coinbase is swept every month.
+  - **Strike's release goes STRAIGHT to cold** — THE MOVE's one hop, never through Coinbase (through it, a debt-free
+    owner's schedule would read "into Coinbase", and with no Coinbase loan "This plan opens one"). The row's
+    `strikeToColdBtc` is a FLOW, like `sweptToColdBtc`, added to `coldFromStrike` on the spot (no FIFO pending), and it
+    sets `firstColdMonth`. The cold ledger: Σ (`sweptToColdBtc` + `strikeToColdBtc`) over the run = the last row's
+    `coldFromCb + coldFromStrike`, coins still pending from earlier two-hop migrations included (the sweep attributes
+    them FIFO, as before). `strikeKeepBtc` is 0 whenever step 5 runs at the stand-down — null, as before, when it
+    doesn't (off the cadence, inside Strike's hold, or once Strike is empty).
+  - **The row's `goalStandDown`** (false with no goal) is what every sentence reads — "Why this plan?" and the Ownership
+    face's limit line (`almanac.md` § BL32) — never the dollars shown.
+  - **Nothing between steps 5 and 9 can open a loan at the goal:** no draw or refinance (both off at the goal), no top-up
+    first or debt shift (Coinbase's LTV is 0), no survival guard or Coinbase top-up (no shortfall), no Strike top-up or
+    call (Strike's LTV is 0). So the flag step 9 reads is still true.
+  - **Once taken, it never ends:** with nothing owed net coins are just the coins, and at the goal nothing borrows. A
+    debt that survives a seizure is a loan — the stand-down waits until the goal's pay-down repays it.
+  - **THE MOVE** (`placementPlan`) asks the same rule of today's position — `goalOf`, `netCoinsBtc`, `atGoalOf`,
+    `goalStandsDown` — and reports `standDown`: neither `'broken'` nor `'paused'` applies (the plan is `'ready'`), both
+    keeps are 0 and every coin goes to cold, Strike's straight there; Strike's hold still holds its coins. Both plan
+    builders hand it the goal (`PlacementFacts` requires it).
+  - **The round trip (logged, accepted):** THE MOVE reads today's balances, so at the goal with a loan this month's spare
+    income will repay, today's move still keeps for that loan — a move into Coinbase, perhaps — and the month that repays
+    it stands down and sweeps those coins to cold. Avoiding it would take THE MOVE predicting the pay-down (a second rule)
+    or keeping less with a loan still open (BL32's second kill criterion).
+  - **Measured (spec v0.9–v0.10):** with no goal, or a loan open, byte-identical against build 2's engine (`3569b8d`) —
+    13,370 runs with no goal; 70,651 with goals, every month before the first stand-down; 429,860 MOVE plans. From the
+    first stand-down on only the venues move (19,774 runs; the coins, equity, every debt and kept dollar within 10⁻¹²
+    relative; every verdict and tie the same; the cold ledger foots). THE MOVE ≡ the engine's month 1 at the stand-down,
+    measured over 20,000 random debt-free positions at the goal (the suite pins 3,000 of them — STAND I3 — beside I3's
+    20,001-position sweep without a goal). Inside Strike's hold nothing leaves Strike.
 - **The never-draw baseline** reads the same goal at the same point (after its Coinbase interest, before Strike's): at
   the goal its surplus repays Strike, then Coinbase, and buys nothing; its leftover is kept. So a run that never acts
   still IS the never-draw world.
@@ -692,8 +739,9 @@ the words: `almanac.md` § BL14; the Dashboard tile: `viewer.md` § BL14.
   decided by rounding: a run at the goal from month 1 only repays, and the two sides' interest arithmetic differs in the
   last bits. Without a goal, never (BL14's kill criterion). `verdictVsNeverDraw` (the faces' head and the Decision tile)
   and `monteCarlo`'s `futureOutcome` (`beatsNeverDraw`, `tiesNeverDraw`; `FuturesSummary.tiesNeverDraw`) all read it.
-- **No goal — absent, null, zero or junk — is byte-identical:** every gate reads as before, the three row fields are
-  `null / null / 0`, both kept totals 0. Measured (spec v0.6): 12,734 runs, 630,014 months, against build 1's engine —
+- **No goal — absent, null, zero or junk — is byte-identical:** every gate reads as before, the five row fields are
+  `null / null / 0 / 0 / false` (`netCoinsBtc`, `atGoal`, `goalHeldUsd`, and BL32's `strikeToColdBtc`, `goalStandDown`),
+  both kept totals 0. Measured (spec v0.6): 12,734 runs, 630,014 months, against build 1's engine —
   0 differences; an unreachable goal moved no figure in 9,517 policy runs; over 24,384 runs no verdict changes.
 - **Re-entry** (BL14's kill criterion, more than 1 month in 20 after first reaching the goal): 0.57% of the months on the
   Decision face's four paths, 1.46% over 18,000 futures — held. The tail: 13% of the futures that reach the goal re-enter
@@ -703,7 +751,8 @@ the words: `almanac.md` § BL14; the Dashboard tile: `viewer.md` § BL14.
   the price under support for the whole horizon) IS the never-draw world too, and its verdict is residue; the tie rule
   without its goal gate fixes it, but moves no-goal screens, so it is queued as its own item.
 - Tests: `src/simulation/__tests__/goalAmount.test.ts` (22) and `src/lib/__tests__/planGoal.test.ts` (5) — § Test
-  Suite → "BL14 — the plan's goal amount".
+  Suite → "BL14 — the plan's goal amount"; the stand-down, `src/simulation/__tests__/goalStandDown.test.ts` (19) — § Test
+  Suite → "BL32 — the stand-down".
 
 ---
 
