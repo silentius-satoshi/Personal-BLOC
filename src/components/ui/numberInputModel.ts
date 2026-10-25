@@ -7,9 +7,11 @@
  *    reading, Strike's collateral reading). Typing saves nothing; "Save — dated today" or Enter saves it once; Cancel
  *    restores the saved figure. Leaving the field keeps the typing, with its buttons; leaving the page drops it.
  *  - `'leave'` — a plan setting: a field of the synced plan, or the manual BTC price. Typing saves nothing; leaving the
- *    field, or Enter, saves it once.
+ *    field, or Enter, saves it once — and the app going away with the field still focused saves what was typed, the
+ *    edit going on (F-2d-1).
  *  - `'live'` — a draft (the Log sheet's, the Safety card's — each with its own Save) or a what-if, and the read-only
- *    dry-powder field: each keystroke hands the figure on, and leaving the field saves no more than the owner typed.
+ *    dry-powder field: each readable, non-negative keystroke hands the figure on, and leaving the field saves no more
+ *    than the owner typed.
  *
  * Why (F-2c-1, measured on `8ee997a`): the field saved the figure it showed on every blur and Enter, typed or not, and
  * on every keystroke — so a click in and out re-dated a dated figure (Coinbase's balance and liquidation price lost their
@@ -74,4 +76,16 @@ export function keystrokeWrite(save: NumberSave, raw: string): number | null {
 /** Whether leaving the field commits: `'live'` and `'leave'` do; a `'button'` field keeps its typing for Save. */
 export function leaveCommits(save: NumberSave): boolean {
   return save !== 'button';
+}
+
+/**
+ * Whether the field saves what was typed when the app goes away with the field still focused (F-2d-1) — the window
+ * losing focus (the app switcher) or the page turning hidden (the Home Screen, another app). Leaving the app isn't
+ * leaving the field: on the owner's iPhone, a plan setting typed and then left by a switch to another app was lost once
+ * iOS closed the app — no `onBlur` ran. A `'leave'` field — a plan setting — saves then, by the commit rule, and the edit
+ * goes on (its text stays as typed); a `'button'` field keeps its typing for Save (dropped if iOS closes the app, as
+ * leaving the page drops it); a `'live'` field has handed its readable keystrokes on already.
+ */
+export function awaySaves(save: NumberSave): boolean {
+  return save === 'leave';
 }

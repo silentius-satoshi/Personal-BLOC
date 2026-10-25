@@ -1,11 +1,12 @@
 // BL34–BL35 (Batch 1, build 2d — F-2c-1) — what a number field saves, and when. No DOM harness renders a focus or a blur
-// here, so the rules are pure (numberInputModel) and NumberInput's wiring, each field's save mode and the swipe-back's
-// blur are read off the source; the e2e clicks real fields (numberField.spec.ts) and swipes them away with a real touch
-// stream (numberFieldSwipe.spec.ts). ⚠ SYNTHETIC round figures — this repo is public.
+// here, so the rules are pure (numberInputModel) and NumberInput's wiring, each field's save mode, the swipe-back's blur
+// and the save when the app goes away (build 2e, F-2d-1) are read off the source; the e2e clicks real fields
+// (numberField.spec.ts), swipes them away with a real touch stream (numberFieldSwipe.spec.ts) and sends the app away as
+// WebKit does (numberFieldAway.spec.ts). ⚠ SYNTHETIC round figures — this repo is public.
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { keystrokeWrite, leaveCommits, numberCommit, SAVE_DATED } from '../numberInputModel';
+import { awaySaves, keystrokeWrite, leaveCommits, numberCommit, SAVE_DATED } from '../numberInputModel';
 
 const read = (f: string): string => readFileSync(join(process.cwd(), f), 'utf8');
 const SRC = read('src/components/ui/NumberInput.tsx');
@@ -56,15 +57,18 @@ describe('⭐ NUMBER COMMIT — leaving a number field, Enter or Save saves only
     expect(keystrokeWrite('leave', '40000'), 'MODES a plan setting saves on leaving').toBeNull();
     expect(keystrokeWrite('button', '40000'), 'MODES a dated figure saves on Save').toBeNull();
     expect([leaveCommits('live'), leaveCommits('leave'), leaveCommits('button')]).toEqual([true, true, false]);
+    expect([awaySaves('live'), awaySaves('leave'), awaySaves('button')], 'MODES only a plan setting saves when the app goes away')
+      .toEqual([false, true, false]);
   });
 
   it('⭐ WIRING — NumberInput saves only through the rules: typing marks the field, focus clears it, leaving, Enter and Save use them', () => {
     expect(SRC, 'WIRING every field says how it saves').toMatch(/\n {2}save: NumberSave;\n/);
     expect(SRC, 'WIRING the rule').toMatch(/const pending = numberCommit\(\{ typed, raw, value, min, max, decimals, dated: save === 'button' \}\);/);
     expect(SRC, 'WIRING a held figure').toMatch(/const holds = save === 'button' && pending\.write !== null;/);
-    expect(SRC, 'WIRING only the rule saves').toMatch(/function commit\(\) \{\s*if \(pending\.write !== null\) onChange\(pending\.write\);\s*setRaw\(pending\.show\);\s*setTyped\(false\);\s*\}/);
+    expect(SRC, 'WIRING only the rule saves').toMatch(/function writeTyped\(\) \{\s*if \(pending\.write !== null\) onChange\(pending\.write\);\s*\}/);
+    expect(SRC, 'WIRING leaving ends the edit').toMatch(/function commit\(\) \{\s*writeTyped\(\);\s*setRaw\(pending\.show\);\s*setTyped\(false\);\s*awaySaved\.current = null;\s*\}/);
     expect(SRC, 'WIRING Cancel saves nothing').toMatch(/function cancel\(\) \{\s*setRaw\(fmt\(value\)\);\s*setTyped\(false\);\s*\}/);
-    expect(SRC, 'WIRING typing marks it').toMatch(/if \(ro\) return;\s*setTyped\(true\);/);
+    expect(SRC, 'WIRING typing marks it').toMatch(/if \(ro\) return;\s*setTyped\(true\);\s*awaySaved\.current = null;/);
     expect(SRC, 'WIRING a keystroke through its rule').toMatch(/const w = keystrokeWrite\(save, raw\);\s*if \(w !== null\) onChange\(w\);/);
     expect(SRC, 'WIRING focus clears it, a held figure aside').toMatch(/onFocus=\{\(\) => \{ focused\.current = true; if \(!holds\) setTyped\(false\); \}\}/);
     expect(SRC, 'WIRING leaving').toMatch(/onBlur=\{\(\) => \{ if \(!ro\) \{ focused\.current = false; if \(leaveCommits\(save\)\) commit\(\); else if \(!holds\) cancel\(\); \} \}\}/);
@@ -154,5 +158,20 @@ describe('⭐ LEAVING THE PAGE — the edge swipe-back leaves the field first (F
     expect(g, 'GESTURE the one blur').toMatch(/const blurFocused = \(\) => \(document\.activeElement as HTMLElement \| null\)\?\.blur\(\);/);
     expect(g, 'GESTURE a committed swipe blurs first').toMatch(/if \(doBack\) \{\s*blurFocused\(\);/);
     expect(g, 'GESTURE a forwarded tap blurs first').toMatch(/blurFocused\(\);\s*try \{ \(document\.elementFromPoint\(x, y\) as HTMLElement \| null\)\?\.click\(\); \}/);
+  });
+});
+
+describe('⭐ LEAVING THE APP — a plan setting saves when the app goes away, and the edit goes on (F-2d-1)', () => {
+  it('⭐ AWAY — a focused plan setting saves by the rule on the window\'s blur or the page turning hidden, once, without ending the edit', () => {
+    // On iOS the app going away runs no React onBlur (React listens for `focusout`): without this, a typed plan setting
+    // was lost when iOS closed the app — on the owner's iPhone at build 2d. Saving must not end the edit: rewriting the
+    // field's text put an emptied field's old figure back under the caret (build 2e's plan review, finding B). Measured
+    // in Chromium as WebKit plays it: e2e/numberFieldAway.spec.ts.
+    expect(SRC, 'AWAY once for its two signals').toMatch(/const awaySaved = useRef<string \| null>\(null\);/);
+    expect(SRC, 'AWAY saves the typing without ending the edit').toMatch(/awayRef\.current = \(\) => \{\s*if \(awaySaved\.current === raw\) return;\s*awaySaved\.current = raw;\s*writeTyped\(\);\s*\};/);
+    expect(SRC, 'AWAY a plan setting only').toMatch(/if \(ro \|\| !awaySaves\(save\)\) return;/);
+    expect(SRC, 'AWAY only the focused field, and only when hidden').toMatch(/if \(!focused\.current \|\| \(e\.type === 'visibilitychange' && document\.visibilityState !== 'hidden'\)\) return;\s*awayRef\.current\(\);/);
+    expect(SRC, 'AWAY the window\'s blur and the page turning hidden').toMatch(/window\.addEventListener\('blur', onAway\);\s*document\.addEventListener\('visibilitychange', onAway\);/);
+    expect(SRC, 'AWAY let go').toMatch(/window\.removeEventListener\('blur', onAway\);\s*document\.removeEventListener\('visibilitychange', onAway\);\s*\};\s*\}, \[ro, save\]\);/);
   });
 });

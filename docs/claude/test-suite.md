@@ -1641,6 +1641,26 @@ goes red.)
     saved, no Save left over).
   - `coldStorage.spec.ts` (1): ENTER saves the total by Enter (a Save field). `coldStorageGroup.test.ts` (6): its two
     renders pass `save`. `coldStorage.test.ts`: one comment. Counts unchanged.
+- **F-2d-1 — a typed plan setting saves when the app goes away, and the edit goes on** (spec `pbloc-spec-batch-1-v1`
+  v0.22 §2.2e, batch 1 build 2e — found at build 2d's preview look, on the owner's iPhone: a plan setting typed and then
+  left by a switch to another app was lost once iOS closed the app; the reviewer's prototype v2, applied byte for byte —
+  v1 ended the edit and put an emptied field's old figure back under the caret (the plan review's finding B); one new e2e
+  spec, and one test more in `numberInputModel.test.ts`; the suite 2,913 → 2,914 (+6 skipped), 190 files; e2e 110 → 115
+  (+2 skipped). One shared component: no store, sync or figure change. 8 planted bugs, each an exact-once edit, red at its
+  listed unit tests and at the e2e, the files restored and md5-checked: `Claude outputs/batch-1/build-2e-mutations-v2.json`
+  and `build-2e-report.md`):
+  - `src/components/ui/__tests__/numberInputModel.test.ts` (12): ⭐ MODES gains `awaySaves` (only a `'leave'` field saves
+    when the app goes away) · ⭐ WIRING (the rule's one writer, `writeTyped`; leaving ends the edit, the app going away
+    doesn't) · ⭐ AWAY (new — `NumberInput` saves a focused plan setting on the window's blur or the page turning hidden,
+    once for both, without ending the edit, and lets its listeners go).
+  - e2e: `numberFieldAway.spec.ts` (5, new; plays the app's side as WebKit does — a bare `blur` on the field and the
+    window's blur, then the page hidden — and reads the plan log in the same task; counts saves by their events' ids, since
+    a second save of the same figure within 10 s replaces the first event; hermetic, every assertion tagged; HOME and HIDE
+    red on `107d3d6`'s NumberInput, HOME and CLEARED on the first prototype's): HOME (saved on the window's blur, in
+    `localStorage` at once; once for both signals; the field keeps the typing; nothing more when it is left afterwards;
+    nothing when the page is shown) · HIDE (the page turning hidden alone saves) · CLEARED (an emptied field saves nothing,
+    stays empty, and saves only what is typed after) · UNTOUCHED (focused, not typed: nothing) · HELD (a typed dated
+    figure keeps its typing and its Save, and saves nothing).
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s

@@ -1309,15 +1309,19 @@ src/
                                 # input's accessible name (the visible label is a span, not a <label>); absent, nothing
                                 # renders (Settings' "Total in cold storage" passes it). BL34–BL35: `save` (required) —
                                 # 'button' ("Save — dated today" and Cancel under the field while it holds typing), 'leave'
-                                # or 'live'; leaving, Enter and Save commit through numberCommit; `typed` (state) gates it
+                                # or 'live'; leaving, Enter and Save commit through numberCommit; `typed` (state) gates it.
+                                # F-2d-1 (build 2e): a focused 'leave' field also saves what was typed when the app goes
+                                # away (the window's blur, or the page hidden; awaySaves) — through writeTyped, not
+                                # commit: the edit goes on, its text untouched
       NumberInput.module.css    # BL35: + .inputWrapHeld (an amber edge while a 'button' field holds typing), .saveRow,
                                 # .saveBtn, .cancelBtn
       numberInputModel.ts       # BL34–BL35 (F-2c-1) — NumberInput's save rules, PURE: `NumberSave`, `numberCommit`
                                 # (nothing unless typed; clamped to [min, max]; never the figure the field shows — a dated
                                 # 'button' field's re-entry aside), `keystrokeWrite` (only 'live' saves as typed),
-                                # `leaveCommits` ('button' keeps its typing), `SAVE_DATED`, `fmtNumberField`. A click in
+                                # `leaveCommits` ('button' keeps its typing), `awaySaves` (F-2d-1: only 'leave' saves when
+                                # the app goes away), `SAVE_DATED`, `fmtNumberField`. A click in
                                 # and out re-dated a dated figure. Pinned by numberInputModel.test.ts (SITES: every
-                                # field's mode) + e2e/numberField.spec.ts
+                                # field's mode; AWAY) + e2e/numberField.spec.ts, numberFieldAway.spec.ts
       Toggle.tsx
       PassphraseInput.tsx       # R2c-7a-2-polish — THE masked-entry widget (+ .module.css). A controlled input +
                                 # focus-guarded Show/Hide toggle, adopted at ALL 16 RENDERED masked fields:
