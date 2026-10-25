@@ -316,9 +316,9 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
-  // ⚠ The cold field shows the LIVE total (anchor + journal moves), never the raw anchor. NumberInput commits on every
-  // blur with no equality check, so a field bound to the anchor would re-stamp it on a mere focus-and-leave and silently
-  // drop every cold move since. Bound to the live total, an unchanged blur re-anchors to the same total: idempotent.
+  // ⚠ The cold field shows the LIVE total (anchor + journal moves), never the raw anchor. A saved total re-anchors it — the
+  // reconciliation — so the field must show what the owner holds: bound to the anchor, re-entering the figure it showed would
+  // drop every cold move since. It saves only on its Save or Enter, never as it is typed or on a mere click (BL34–BL35).
   const coldStorageLive             = useStore((s) => s.getCurrentColdBtc());
   const coldStorageBtcAsOf          = useStore((s) => s.coldStorageBtcAsOf);
   const coldMovesSince              = useStore((s) => coldMovesSinceAnchor(s.dayLog, s.coldStorageBtcAsOf));
@@ -326,8 +326,6 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const emitBalanceReading          = useStore((s) => s.emitBalanceReading);
   const strikeBtcAvailable          = useStore((s) => s.strikeBtcAvailable);
   const strikeApiConnected          = useStore((s) => s.strikeApiConnected);
-  // Reality edit — commit on blur; v20: emits a journaled balanceReading carrying strikeCollateral → re-anchors current.
-  const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const [npubCopied, setNpubCopied]     = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryMsg, setRecoveryMsg]   = useState<string | null>(null);
@@ -699,8 +697,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
       <div className={styles.section}>
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>BUDGET</div>
-          <NumberInput label="Monthly income"   value={income}   onChange={setIncome}   prefix="$" min={0} step={100} />
-          <NumberInput label="Monthly expenses" value={expenses} onChange={setExpenses} prefix="$" min={0} step={100} />
+          <NumberInput label="Monthly income"   value={income}   onChange={setIncome}   prefix="$" min={0} step={100} save="leave" />
+          <NumberInput label="Monthly expenses" value={expenses} onChange={setExpenses} prefix="$" min={0} step={100} save="leave" />
         </div>
 
         <div className={styles.setupGroup}>
@@ -712,28 +710,25 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             </span>
           </div>
           <div className={styles.setupFieldGroup}>
-            <NumberInput label="Initial credit line" value={creditLine} onChange={setCreditLine} prefix="$" min={0} step={500} />
+            <NumberInput label="Initial credit line" value={creditLine} onChange={setCreditLine} prefix="$" min={0} step={500} save="leave" />
             <span className={styles.fieldHint}>
               Your approved max draw — available credit adjusts with BTC price below{' '}
               {currentBtcHeld > 0 ? fmtUSD(creditLine / (currentBtcHeld * STRIKE_MAX_DRAW_LTV)) : '—'}
             </span>
           </div>
-          <div
-            className={styles.setupFieldGroup}
-            onBlur={() => {
-              if (btcHeldDraft !== null && btcHeldDraft !== currentBtcHeld) emitBalanceReading({ strikeCollateral: btcHeldDraft });
-              setBtcHeldDraft(null);
-            }}
-          >
+          {/* Reality edit — BL35: its Save (a 'button' field) emits ONE journaled balanceReading carrying strikeCollateral,
+              which re-anchors getCurrentBtcHeld (v20). A click, or typing, emits nothing (numberCommit). */}
+          <div className={styles.setupFieldGroup}>
             <NumberInput
               label="Current BTC collateral"
-              value={btcHeldDraft ?? currentBtcHeld}
-              onChange={setBtcHeldDraft}
+              value={currentBtcHeld}
+              onChange={(v) => emitBalanceReading({ strikeCollateral: v })}
               prefix="₿"
               min={0}
               step={0.001}
+              save="button"
             />
-            <span className={styles.fieldHint}>Your current BTC in Strike. Edits log a balance reading that re-anchors your collateral — your plan, the Safety card and the Emergency Console read it.</span>
+            <span className={styles.fieldHint}>Your current BTC in Strike. Saving it logs a balance reading that re-anchors your collateral — your plan, the Safety card and the Emergency Console read it.</span>
           </div>
           {strikeApiConnected && strikeBtcAvailable !== null && (
             <div className={styles.setupFieldGroup}>
@@ -745,13 +740,14 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                 decimals={8}                   // sat precision, matches the collateral fields
                 readOnly
                 valueColor="var(--text-muted)" // muted/neutral — NOT collateral, NOT the orange baseline, NOT green delta
+                save="live"
               />
               <span className={styles.fieldHint}>
                 Spendable BTC held in Strike — NOT pledged as collateral, does not affect your LTV. Live from the Strike API.
               </span>
             </div>
           )}
-          <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
+          <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} save="leave" />
 
           {/* §2b — MINIMUM PAYMENT group (source policy + this month's statement figure + due day) */}
           <div className={styles.setupFieldGroup}>
@@ -778,15 +774,16 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
               prefix="$"
               min={0}
               step={1}
+              save="leave"
             />
             <span className={styles.fieldHint}>
               From your Strike monthly statement (billed the 1st){blocStatementMinimum == null ? ' — blank uses the computed estimate.' : '.'}
             </span>
-            <NumberInput label="Due day" value={blocMinPaymentDueDay} onChange={setBlocMinPaymentDueDay} min={1} max={28} step={1} />
+            <NumberInput label="Due day" value={blocMinPaymentDueDay} onChange={setBlocMinPaymentDueDay} min={1} max={28} step={1} save="leave" />
             <span className={styles.fieldHint}>Strike's default is the 15th.</span>
           </div>
           <div className={styles.setupFieldGroup}>
-            <NumberInput label="Amount Drawn" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />
+            <NumberInput label="Amount Drawn" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} save="button" />
             <span className={styles.fieldHint}>Current outstanding BLOC draw balance.</span>
           </div>
           <div className={styles.setupFieldGroup}>
@@ -817,6 +814,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
               min={0}
               step={0.001}
               decimals={8}                   // sat precision — the live total is a sum, so never show float noise
+              save="button"
             />
             <span className={styles.fieldHint}>{coldAsOfLine(coldStorageBtcAsOf, coldMovesSince)}</span>
             <span className={styles.fieldHint}>{COLD_HOW}</span>
@@ -875,13 +873,13 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             <>
               {/* Run 4 (D3) — no payment strategy: the plan of record repays Coinbase (the support policy), and the
                   crash-day thresholds below — the Emergency Console's — apply to every Coinbase loan. */}
-              <NumberInput label="Loan balance"   value={cbLoanBalance}   onChange={setCbLoanBalance}   prefix="$" min={0} step={1000} />
+              <NumberInput label="Loan balance"   value={cbLoanBalance}   onChange={setCbLoanBalance}   prefix="$" min={0} step={1000} save="button" />
               <div className={styles.setupFieldGroup}>
-                <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
+                <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} save="button" />
                 <span className={styles.fieldHint}>BTC pledged to your Coinbase/Morpho loan.</span>
               </div>
               <div className={styles.setupFieldGroup}>
-                <NumberInput label="APR"             value={cbAprPct}           onChange={setCbAprPct}           min={0} step={0.01} />
+                <NumberInput label="APR"             value={cbAprPct}           onChange={setCbAprPct}           min={0} step={0.01} save="leave" />
                 {morphoRate.borrowApy !== null ? (
                   <>
                     <span className={styles.fieldHint}>
@@ -918,7 +916,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                   <span className={styles.fieldHint}>Add-collateral shapes logging and guidance only for now.</span>
                 )}
               </div>
-              <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} max={85} step={1} />
+              <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} max={85} step={1} save="leave" />
               <NumberInput
                 label={cbLtvAction === 'addCollateral' ? 'Reduce to LTV' : 'Pay down to LTV'}
                 value={cbLtvTargetPct}
@@ -926,6 +924,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                 min={0}
                 max={85}
                 step={1}
+                save="leave"
               />
               {/* Run 3 — the rotate-back level left with its last reader (the Advisor's refill, off every screen). */}
               {!(cbLtvTargetPct < cbLtvTriggerPct && cbLtvTriggerPct < 86) && (
@@ -934,7 +933,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                 </span>
               )}
               <div className={styles.setupFieldGroup}>
-                <NumberInput label="Liquidation price" value={cbLiquidationPrice} onChange={setCbLiquidationPrice} prefix="$" min={0} step={100} />
+                <NumberInput label="Liquidation price" value={cbLiquidationPrice} onChange={setCbLiquidationPrice} prefix="$" min={0} step={100} save="button" />
                 <span className={styles.fieldHint}>Enter the exact figure Coinbase shows in your Loan Center.</span>
                 {(() => {
                   const implied = cbCollateralBtc > 0 ? cbLoanBalance / (cbCollateralBtc * CB_LLTV) : 0;

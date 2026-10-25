@@ -518,9 +518,10 @@ anchor. The `DayEvent` deposit/withdraw `target` widened to `'strike' | 'cb' | '
   - Residual (same as strike): `updateDayEvent` bumps ts, so editing a same-day pre-anchor move makes it count.
 - **Paired setter:** `setColdStorageBtc(v)` is ONE `emitPlanSets([[coldStorageBtc, v], [coldStorageBtcAsOf, Date.now()]])`
   — one ts, so the pair cannot tear. `v` is the owner's cold TOTAL now; re-entering it IS the reconciliation.
-- 🔴 **The Settings field binds the LIVE total, never the anchor.** `NumberInput.commit()` calls `onChange` on every
-  blur with no equality check. An anchor-bound field would therefore re-stamp on a mere focus-and-leave and silently
-  erase every cold move since. Bound to the live total, an unchanged blur is idempotent. It uses `decimals={8}`,
+- 🔴 **The Settings field binds the LIVE total, never the anchor.** A saved total re-anchors it — the reconciliation — so
+  the field must show what the owner holds: bound to the anchor, re-entering the figure it showed would erase every cold
+  move since. It saves on its Save or Enter only (`save="button"`, BL35) — never as it is typed or on a mere click (BL34;
+  before it every blur re-saved the shown total, dated now, and the owner's stray click re-dated it). It uses `decimals={8}`,
   because the total is a sum. Since BL33 it sits in its own COLD STORAGE group on Settings → Strike Strategy, after the
   Strike BLOC's and never behind `hasCbLoan` — "Total in cold storage", named for a screen reader (`NumberInput`'s
   `ariaLabel`); its words are `coldStorageView.ts`'s.

@@ -22,6 +22,9 @@ import styles from './EdgeBackGesture.module.css';
  *
  * ⚠ Tap forwarding: the left 20px must never be a dead strip — a sub-slop tap on the zone is re-dispatched
  * to the underlying content via `document.elementFromPoint`.
+ *
+ * ⚠ It blurs the focused field before it navigates — a committed swipe, or a tap it forwards (BL34–BL35, F1). React
+ * runs no onBlur for a field it unmounts, so a typed plan setting would leave unsaved.
  */
 
 export interface EdgeBackGestureProps {
@@ -49,6 +52,11 @@ export function EdgeBackGesture({ onBack, renderUnder, disabled, children }: Edg
   reducedRef.current = reduced;
 
   const width = () => wrapRef.current?.clientWidth ?? 0;
+  // BL34–BL35 (F1) — leave the page as a tap on "← Back" does: blur the focused field first, so its own rule runs (a
+  // typed plan setting saves; a held 'button' figure goes with the page). React runs no onBlur for a field it unmounts,
+  // and neither a touch swipe nor this zone's forwarded tap — a click dispatched at pointerup, before any mouse event —
+  // moves focus off it.
+  const blurFocused = () => (document.activeElement as HTMLElement | null)?.blur();
 
   const setPage = (tx: number, transition: string) => {
     const el = pageRef.current;
@@ -82,6 +90,7 @@ export function EdgeBackGesture({ onBack, renderUnder, disabled, children }: Edg
         if (zone) {
           const x = downRef.current.x + dx, y = downRef.current.y + dy;
           zone.style.pointerEvents = 'none';
+          blurFocused();
           try { (document.elementFromPoint(x, y) as HTMLElement | null)?.click(); }
           finally { zone.style.pointerEvents = ''; }
         }
@@ -90,6 +99,7 @@ export function EdgeBackGesture({ onBack, renderUnder, disabled, children }: Edg
       }
       const doBack = committed && dx > 0;
       if (doBack) {
+        blurFocused();
         if (reducedRef.current) { onBack(); setDragging(false); return; }
         setPage(width(), 'transform var(--motion-standard) var(--ease-standard)');
         paintUnder(1);

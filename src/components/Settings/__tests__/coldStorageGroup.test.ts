@@ -65,10 +65,10 @@ describe('⭐ COLD GROUP — its own group on the Strike Strategy page, bound to
   });
 
   it('⭐ COLD FIELD — NumberInput names its input only when asked (every other field renders as before)', () => {
-    const named = renderToStaticMarkup(createElement(NumberInput, { value: 0.5, onChange: () => {}, label: COLD_FIELD_LABEL, ariaLabel: COLD_FIELD_LABEL, decimals: 8 }));
+    const named = renderToStaticMarkup(createElement(NumberInput, { value: 0.5, onChange: () => {}, save: 'button', label: COLD_FIELD_LABEL, ariaLabel: COLD_FIELD_LABEL, decimals: 8 }));
     expect(named).toMatch(/<input [^>]*aria-label="Total in cold storage"/);
     expect(named).toContain('value="0.50000000"');
-    const plain = renderToStaticMarkup(createElement(NumberInput, { value: 0.5, onChange: () => {}, label: COLD_FIELD_LABEL }));
+    const plain = renderToStaticMarkup(createElement(NumberInput, { value: 0.5, onChange: () => {}, save: 'button', label: COLD_FIELD_LABEL }));
     expect(plain).not.toContain('aria-label');
   });
 

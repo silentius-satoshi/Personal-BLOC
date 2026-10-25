@@ -238,6 +238,7 @@ export function MiningInputsPanel() {
               step={1000}
               prefix="$"
               label="BTC Price Override"
+              save="live"
             />
           ) : (
             <div className={styles.livePriceNote}>

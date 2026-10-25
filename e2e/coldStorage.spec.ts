@@ -35,9 +35,9 @@ test.describe('cold storage — BL33', () => {
     await expect(field, 'GROUP the live total').toHaveValue('0.60000000');
     await expect(page.getByText('Entered 2026-10-05, plus 1 move since.', { exact: true }), 'GROUP what it is made of').toBeVisible();
 
-    // ENTER — a new total, dated today; the move before it is inside it now
+    // ENTER — a new total, saved by Enter (BL35: the field's Save, or Enter), dated today; the move before it is inside it now
     await field.fill('0.75');
-    await field.blur();
+    await field.press('Enter');
     await expect(field, 'ENTER the total').toHaveValue('0.75000000');
     await expect(page.getByText('Entered 2026-10-12.', { exact: true }), 'ENTER re-dated').toBeVisible();
 

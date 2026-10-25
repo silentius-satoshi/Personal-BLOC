@@ -66,6 +66,7 @@ export function CoinbaseLoanSidebar() {
           max={5000000}
           step={1000}
           prefix="$"
+          save="leave"
         />
         {lastUpdated && btcPriceMode === 'live' && <div className={styles.note}>Live — just updated</div>}
       </div>
@@ -82,6 +83,7 @@ export function CoinbaseLoanSidebar() {
           prefix="$"
           min={0}
           step={500}
+          save="button"
         />
       </div>
 
@@ -94,6 +96,7 @@ export function CoinbaseLoanSidebar() {
           decimals={0}
           min={0}
           step={1000}
+          save="button"
         />
         <p className={styles.hint}>Enter the exact figure Coinbase shows in your Loan Center.</p>
         {(() => {
@@ -117,6 +120,7 @@ export function CoinbaseLoanSidebar() {
           decimals={5}
           min={0.001}
           step={0.00001}
+          save="button"
         />
       </div>
 
@@ -129,6 +133,7 @@ export function CoinbaseLoanSidebar() {
           decimals={2}
           min={0}
           step={0.01}
+          save="leave"
         />
         <p className={styles.hint}>Variable — Morpho market rate</p>
       </div>

@@ -36,7 +36,8 @@ Collateral input reads `getCollateralForTier(activeTier, expenses, btcPrice, san
 `sandboxBtc = sandboxCollateralBtc ?? getCurrentBtcHeld()` — the Smart BLOC tab is a SANDBOX
 (what-if collateral, in-memory, no write-back; see Dated Collateral Model). Editing auto-switches to
 Custom tier. `advisorActualBtcHeld` is the month-0 BASELINE only (formerly `customCollateral`,
-removed in store v6); the real position is edited in Settings/Advisor via `adjustCurrentCollateral`.
+removed in store v6); the real position is edited in Settings/Advisor via their Strike collateral fields, whose
+Save logs a balance reading (`emitBalanceReading({ strikeCollateral })`; v20, BL35).
 
 **`SettingsDropdown` retired** (the header's gear-icon mini-panel, a pre-Settings-era relic duplicating
 the BLOC APR field) — BLOC APR editing is now single-homed in Settings → Strike Strategy.

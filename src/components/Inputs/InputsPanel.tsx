@@ -147,6 +147,7 @@ export function InputsPanel() {
             max={500000}
             step={100}
             prefix="$"
+            save="leave"
           />
           <NumberInput
             label="Monthly Expenses"
@@ -156,6 +157,7 @@ export function InputsPanel() {
             max={200000}
             step={100}
             prefix="$"
+            save="leave"
           />
           <div className={styles.btcPriceRow}>
             <div className={styles.btcPriceLabelRow}>
@@ -197,6 +199,7 @@ export function InputsPanel() {
               max={5000000}
               step={1000}
               prefix="$"
+              save="leave"
             />
             {lastUpdated && btcPriceMode === 'live' && <div className={styles.note}>Live — just updated</div>}
           </div>
@@ -207,6 +210,7 @@ export function InputsPanel() {
             prefix="$"
             min={0}
             step={500}
+            save="leave"
           />
           <NumberInput
             label="Collateral (BTC)"
@@ -219,6 +223,7 @@ export function InputsPanel() {
             step={0.001}
             prefix="₿"
             subtext="What-if only — your real position lives in Settings"
+            save="live"
           />
         </div>
       </div>

@@ -1307,7 +1307,17 @@ src/
       SliderInput.tsx           # Stacked: label → value → slider → min/max
       NumberInput.tsx           # prefix/suffix/decimals props (avoid suffix inside input). BL33: + `ariaLabel?` — the
                                 # input's accessible name (the visible label is a span, not a <label>); absent, nothing
-                                # renders (Settings' "Total in cold storage" passes it)
+                                # renders (Settings' "Total in cold storage" passes it). BL34–BL35: `save` (required) —
+                                # 'button' ("Save — dated today" and Cancel under the field while it holds typing), 'leave'
+                                # or 'live'; leaving, Enter and Save commit through numberCommit; `typed` (state) gates it
+      NumberInput.module.css    # BL35: + .inputWrapHeld (an amber edge while a 'button' field holds typing), .saveRow,
+                                # .saveBtn, .cancelBtn
+      numberInputModel.ts       # BL34–BL35 (F-2c-1) — NumberInput's save rules, PURE: `NumberSave`, `numberCommit`
+                                # (nothing unless typed; clamped to [min, max]; never the figure the field shows — a dated
+                                # 'button' field's re-entry aside), `keystrokeWrite` (only 'live' saves as typed),
+                                # `leaveCommits` ('button' keeps its typing), `SAVE_DATED`, `fmtNumberField`. A click in
+                                # and out re-dated a dated figure. Pinned by numberInputModel.test.ts (SITES: every
+                                # field's mode) + e2e/numberField.spec.ts
       Toggle.tsx
       PassphraseInput.tsx       # R2c-7a-2-polish — THE masked-entry widget (+ .module.css). A controlled input +
                                 # focus-guarded Show/Hide toggle, adopted at ALL 16 RENDERED masked fields:
@@ -1447,6 +1457,10 @@ src/
                                 # onBack immediately. a11y: zone aria-hidden (the visible ← Back button is the accessible
                                 # path). MOUNTS ONLY on AppShell Branch H/I (simple-mode Settings/Almanac ← Back surfaces),
                                 # NEVER on an auth/viewer gate, onboarding, or the full-mode shell (grep-proven: 2 sites).
+                                # BL34–BL35 (F1): blurFocused() before a committed swipe's onBack() and before a forwarded
+                                # tap's click — React runs no onBlur for a field it unmounts, and neither moves focus, so
+                                # a typed plan setting (or the goal) would go unsaved. Pinned: numberInputModel.test.ts
+                                # GESTURE + e2e/numberFieldSwipe.spec.ts.
                                 # EdgeBackGesture.module.css alongside (.wrap overflow-x:clip, .under, .dim, .page, .zone).
       SwipeStrip.module.css     # .viewport (overflow hidden, touch-action pan-y) + .strip (300%, flex) + .pane (1/3)
       Snackbar.tsx              # Gesture & Motion System P2 — transient bottom toast (portal, above safe-area,
@@ -2024,7 +2038,7 @@ src/
                                 # on readingComplete + (setBalance || amount>0); soft amber >100% LTV hint (non-blocking).
                                 # 5d: a buy adds "Dollars spent (incl. fee)" under "Bitcoin bought" — $0.00 until a BTC amount is typed,
                                 # then buyUsdGuess, following the BTC until the owner changes the figure (typed only when it differs from
-                                # what the field shows: a blur re-emits it); the edit shows the stored dollars and keeps them
+                                # what the field shows; since BL34 leaving no longer re-emits it); the edit shows the stored dollars and keeps them
                                 # (rebuildEditedBuy — never re-priced; a figure logged before 5d is stored to the cent); Save needs
                                 # dollars above zero; the implied price under the field ("≈ $102,880.00 per ₿ · today $100,000.00").
                                 # ALL NumberInputs pass min={0} (NumberInput only clamps negatives when min is given) +
@@ -2070,8 +2084,8 @@ src/
                                 # emits [buy, deposit target:'strike' amount=buy, reading]. buildEventsFromSheet gains a
                                 # currentStrikeCollateral arg (= getCurrentBtcHeld()). EventSheet.module.css alongside (+ .deleteBtn/.confirmBox/.confirmText)
                                 # ⚠ PAST-DATED ADD (provisional-clears-on-reading-spec-v1, 3b): readingCollateralPolicy(isPast,
-                                # current) → the field is HIDDEN (not blank — NumberInput renders null as "0" and a stray blur
-                                # would STATE 0), not required, and the builder gets fallback null → the reading OMITS
+                                # current) → the field is HIDDEN (not blank — NumberInput renders null as "0", and a figure typed
+                                # there would be stamped on the past date), not required, and the builder gets fallback null → the reading OMITS
                                 # strikeCollateral. The only figure the sheet knows is TODAY's: stamping it on a past date is
                                 # the app inferring history, and a past reading that becomes the latest-dated anchor makes
                                 # deriveStrikeCollateral count every later Strike move twice. Today + every edit unchanged. A

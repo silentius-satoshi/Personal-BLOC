@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
@@ -48,9 +47,6 @@ export function AdvisorSidebar() {
   const planRules = planRuleRows(planPolicySettingsOf(usePlanPolicy()), expenses);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
-  // Reality edit — commit on blur only (draft keeps the reading from churning while typing). v20: editing emits a
-  // journaled balanceReading carrying strikeCollateral → the seam re-anchors getCurrentBtcHeld.
-  const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
   const ndpBalance    = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;
@@ -116,29 +112,27 @@ export function AdvisorSidebar() {
           prefix="$"
           min={0}
           step={100}
+          save="button"
         />
         {/* Run 3 — the plan of record starts from this balance; the Advisor's projection, which started from the log's last
             month, left with runAdvisor, and its start line with it. */}
         <p className={styles.hint}>Check your Strike app</p>
       </div>
 
-      <div
-        className={styles.section}
-        onBlur={() => {
-          if (btcHeldDraft !== null && btcHeldDraft !== currentBtcHeld) emitBalanceReading({ strikeCollateral: btcHeldDraft });
-          setBtcHeldDraft(null);
-        }}
-      >
+      {/* Reality edit — BL35: its Save (a 'button' field) emits ONE journaled balanceReading carrying strikeCollateral,
+          which re-anchors getCurrentBtcHeld (v20). A click, or typing, emits nothing (numberCommit). */}
+      <div className={styles.section}>
         <span className={styles.label}>CURRENT BTC HELD</span>
         <NumberInput
-          value={btcHeldDraft ?? currentBtcHeld}
-          onChange={setBtcHeldDraft}
+          value={currentBtcHeld}
+          onChange={(v) => emitBalanceReading({ strikeCollateral: v })}
           prefix="₿"
           min={0}
           step={0.001}
+          save="button"
         />
         <p className={styles.hint}>
-          Your current BTC in Strike — edits log a balance reading that re-anchors your collateral
+          Your current BTC in Strike — saving it logs a balance reading that re-anchors your collateral
         </p>
       </div>
 

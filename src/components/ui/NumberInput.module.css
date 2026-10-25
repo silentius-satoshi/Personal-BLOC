@@ -24,6 +24,12 @@
   border-color: var(--border-focus);
 }
 
+/* BL35 — a 'button' field holding typing for Save: an amber edge (focused or not), and its two buttons under it. */
+.inputWrap.inputWrapHeld,
+.inputWrap.inputWrapHeld:focus-within {
+  border-color: var(--amber);
+}
+
 .prefix {
   padding: 0 8px;
   font-size: 12px;
@@ -62,4 +68,31 @@
   font-size: 9px;
   color: var(--green);
   letter-spacing: 0.5px;
+}
+
+.saveRow {
+  display: flex;
+  gap: 8px;
+}
+
+.saveBtn {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bg-base);
+  background: var(--green);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cancelBtn {
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
 }

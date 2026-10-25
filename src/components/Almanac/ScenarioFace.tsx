@@ -118,6 +118,7 @@ export default function ScenarioFace() {
               min={0}
               value={overlay[l.key] ?? currentInputs[l.key]}
               onChange={(v) => setOverlay((o) => ({ ...o, [l.key]: v }))}
+              save="live"
             />
           ))}
         </div>

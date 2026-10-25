@@ -41,7 +41,8 @@ describe('setColdStorageBtc — the paired anchor', () => {
     useStore.setState({ coldStorageBtc: 1, coldStorageBtcAsOf: T0 } as never);
     useStore.getState().addDayEvent(coldMove('deposit', 0.25, T0 + 1_000));
     expect(useStore.getState().getCurrentColdBtc()).toBeCloseTo(1.25, 12);
-    // What the Settings field does on blur: commit the value it displays (the live total).
+    // What re-entering the figure the Settings field shows, then Save, does: commit the live total (BL34–BL35: a mere click
+    // commits nothing).
     useStore.getState().setColdStorageBtc(useStore.getState().getCurrentColdBtc());
     expect(useStore.getState().getCurrentColdBtc()).toBeCloseTo(1.25, 12);
   });

@@ -551,6 +551,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
             min={0}
             prefix={amountPrefix}
             decimals={amountDecimals}
+            save="live"
           />
         )}
 
@@ -561,12 +562,13 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
             <NumberInput
               label="Dollars spent (incl. fee)"
               value={buyUsd ?? 0}
-              onChange={(v) => { if (v !== (buyUsd ?? 0)) { setBuyUsd(v); setBuyUsdTouched(true); } }}   // vs what it SHOWS: a stray blur re-emits it
+              onChange={(v) => { if (v !== (buyUsd ?? 0)) { setBuyUsd(v); setBuyUsdTouched(true); } }}   // vs what it SHOWS: a keystroke can land on it
               min={0}
               step={0.01}
               prefix="$"
               decimals={2}
               subtext={buyUsdTouched || buyUsd === null ? undefined : "at today's price — change it to what you paid"}
+              save="live"
             />
             {buyImplied !== null && (
               <div className={styles.readout} data-testid="buy-implied-price">
@@ -676,6 +678,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
                   onChange={setCbLiqPrice}
                   min={0}
                   prefix="$"
+                  save="live"
                 />
               </>
             ) : effectiveTarget === 'cold' ? (
@@ -770,8 +773,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
                 Past date — current balances optional. Skip if you don&apos;t have them; this month is marked provisional until a reading is logged.
               </div>
             )}
-            <NumberInput label="Strike BLOC balance" value={strikeBal ?? 0} onChange={setStrikeBal} min={0} prefix="$" />
-            <NumberInput label="Strike LTV" value={strikeLtv ?? 0} onChange={setStrikeLtv} min={0} suffix="%" />
+            <NumberInput label="Strike BLOC balance" value={strikeBal ?? 0} onChange={setStrikeBal} min={0} prefix="$" save="live" />
+            <NumberInput label="Strike LTV" value={strikeLtv ?? 0} onChange={setStrikeLtv} min={0} suffix="%" save="live" />
             {strikeLtvWarn && <span className={styles.warn}>Strike LTV over 100% — double-check the value.</span>}
             {collPolicy.required ? (
               <NumberInput
@@ -781,24 +784,26 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
                 min={0}
                 prefix="₿"
                 decimals={8}
+                save="live"
               />
             ) : (
-              // Hidden, not blank: NumberInput renders null as "0" and a stray focus/blur would STATE 0 collateral.
+              // Hidden, not blank: NumberInput renders null as "0", and a figure typed there would be stamped on the past
+              // date (since BL34 an untouched focus-and-leave saves nothing).
               <div className={styles.note}>
                 Strike collateral isn&apos;t recorded for a past date — this sheet only knows today&apos;s figure.
               </div>
             )}
             {showCbReading && (
               <>
-                <NumberInput label="Coinbase loan balance" value={cbBal ?? 0} onChange={setCbBal} min={0} prefix="$" />
+                <NumberInput label="Coinbase loan balance" value={cbBal ?? 0} onChange={setCbBal} min={0} prefix="$" save="live" />
                 {/* PRE-EXISTING defect, made detectable (not fixed): this field is pre-filled from the LAST reading, and
                     saving it unedited re-anchors that old balance under today's date. A Coinbase borrow/paydown logged
                     since the last CB reading proves it's stale. Pre-save by nature — saving ANY CB-bearing reading
                     becomes the new anchor. Never gates Save; never writes the field (no deriveCbDebt). */}
                 {!isEdit && staleCbNote && <div className={styles.warnNote}>{staleCbNote}</div>}
-                <NumberInput label="Coinbase LTV" value={cbLtv ?? 0} onChange={setCbLtv} min={0} suffix="%" />
+                <NumberInput label="Coinbase LTV" value={cbLtv ?? 0} onChange={setCbLtv} min={0} suffix="%" save="live" />
                 {cbLtvWarn && <span className={styles.warn}>Coinbase LTV over 100% — double-check the value.</span>}
-                <NumberInput label="Coinbase collateral (BTC)" value={cbCollateral ?? 0} onChange={setCbCollateral} min={0} prefix="₿" decimals={8} />
+                <NumberInput label="Coinbase collateral (BTC)" value={cbCollateral ?? 0} onChange={setCbCollateral} min={0} prefix="₿" decimals={8} save="live" />
                 {/* §5b — optional liq price on a reading (collateral moves have their own liq field → hidden here).
                     Blank/0 (untouched) keeps the current anchor + its freshness; a value re-anchors to the reading's date. */}
                 {type !== 'collateral' && (
@@ -809,6 +814,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
                     min={0}
                     prefix="$"
                     subtext={cbLiquidationPrice > 0 ? `last: ${fmtUSDCents(cbLiquidationPrice)} — leave blank to keep it` : 'leave blank to keep the current value'}
+                    save="live"
                   />
                 )}
               </>

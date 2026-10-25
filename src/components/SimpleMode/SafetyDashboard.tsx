@@ -211,11 +211,11 @@ export function SafetyDashboard({ moveBringsCbWithin = false }: SafetyDashboardP
             <span className={styles.editHint}>
               {strikeView === 'capacity' ? 'Adjust your drawn balance & approved credit line.' : 'Adjust your drawn balance & liquidation LTV.'}
             </span>
-            <NumberInput label="BLOC balance" value={draftStrikeBal} onChange={setDraftStrikeBal} prefix="$" min={0} step={100} />
+            <NumberInput label="BLOC balance" value={draftStrikeBal} onChange={setDraftStrikeBal} prefix="$" min={0} step={100} save="live" />
             {strikeView === 'capacity' ? (
-              <NumberInput label="Credit line" value={draftCreditLine} onChange={setDraftCreditLine} prefix="$" min={0} step={1000} />
+              <NumberInput label="Credit line" value={draftCreditLine} onChange={setDraftCreditLine} prefix="$" min={0} step={1000} save="live" />
             ) : (
-              <NumberInput label="Liquidation LTV" value={draftLiqLtv} onChange={setDraftLiqLtv} suffix="%" min={0} max={100} step={1} />
+              <NumberInput label="Liquidation LTV" value={draftLiqLtv} onChange={setDraftLiqLtv} suffix="%" min={0} max={100} step={1} save="live" />
             )}
             <div className={styles.editBtns}>
               <button className={styles.saveBtn} onClick={saveStrike}>Save</button>
@@ -304,8 +304,8 @@ export function SafetyDashboard({ moveBringsCbWithin = false }: SafetyDashboardP
               </div>
             </div>
             <span className={styles.editHint}>Read both from your Coinbase Loan Center, then save.</span>
-            <NumberInput label="CB loan balance" value={draftBal} onChange={setDraftBal} prefix="$" min={0} step={100} />
-            <NumberInput label="Liquidation price (Coinbase)" value={draftLiq} onChange={setDraftLiq} prefix="$" min={0} step={1000} />
+            <NumberInput label="CB loan balance" value={draftBal} onChange={setDraftBal} prefix="$" min={0} step={100} save="live" />
+            <NumberInput label="Liquidation price (Coinbase)" value={draftLiq} onChange={setDraftLiq} prefix="$" min={0} step={1000} save="live" />
             {morphoRate.borrowApy !== null ? (
               <>
                 <span className={styles.editHint}>

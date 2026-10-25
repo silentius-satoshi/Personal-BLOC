@@ -1605,6 +1605,42 @@ goes red.)
     total, re-dated), NET (Your plan reads it in net coins today), FACES (one card on each of the four faces; the Decision
     card leaves the total to its strip; the rules folded) · `goal.spec.ts` (3): + NOW (the goal group first; net coins
     today with and without a goal), RULES (the fold and the stand-down's phrase) and the AT reading.
+- **BL34–BL35 — a number field saves only what the owner typed, when he says so** (spec `pbloc-spec-batch-1-v1` v0.18
+  §2.2d, batch 1 build 2d — F-2c-1, with the plan review's F1; the reviewer's prototype v3, applied byte for byte; one new
+  unit file and two new e2e specs; `coldStorage.test.ts` (a comment), `coldStorageGroup.test.ts` (NumberInput's new `save`
+  prop) and `coldStorage.spec.ts` (Enter saves the total) changed; the suite 2,902 → 2,913 (+6 skipped), 189 → 190 files;
+  e2e 98 → 110 (+2 skipped). One shared component's rules and the swipe-back's blur: no store, sync or figure change. 28
+  planted bugs — 12 in the rules, 10 in the wiring, 4 in the fields, 2 in the swipe-back — each an exact-once edit, red at
+  its listed unit tests (and, for 23 of them, at the e2e), the files restored and md5-checked:
+  `Claude outputs/batch-1/build-2d-mutations-v3.json` and `build-2d-report.md`):
+  - `src/components/ui/__tests__/numberInputModel.test.ts` (11, new; SYNTHETIC round figures; no DOM harness renders a
+    focus or a blur, so the rules are pure and their wiring is read off the source): ⭐ UNTOUCHED (a click in and out saves
+    nothing — at sat precision, past the shown decimals, a stored figure outside the range, a dated field) · ⭐ SYNCED · ⭐
+    TYPED (saved, clamped, to its decimals) · ⭐ ONCE (a figure the field shows isn't saved again; unreadable text saves
+    nothing) · ⭐ DATED (a dated field's re-entry saves — its save dates it; "Save — dated today") · ⭐ MODES (only a live
+    field saves as typed; a button field keeps its typing when left) · ⭐ WIRING (`save` required; the rule; a held figure;
+    typing marks the field, focus clears it unless held; leaving, Enter, Save and Cancel; a sync never overwrites a held
+    figure; two writers, no third) · ⭐ SITES ×3 (all 45 fields, by file and in order — 11 button, 15 leave, 19 live; every
+    file that renders one; Strike's two collateral fields emit the saved figure; a dated figure or a reading has its Save
+    button, a plan setting is never live) · ⭐ GESTURE (`EdgeBackGesture` blurs the focused field before a committed
+    swipe's `onBack()` and before its forwarded tap's click — F1).
+  - e2e: `numberField.spec.ts` (8, new; hermetic — round synthetic figures, prices aborted or stubbed, a fixed day; every
+    assertion tagged; all eight red on `8ee997a`'s NumberInput, and the last five on build 2d's first cut): COINBASE (a
+    click into the balance, the collateral and the liquidation price and out saves and logs nothing, holds nothing for
+    Save, and the Dashboard keeps both figures' interest — on `8ee997a` it went from ~$70,731 and $50,522 to ~$70,006 and
+    $50,004, and the collateral logged a reading) · COLD (the cold total keeps its date and its move) · PRICE (the live
+    price stays live) · BUTTON (a typed balance saves nothing as typed or when left, is held through a second focus, saves
+    once on Save, dated today) · JOURNAL (Cancel restores and logs nothing; Coinbase's collateral logs one reading, on
+    Save — none per keystroke) · STRIKE (Strike's collateral logs one balance reading, on Save) · LEAVE (a plan setting
+    saves once, on leaving; no Save button; a typed negative saves as 0) · DATED (an unchanged liquidation price,
+    re-entered and saved by Enter, is dated today).
+  - e2e: `numberFieldSwipe.spec.ts` (4, new; a real touch stream — CDP touch events, since a mouse drag's mousedown blurs
+    the field itself; hermetic, every assertion tagged; the first three red on `8ee997a`'s `EdgeBackGesture`): SWIPE (a
+    typed plan setting saves once when the page is swiped away) · TAP (… and when a tap on the 20px strip leaves through
+    "← Back") · GOAL (the goal field too) · HELD (a typed dated figure is dropped with the page, as designed — nothing
+    saved, no Save left over).
+  - `coldStorage.spec.ts` (1): ENTER saves the total by Enter (a Save field). `coldStorageGroup.test.ts` (6): its two
+    renders pass `save`. `coldStorage.test.ts`: one comment. Counts unchanged.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s

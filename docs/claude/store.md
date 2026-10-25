@@ -297,8 +297,8 @@ current    = (last.btcHeld ?? baseline) + pendingCollateralAdjustment   // ⚠ R
 
 | Surface | Role |
 |---|---|
-| Settings "Current BTC collateral" | REALITY — editable (C-P3): draft/onBlur → `emitBalanceReading({ strikeCollateral })` (a journaled reading re-anchors `getCurrentBtcHeld`; `strikeBal` defaults to the live drawn balance). (The read-only "Initial BTC collateral" line was REMOVED in spec v3 — it fed nothing and could not be corrected.) |
-| Advisor "CURRENT BTC HELD" | REALITY — same draft/onBlur → `emitBalanceReading({ strikeCollateral })` (C-P3) |
+| Settings "Current BTC collateral" | REALITY — editable (C-P3): a `save="button"` field (BL35) — its Save, or Enter, emits ONE `emitBalanceReading({ strikeCollateral })` (a journaled reading re-anchors `getCurrentBtcHeld`; `strikeBal` defaults to the live drawn balance); typing, or a click in and out, emits nothing. (The read-only "Initial BTC collateral" line was REMOVED in spec v3 — it fed nothing and could not be corrected.) |
+| Advisor "CURRENT BTC HELD" | REALITY — the same: a `save="button"` field whose Save emits ONE `emitBalanceReading({ strikeCollateral })` (C-P3, BL35) |
 | Simple Mode Quick Setup "BTC held" | REALITY — editable `ModalField` (C-P3); `handleSaveSetup` keeps `emitBalanceReading({ strikeBal })` for the debt field and MERGES `strikeCollateral` into that SAME emission only when the collateral changed (never two emissions) |
 | Simple Mode displays (and the Liq Sim, until the plan of record's Run 4 deleted it) | REALITY — `getCurrentBtcHeld` = reading-anchored `deriveStrikeCollateral` |
 | Smart BLOC tab (InputsPanel, TierCards, MonthBreakdown, useSimulation) | SANDBOX — `sandboxCollateralBtc ?? current`, ephemeral, no write-back |
