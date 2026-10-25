@@ -505,10 +505,10 @@ export function coldOriginsParts(sim: Pick<CyclingResult,
 }
 
 /**
- * The cold card's "moves" sentence — ONE definition for the Cycling and Strategy faces; the caller supplies the date
- * label ("Oct 2029" / "at month 37"). With a reserve, cold is there from month 0, so "First coins move …" would be false:
- * the sentence speaks of NEW coins (the sweep's first month). Without one each face keeps its own words — it passes its
- * no-reserve "nothing moves" sentence, byte-identical to before.
+ * The cold card's "moves" sentence — ONE definition, called by coldCardView alone (BL33: the four engine faces' one
+ * card); each face supplies its date label ("Oct 2029" / "at month 37"). With a reserve, cold is there from month 0, so
+ * "First coins move …" would be false: the sentence speaks of NEW coins (the sweep's first month). With no reserve and
+ * nothing moving it returns `noneWithoutReserve` — the card passes NOTHING_MOVES_TO_COLD, one sentence for the four faces.
  */
 export function coldMovesSentence(firstColdLabel: string | null, reserve: boolean, noneWithoutReserve: string): string {
   if (firstColdLabel !== null) {
@@ -534,11 +534,12 @@ export function seedLine(openingBtc: number, openingColdBtc: number, openingDebt
 
 /**
  * The Cycling cold card's line when the policy is OFF and the sweep is OFF but the owner holds cold (only then does the
- * card show with the sweep off). Nothing new moves to cold, yet a defense can still draw the reserve: the Coinbase
+ * card show with the sweep off). BL33: the card's moves line above it already says nothing new moves ("No new coins move
+ * to cold on this path."), so this says only what that line can't — a defense can still draw the reserve: the Coinbase
  * top-up when the stop is hit and, while the Strike cap is on, the Strike top-up when the cap is hit.
  */
 export function sweepOffReserveNote(strikeCapOn: boolean): string {
-  return 'Sweep off: nothing new moves to cold. A defense can still draw on your reserve if the Coinbase stop'
+  return 'With the sweep off, a defense can still draw on your reserve if the Coinbase stop'
     + `${strikeCapOn ? ' or the Strike cap' : ''} is hit.`;
 }
 

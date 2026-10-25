@@ -159,6 +159,8 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   path; null with none. The CB card's sub-line — here and on the owner's Dashboard — adds `cbAtSupportLine`: whole
   dollars on the trusted path, no price on the safe one, nothing from an older snapshot — and, since Run 4.1 (BL29),
   "over" or "within" in words, by the level: the snapshot's `cbAtSupportLevel`, the owner's verdict, on the safe path.)
+  Beside the seam, BL33's **`useNetCoinsToday(safety)`** — net coins today on the seam's TRUSTED figures only (null on
+  the safe path): the goal tile's one reading, which Settings → Your plan reads too (§ BL14 below).
 - **Owner "Preview as viewer" (`viewerPreview`, transient/NEVER persisted — partialize-stripped, so the app
   can't boot into preview):** the trigger sets `viewerPreview`; AppShell's owner simple-mode branch (J) renders
   `<ViewerPreview/>` instead of the Dashboard/Daily/Monthly fork. **Owner IA — the trigger RELOCATED** from the
@@ -297,27 +299,36 @@ and the faces' words: `almanac.md` § BL14.
   `atGoalOf`), the bar's fill 0..1 (never over full), and the tile read aloud. `null` with no goal or with net coins that
   can't be read. Its figures go through `goalPair` / `netBtcText` (a figure under the goal never prints as the goal; a
   sign before the ₿). 🔴 It never names a plan move — what the plan does at the goal is THIS MONTH's to say — and it has no
-  colour verdict: reaching a goal is not a risk level. `GOAL_TILE_TITLE` = "Your goal".
+  colour verdict: reaching a goal is not a risk level. `GOAL_TILE_TITLE` = "Your goal". BL33: + `goalNowView(net, goal)`
+  — Settings → Your plan's reading beside the goal field: with a goal it IS the tile's view; with none, net coins alone
+  ("₿1.800", "net coins today", no bar; a dust debt never prints "-0.000"); `null` when net coins can't be read.
 - **`src/components/Viewer/GoalTile.tsx`** (+ `.module.css`) — pure-from-props: the title, the value, a bar (no width
   transition, the VenueBar / RadialGauge iOS ghost-raster rule) and the sub-line, as `role="group"` with the aria label.
   The card shell is the gauge cards' and the ownership bar's; tokens only (`--btc` for the figure and the fill).
 - **The gate (`ViewerHomeView`):** `s.mode === 'trusted' && f && goal !== null` — the owner's Dashboard and a TRUSTED
   viewer's, never a safe viewer's (the safe snapshot carries no amount and no goal), and only with a goal set (read
   through `planGoalOf`). "Preview as viewer" shows each the same way: a safe preview has no tile, a trusted one has the
-  owner's.
+  owner's. Since BL33 the three conditions are split, unchanged: `useNetCoinsToday(s)` returns null unless
+  `safety.mode === 'trusted' && f`, and `goalTileView(netToday, goal)` is null without a goal — the tile reads the
+  screen's own `s`, so every mode draws as before, the owner preview's included.
 - **The figure: net coins TODAY, the plan's own definition** (`simulation/goal`'s `netCoinsBtc`), at the live price
   (`btcPrice`): Strike's coins (`getCurrentBtcHeld()`) + Coinbase's AS THE PLAN COUNTS THEM (`planCbCollateralOf` — none
   with the Coinbase loan switched off, D-R2-4; never the venue bar's `venueCbBtc`) + cold (`getCurrentColdBtc()`), less
   Strike's balance (`f.strike.balance`) and Coinbase's ACCRUED balance (`f.cb.balance`, 0 with no loan) — each the read
   THIS MONTH's run makes, so the two agree. THIS MONTH's figure reads the month's decision (a month of Coinbase's interest
   later), so with a loan open it sits a little under the tile's: ₿0.497 against ₿0.500 on the e2e's seed — "this month"
-  on one, "today" on the other.
+  on one, "today" on the other. Since BL33 the figure is read in ONE place, `useNetCoinsToday` (exported beside
+  `useViewerSafety`; `netCoinsBtc` is called once in the file): the tile reads it, and Settings → Your plan reads the same
+  hook on `useViewerSafety(null)` — the owner Dashboard's own mount (AppShell's `previewSafeSnap={null}`). The two
+  readings can differ only by Coinbase's interest accrued between their renders (`accruedCbBalance` reads the clock).
 - **Viewers (G2-A):** the goal rides the trusted snapshot's settings like the plan's six (`VIEWER_SETTINGS_FIELDS` takes
   it; `VIEWER_SNAPSHOT_STRIP` unchanged), and a trusted viewer's tile is drawn from what that viewer already reads. The
   safe snapshot's fixed key list is unchanged (`viewerSnapshot.test.ts`).
 - Tests: `src/components/Viewer/__tests__/goalTile.test.tsx` (3 — the words, nothing to show, and the tile rendered with
-  `renderToStaticMarkup`); `planRunWiring.test.ts` GOAL (the gate, the reads); `e2e/goal.spec.ts` TILE (the figure and
-  the share on the owner's Dashboard; no tile without a goal).
+  `renderToStaticMarkup`; BL33: 6, + GOAL NOW ×3 — with a goal the tile's view, net coins alone without one, nothing
+  when net coins can't be read); `planRunWiring.test.ts` GOAL (the gate, the reads — since BL33 in the hook, one
+  `netCoinsBtc` call, and Settings reads the same hook); `e2e/goal.spec.ts` TILE (the figure and the share on the owner's
+  Dashboard; no tile without a goal; BL33: NOW, RULES and the AT reading in Settings → Your plan).
 
 ---
 

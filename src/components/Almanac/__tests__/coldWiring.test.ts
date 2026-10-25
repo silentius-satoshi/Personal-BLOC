@@ -57,12 +57,16 @@ describe('the cold card never renders its buffer slider at 0%', () => {
   it.each(['CyclingFace.tsx', 'UnifiedFace.tsx'] as const)(
     '⭐ %s: "Keep me safe down to" sits behind coldBufferPct > 0', (face) => {
       const src = readAlmanac(face);
-      const at = src.indexOf('label="Keep me safe down to"');
-      expect(at, `${face}: the slider`).toBeGreaterThan(0);
-      // From the cold block's policy/no-policy fork to the slider: the sweep-on gate must sit in between.
-      const fork = src.lastIndexOf('applied ? (', at);
-      expect(fork, `${face}: the applied fork before the slider`).toBeGreaterThan(0);
-      expect(src.slice(fork, at)).toMatch(/coldBufferPct\s*>\s*0\s*(?:\?|&&)/);
+      // BL33 — the slider is the face's own child of the shared cold card, rendered only with the policy off.
+      const card = src.slice(src.indexOf('<ColdStorageCard'), src.indexOf('</ColdStorageCard>'));
+      expect(card.length, `${face}: the card`).toBeGreaterThan(0);
+      const at = card.indexOf('label="Keep me safe down to"');
+      expect(at, `${face}: the slider, inside the card`).toBeGreaterThan(0);
+      expect(src.indexOf('label="Keep me safe down to"'), `${face}: one slider`).toBe(src.lastIndexOf('label="Keep me safe down to"'));
+      // From the card's policy-off fork to the slider: the sweep-on gate must sit in between.
+      const fork = card.lastIndexOf('{!applied && (', at);
+      expect(fork, `${face}: the policy-off fork before the slider`).toBeGreaterThan(0);
+      expect(card.slice(fork, at)).toMatch(/coldBufferPct\s*>\s*0\s*(?:\?|&&)/);
     },
   );
 });

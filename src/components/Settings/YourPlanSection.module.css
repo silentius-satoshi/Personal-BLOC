@@ -28,3 +28,69 @@
   line-height: 1.5;
   color: var(--amber);
 }
+
+/* BL33 — where you stand: the Dashboard tile's figure, bar and line, without its card (Settings' groups are flat). */
+.now {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 320px;
+}
+
+.nowValue {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--btc);
+  font-variant-numeric: tabular-nums;
+}
+
+.nowBar {
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.nowFill {
+  height: 100%;
+  background: var(--btc);
+}
+
+.nowSub {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* BL33 — "What happens at your goal": the rules, one fact a line, folded (THIS MONTH's "Why this plan?" pattern);
+   opened, they read muted, never the faint of a hint. */
+.rules {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.rules > summary {
+  cursor: pointer;
+  list-style: none;
+  width: fit-content;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.rules > summary::-webkit-details-marker { display: none; }
+.rules > summary::after { content: ' ›'; }
+.rules[open] > summary::after { content: ' ‹'; }
+
+.rules > summary:focus-visible {
+  outline: 1px solid var(--border-focus);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.rules > ul {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

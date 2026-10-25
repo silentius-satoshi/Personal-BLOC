@@ -39,6 +39,8 @@ import {
 } from './supportPolicyView';
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
+import { ColdStorageCard } from './ColdStorageCard';
+import { coldCardView } from './coldCardView';
 import { usePlanPolicy } from './usePlanPolicy';
 import { planGoalOf } from '../../lib/planGoal';
 import ControlDock, { type DockPanel } from './ControlDock';
@@ -385,6 +387,12 @@ export default function OwnershipFace() {
   const applied = sim.policyApplied;
   const reading = policyReading(sim, monthIdx, expenses);
   const alert = policyAlert(reading, policySettings);
+  // BL33 — the cold-storage card, the four faces' ONE view, in this face's month labels. This face has no sweep controls:
+  // with the policy off, its run sweeps at the default buffer (DEFAULT_COLD_BUFFER_PCT).
+  const coldView = coldCardView(sim, policySettings, coldBufferPct, {
+    end: `month ${sim.last.m}`,
+    firstCold: sim.firstColdMonth === null ? null : `at month ${sim.firstColdMonth}`,
+  });
   // Policy v2, Run B (B5) — with the policy off, the month the month-end reading hides a seizure on the way down.
   const openPastNote = openPastLltvNote(sim);
   // A month the policy did not borrow in, and why (null in a drawing month, month 0, or with no bills).
@@ -857,6 +865,10 @@ export default function OwnershipFace() {
               );
             })()}
           </section>
+
+          {/* BL33 — COLD STORAGE, the four engine faces' ONE card: where the venue split's cold ends up by the run's end,
+              where it came from, when new coins first move, and, while the support policy applies, its rules folded. */}
+          <ColdStorageCard view={coldView} />
 
           {/* ── CHART — each series a DIRECT child; never wrap conditional chart children in fragments
               (recharts walks its children to find series and silently renders an empty grid). */}

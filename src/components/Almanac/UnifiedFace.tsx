@@ -24,17 +24,19 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote, minimumPaidNote,
-  OPENING_CASH_FLOW_NOTE, coldMovesSentence, seedLine, defendedFromSub, collateralMovedFlag, openPastLltvNote,
+  OPENING_CASH_FLOW_NOTE, seedLine, defendedFromSub, collateralMovedFlag, openPastLltvNote,
   msYearLabel, MS_TABLE, MS_VIEWS_STRATEGY,
 } from './cyclingFaceView';
 import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
-  policyUnpaidNote, neverDrawsNote, drawPauseClause, policyTileSub, defenseLineNote, policyColdNote, policyReserveNote,
-  coldShown, shownUsd, shownBtc, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, policyCardState, type SupportPolicySettings,
+  policyUnpaidNote, neverDrawsNote, drawPauseClause, policyTileSub, defenseLineNote,
+  coldShown, shownUsd, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, policyCardState, type SupportPolicySettings,
 } from './supportPolicyView';
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
+import { ColdStorageCard } from './ColdStorageCard';
+import { coldCardView } from './coldCardView';
 import { usePlanPolicy } from './usePlanPolicy';
 import { planGoalOf } from '../../lib/planGoal';
 import ControlDock, { type DockPanel } from './ControlDock';
@@ -378,6 +380,11 @@ export default function UnifiedFace() {
   const belowSupport = isBelowSupport(selRow.price, supportAtMonth);
   const surviveMult = surviveFairMultiple(selRow.price, plBandAt('fair', startDate, monthIdx), coldBufferPct);
   const coldDeeperThanRecord = coldBeyondRecord(selRow.price, supportAtMonth, coldBufferPct);
+  // BL33 — the cold-storage card, the four faces' ONE view, in this face's month labels.
+  const coldView = coldCardView(sim, policySettings, coldBufferPct, {
+    end: `month ${sim.last.m}`,
+    firstCold: sim.firstColdMonth === null ? null : `at month ${sim.firstColdMonth}`,
+  });
 
   const feeFraction = refinanceFeeFraction(sim.totalCbFees, sim.totalRefinancedUsd);
   const feeBreakEvenMonths = refinanceBreakEvenMonths(feeFraction, s.blocApr, s.cbAprPct);
@@ -683,51 +690,40 @@ export default function UnifiedFace() {
             </button>
           </div>
         </div>
-
-        {/* Cold storage — the knob is a PRICE; the fair-value translation rides along so the buffer can
-            never be read as more precise than it is (the engine docblock's rule). While the support policy applies
-            its own sweep decides what goes to cold, so the buffer, its fair-value text and the toggle are hidden. */}
-        <div className={styles.capBlock}>
-          <div className={styles.scrubHead}>
-            <span className={styles.cardLabel}>Cold storage</span>
-            <span className={styles.scrubValue}>
-              {coldShown(coldBufferPct, sim) ? `${sim.totalColdBtc.toFixed(3)} ₿ in custody` : 'off'}
-            </span>
-          </div>
-          {applied ? (
-            <p className={styles.noteQuiet}>
-              {policyColdNote(policySettings, sim.goalNetBtc)}
-              {policyReserveNote(sim)}
-              {coldMovesSentence(sim.firstColdMonth === null ? null : `at month ${sim.firstColdMonth}`,
-                shownBtc(sim.openingColdBtc), ' Nothing moves to cold on this path.')}
-            </p>
-          ) : (
-            <>
-              {coldBufferPct > 0 && (
-                <>
-                  <SliderInput label="Keep me safe down to" value={coldBufferPct}
-                    onChange={(v) => set('coldStoreBufferPct', v)} min={5} max={80} step={1}
-                    display={fmtUSD(coldSurvivePrice(selRow.price, coldBufferPct))} minLabel="closer" maxLabel="deeper" />
-                  <p className={styles.noteQuiet}>
-                    {coldBufferPct}% below the modeled {fmtUSD(selRow.price)} at month {monthIdx} — down to{' '}
-                    {(surviveMult * 100).toFixed(1)}% of fair ({(surviveMult / (PL_A_FLOOR / PL_A_FAIR)).toFixed(2)}× the
-                    fitted floor).
-                    {coldDeeperThanRecord && ' That is deeper than any bottom ever recorded.'}
-                  </p>
-                </>
-              )}
-              <div className={styles.presetRow}>
-                <button type="button" className={styles.ghostBtn}
-                  onClick={() => set('coldStoreBufferPct', coldBufferPct > 0 ? 0 : DEFAULT_COLD_BUFFER_PCT)}>
-                  {coldBufferPct > 0 ? 'Turn sweep off' : 'Sweep to cold storage'}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
       </section>
 
-      {/* The Support policy card — the ONE addition to this summary face (the summary-not-union rule holds). */}
+      {/* BL33 — COLD STORAGE, the four engine faces' ONE card (ColdStorageCard), out of the strategy card into its own, as on
+          Cycling: the outcome, where it came from, when new coins first move, and, while the support policy applies,
+          its rules folded. With the policy off the sweep's knob is a PRICE and its fair-value translation rides along,
+          so the buffer can never be read as more precise than it is (the engine docblock's rule). */}
+      <ColdStorageCard view={coldView}>
+        {!applied && (
+          <>
+            {coldBufferPct > 0 && (
+              <>
+                <SliderInput label="Keep me safe down to" value={coldBufferPct}
+                  onChange={(v) => set('coldStoreBufferPct', v)} min={5} max={80} step={1}
+                  display={fmtUSD(coldSurvivePrice(selRow.price, coldBufferPct))} minLabel="closer" maxLabel="deeper" />
+                <p className={styles.noteQuiet}>
+                  {coldBufferPct}% below the modeled {fmtUSD(selRow.price)} at month {monthIdx} — down to{' '}
+                  {(surviveMult * 100).toFixed(1)}% of fair ({(surviveMult / (PL_A_FLOOR / PL_A_FAIR)).toFixed(2)}× the
+                  fitted floor).
+                  {coldDeeperThanRecord && ' That is deeper than any bottom ever recorded.'}
+                </p>
+              </>
+            )}
+            <div className={styles.presetRow}>
+              <button type="button" className={styles.ghostBtn}
+                onClick={() => set('coldStoreBufferPct', coldBufferPct > 0 ? 0 : DEFAULT_COLD_BUFFER_PCT)}>
+                {coldBufferPct > 0 ? 'Turn sweep off' : 'Sweep to cold storage'}
+              </button>
+            </div>
+          </>
+        )}
+      </ColdStorageCard>
+
+      {/* The Support policy card — the ONE addition to this summary face (the summary-not-union rule holds: BL33's cold
+          card above is the strategy card's own cold block, moved out, not an addition). */}
       <SupportPolicyCard
         sim={sim} monthIdx={monthIdx} raw={policyRaw} settings={policySettings}
         onChange={setPolicy} onReset={resetPolicy} mode={mode} expenses={s.expenses}

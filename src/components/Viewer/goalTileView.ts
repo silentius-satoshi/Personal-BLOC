@@ -37,3 +37,31 @@ export function goalTileView(net: number | null, goal: number | null): GoalTileV
       + `${reached ? ' — at or past it' : ` — ${pct}%`}.`,
   };
 }
+
+/** BL33 — Settings → Your plan's reading beside the goal field: the tile's view, or net coins alone with no bar. */
+export interface GoalNowView {
+  value: string;
+  sub: string;
+  /** The bar's fill, 0..1 — `null` with no goal: nothing to measure against, so no bar. */
+  fill: number | null;
+  aria: string;
+}
+
+/**
+ * BL33 — the goal section's reading in Settings → Your plan. With a goal it IS the tile's view (`goalTileView`), so the
+ * Dashboard and Settings say the same thing in the same words; with none, net coins today alone — what a goal would be
+ * measured against. `null` when net coins can't be read. Like the tile, it never names a plan move.
+ */
+export function goalNowView(net: number | null, goal: number | null): GoalNowView | null {
+  if (net === null || !Number.isFinite(net)) return null;
+  const tile = goalTileView(net, goal);
+  if (tile !== null) return tile;
+  const raw = net.toFixed(3);
+  const figure = raw === '-0.000' ? '0.000' : raw;   // a dust debt never reads as a negative zero
+  return {
+    value: netBtcText(figure),
+    sub: 'net coins today',
+    fill: null,
+    aria: `Net coins today: ${figure.startsWith('-') ? `minus ${figure.slice(1)}` : figure} bitcoin.`,
+  };
+}

@@ -12,7 +12,7 @@ import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { STRIKE_LINE_MIN_USD, STRIKE_LINE_MAX_USD } from '../../simulation/strikeCredit';
 import { placementPlan, suggestedLineUsd, type PlacementInput } from '../../simulation/placement';
 import {
-  PLAN_ENGINE_CONTEXT, placementInputOf, engineInputsOf, planCbCollateralOf, planCbLoanBalanceOf,
+  PLAN_ENGINE_CONTEXT, PLAN_COLD_BUFFER_PCT, placementInputOf, engineInputsOf, planCbCollateralOf, planCbLoanBalanceOf,
 } from './planRun';
 import { evaluatePaths, worstCasePath, sameSeries } from '../../simulation/planSearch';
 import { usePowerLawData } from '../../hooks/usePowerLawData';
@@ -40,6 +40,8 @@ import {
   type DecisionPath, type LineAction, type MoveTone,
 } from './decisionView';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
+import { ColdStorageCard } from './ColdStorageCard';
+import { coldCardView } from './coldCardView';
 import { usePlanPolicy } from './usePlanPolicy';
 import { planGoalOf } from '../../lib/planGoal';
 import ControlDock, { type DockPanel } from './ControlDock';
@@ -612,6 +614,12 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
 
   // ── The outcome strip — read off the displayed run.
   const tiles = outcomeTiles(planOutcome(sim), verdictVsNeverDraw(sim, 'cycle'), verdictBasisClause(sim), sim.last.m);
+  // BL33 — the cold-storage card, the four faces' ONE view, in this face's month labels; the run sweeps at the plan's
+  // buffer (engineInputsOf), the plan of record's own.
+  const coldView = coldCardView(sim, policySettings, PLAN_COLD_BUFFER_PCT, {
+    end: `month ${sim.last.m}`,
+    firstCold: sim.firstColdMonth === null ? null : `at month ${sim.firstColdMonth}`,
+  });
 
   // ── The path note.
   const bandsToday = useMemo(() => plBandsAt(startDate), [startDate]);
@@ -852,6 +860,10 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
           </div>
         ))}
       </div>
+
+      {/* 5a · COLD STORAGE (BL33) — the four engine faces' ONE card, under the strip whose first tile is its total (so the
+          card doesn't repeat it): where the cold came from, when new coins first move, and the policy's rules, folded. */}
+      <ColdStorageCard view={coldView} showTotal={false} />
 
       {/* 6 · WHAT-IF — every control a session overlay; changing any of them clears an engaged stress. */}
       <section className={styles.card}>

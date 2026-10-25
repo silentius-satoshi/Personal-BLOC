@@ -1440,20 +1440,26 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
     outranks either in a defended month); the Strategy
     disclaimer's modelled-call sentence; the Strike range's accessible name follows its visible label
     (`aria-label={applied ? 'Strike defense line' : 'Strike LTV cap'}`, all three faces).
-  - **Cold card:** the buffer slider, its fair-value text, Cycling's InfoTip and the sweep toggle hide;
-    `policyColdNote` + the first-coins month show. The Cold column and the cold chart series gate on `coldShown`.
+  - **Cold card:** the buffer slider, its fair-value text, Cycling's InfoTip and the sweep toggle hide; the policy's
+    rules and the first-coins month show — since BL33 (§ BL33) ONE card on the four engine faces, its rules folded, one
+    a line: `policyColdNote` (the rule), `policyColdGoalNote` (the stand-down, with the run's goal), `policyReserveNote`.
+    The Cold column and the cold chart series gate on `coldShown`.
   - **Cold card with the owner's reserve (real-cold spec v1)** — every rule a tested helper, every sentence true of its run:
     - `coldShown` also opens for a reserve (`shownBtc(openingColdBtc)`), policy and sweep off included.
     - `shownBtc` / **`DISPLAY_DUST_BTC` (0.0005)** is THE display floor for a BTC figure the cold card prints (3 dp): a
       residue that rounds to 0.000 reads as none. ⚠ Not `DUST_BTC` — supportPolicy.ts has a private `DUST_BTC = 1e-12`.
-    - Headline "… ₿ **in** your own custody by {end}" (was "into" — false once cold is there at month 0); Strategy's
-      value "… ₿ **in** custody".
+    - Headline "… ₿ **in** your own custody by {end}" (was "into" — false once cold is there at month 0) — since BL33 the
+      four faces' one card's: Strategy's old "… ₿ in custody" value went with its in-card block, and the Decision card
+      leaves the total to its outcome strip.
     - The split line is `coldOriginsParts(sim)`: `C ₿ you hold today` (reserve, iff `shownBtc`) · `X ₿ from Coinbase` ·
       `Y ₿ from Strike` · `− R ₿ used to defend the loans` (iff `shownBtc(R)`; every retrieval — CB top-up, Strike
       top-up, Strike cure — so never "retrieved for the top-up"). The signed parts foot with the cold ledger.
     - `coldMovesSentence(label, reserve, noneWithoutReserve)`: with a reserve " New coins first move {label}." / " No new
-      coins move to cold on this path."; without one each face keeps its own sentence byte-identical.
-    - `policyReserveNote(sim)` (policy on, after `policyColdNote`): " Your reserve is spent only in a break below support,
+      coins move to cold on this path."; without one " First coins move {label}." or the caller's sentence — since BL33
+      one for the four faces, `NOTHING_MOVES_TO_COLD` (" Nothing moves to cold on this path.", Strategy's; Cycling's
+      "… the honest answer for a while" is retired). Its one caller is `coldCardView`.
+    - `policyReserveNote(sim)` (policy on — since BL33 its own line in the card's rules, after the rule and the goal's):
+      " Your reserve is spent only in a break below support,
       and never on a loan that can't be saved." — the second clause is DROPPED when cold went into Coinbase in ANY
       month up to and including the one it was liquidated in
       (`rows.slice(0, liqMonth + 1).some((r) => r.topUpFromColdBtc > 0)`), and the whole sentence is omitted when
@@ -1463,9 +1469,11 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       on the way down at month 2 — shows it). It errs one way only: the pool is fungible, so cold swept back out before
       the liquidation still drops the clause.
     - Cycling, policy off: the "Keep me safe down to" slider + its sentence sit behind `coldBufferPct > 0`; with the sweep
-      off and a reserve, `sweepOffReserveNote(strikeCapEff > 0)` — "Sweep off: nothing new moves to cold. A defense can
-      still draw on your reserve if the Coinbase stop[ or the Strike cap] is hit." (the Strike cap's top-up draws it
-      too). Strategy is a summary face: no sweep-off line (its slider was already gated).
+      off and a reserve, `sweepOffReserveNote(strikeCapEff > 0)` — "With the sweep off, a defense can still draw on your
+      reserve if the Coinbase stop[ or the Strike cap] is hit." (the Strike cap's top-up draws it too). BL33: it no longer
+      says "nothing new moves to cold" — the card's moves line right above it ("No new coins move to cold on this path.")
+      says that (ONCE). Since BL33 the slider, its sentence, this note and the sweep toggle (now last) are the face's own
+      children of the shared card. Strategy is a summary face: no sweep-off line (its slider was already gated).
   - **Charts:** a dashed "Policy limit" series (`policyLimitPct` / `cbLimit`) as a DIRECT recharts child, in the colour
     of the Coinbase line it bounds ON THAT CHART — `--btc` on Cycling, `--coinbase` on Strategy and Ownership (a
     comment at each site; don't "unify" them). Policy v2 Run B (B2): the red dotted "Coinbase seizes" series on all three
@@ -1933,8 +1941,8 @@ plan's goal amount → "The stand-down". At the goal with both loans repaid — 
 Strike or Coinbase: every coin goes to cold storage. ONE phrase says so everywhere, `GOAL_STAND_DOWN_WORDS`
 (`supportPolicyView.ts`): "the plan keeps nothing on Strike or Coinbase: every coin goes to cold storage". Every new
 sentence but the cold card's reads the stand-down itself — THE MOVE's `standDown` or the row's `goalStandDown`, never
-the dollars shown — so with no goal every sentence is as before. The cold card's sentence reads the run's goal: with a
-loan still open it is there too, saying what happens once both loans are repaid.
+the dollars shown — so with no goal every sentence is as before. The cold card's stand-down line (`policyColdGoalNote`
+since BL33) reads the run's goal: with a loan still open it is there too, saying what happens once both loans are repaid.
 
 - **THE MOVE's card at the stand-down** (`moveCard`):
   - the why line — "At your goal with both loans repaid, the plan keeps nothing on Strike or Coinbase: every coin goes to
@@ -1960,9 +1968,11 @@ loan still open it is there too, saying what happens once both loans are repaid.
   nothing on Strike or Coinbase: every coin goes to cold storage." after the goal sentence — from the row's
   `goalStandDown`, never re-derived from the balances it shows: 30¢ still owed rounds to "$0" and is still a loan, so the
   sentence never prints there.
-- **The cold-storage card** (Cycling and Strategy): with a goal the run applied (`sim.goalNetBtc`), `policyColdNote(s,
-  goal)` adds "At your goal with both loans repaid, the plan keeps nothing on Strike or Coinbase: every coin goes to cold
-  storage, at any price."; without one, the words as before.
+- **The cold-storage card** (since BL33 the four engine faces' one card — § BL33): with a goal the run applied
+  (`sim.goalNetBtc`), `policyColdGoalNote(goal)` — the folded rules' second line, after `policyColdNote`'s rule — reads
+  "At your goal with both loans repaid, the plan keeps nothing on Strike or Coinbase: every coin goes to cold storage, at
+  any price."; without one, no such line. (Build 2b wrote it as `policyColdNote(s, goal)`'s second sentence, on Cycling
+  and Strategy.)
 - **δ3 — the Ownership face's limit line** ("Where the position stands"): in a month that stood down with nothing on
   Strike, `strikeLimitTail` (`ownershipFaceView.ts`; the face renders it) reads "Limit is bound by collateral — at your
   goal with both loans repaid, nothing is pledged to Strike." — never "the full line is backed again above $0": no price
@@ -1975,12 +1985,64 @@ loan still open it is there too, saying what happens once both loans are repaid.
   still keeps for it — into Coinbase, perhaps — and month 1, having repaid it, stands down and sweeps those coins to cold.
   THIS MONTH shows both moves, and "Why this plan?" says why the second.
 - **Still open** (neither is false):
-  - ii — the cold card's first sentence keeps "unless the model is treated as broken", and its stand-down sentence says
-    "at any price" but not "broken or not" (it is unconditional);
+  - ii — the cold card's rule line keeps "unless the model is treated as broken", and its stand-down line says "at any
+    price" but not "broken or not" (it is unconditional);
   - iii — THIS MONTH's goal line, in a month that stands down, reads "the plan holds — it borrows and buys nothing" while
     its rows move coins to cold: "hold" is the app's word for no new debt (the hold zone sweeps to cold too).
 - Tests: `goalStandDown.test.ts` (19, new), `goalViews.test.ts` (+11: STAND WORDS ×4, STAND ROWS ×5, STAND LIMIT,
   STAND COLD), `planRunWiring.test.ts` (+1), `planRun.test.ts` (GOAL renamed) — § Test Suite → "BL32 — the stand-down".
+
+#### BL33 — the goal and cold storage sections (batch 1, build 2c; store unchanged, NO bump)
+
+Spec `pbloc-spec-batch-1-v1` v0.13 §2.2c (the owner's ask, BL33). UI and words only: no engine, store, sync or format
+change, and every figure shown is one the app already computes. Settings' goal group: `store.md` § BL14 ("Its one
+editor") and `viewer.md` § BL14 (`useNetCoinsToday`, `goalNowView`); Settings' cold group: `engines.md` § Cold ledger.
+
+- **ONE cold-storage card on the four engine faces** — `ColdStorageCard` (+ `.module.css`, composing Cycling's shell,
+  which Strategy and Decision already compose and Ownership declares identically) from ONE pure view, `coldCardView(sim,
+  settings, coldBufferPct, labels)`, null exactly when `!coldShown(coldBufferPct, sim)` — the card then shows only its
+  label and what the face adds. In order: the total by the run's end ("2.662 ₿" / "in your own custody by {end}"); where
+  it came from (`coldOriginsParts`); when new coins first move (`coldMovesSentence`, `NOTHING_MOVES_TO_COLD` with no
+  reserve); and, only while the policy applies, "How the plan uses cold storage ›", folded (`<details>`, THIS MONTH's
+  "Why this plan?" pattern) — `policyColdNote`, `policyColdGoalNote` (with the goal the run applied), `policyReserveNote`
+  (when non-empty), one a line. Every sentence is an existing one-definition helper's behind its own gates; no face
+  composes one (coldCard COLD FACES pins it). The card is `<section aria-label="Cold storage">`, one region per face.
+- **Each face, from its own displayed run:**
+  - Cycling — where it was, between the venue split and the CB LTV chart, in its date labels
+    (`bandDateLabel(rows.length - 1)`, `bandDateLabel(firstColdMonth)`) at the face's buffer; it adds its InfoTip
+    (`info`) and, with the policy off, the sweep's controls (`children`: the slider behind `coldBufferPct > 0`,
+    `sweepOffReserveNote` with the sweep off and a reserve, the toggle last).
+  - Strategy — out of the Strategy card into its own, after it ("month N" / "at month N"), with the origins line it
+    lacked; the same policy-off controls.
+  - Ownership — new, after "Holdings by venue"; no controls; its buffer is always `DEFAULT_COLD_BUFFER_PCT` (no setter on
+    the face).
+  - Decision — new, under the outcome strip, `showTotal={false}`: the strip's first tile, "In cold storage", is
+    `last.coldBtc`, the run's `totalColdBtc`. Its buffer is the run's, `PLAN_COLD_BUFFER_PCT` (`engineInputsOf`).
+- **What renders differently (none false):**
+  - i — fixed: on Cycling with the policy and the sweep off and a reserve, the card's moves line ("No new coins move to
+    cold on this path.") sits over `sweepOffReserveNote`, which no longer repeats it ("With the sweep off, a defense can
+    still draw on your reserve if …"; ONCE);
+  - ii — Strategy with the policy off now carries the end month, the origins and the moves line, each true of the run
+    (only a sweep or a stand-down sets `firstColdMonth`);
+  - iii — Strategy with the policy off, the sweep off and no reserve: "Cold storage · off" became the card's label above
+    "Sweep to cold storage", as Cycling has always read;
+  - iv — with the policy on the rules are folded, the stand-down line among them (build 2b's look read it open).
+- **Settings → Your plan: the goal first** (`YourPlanSection`'s `GoalGroup`; the menu row reads "Your goal, and the
+  support policy's limits and zones"): the lead (`GOAL_LEAD`), where you stand (`GoalNow` — net coins today in the
+  Dashboard tile's words, `goalNowView` through `useNetCoinsToday` on `useViewerSafety(null)`), the field, and "What
+  happens at your goal ›" folded (`GOAL_RULES`: the bills, spare income, the stand-down's phrase, the way back).
+- **Settings → Strike Strategy: COLD STORAGE, its own group** after the Strike BLOC's, never behind `hasCbLoan` (the
+  menu row adds "cold storage"): "Total in cold storage" (`NumberInput`'s `ariaLabel`) on the LIVE total, written by
+  `setColdStorageBtc` at `decimals={8}`; `coldStorageView`'s words — the lead, `coldAsOfLine` ("Entered <day>, plus N
+  moves since.", the derive's own count; "Not dated yet — enter your total once to date it." for a stamp the derive
+  can't read) and how it changes.
+- **Still open (logged, v0.13):** the clock — the tile's and Settings' readings of net coins differ only by Coinbase's
+  interest accrued between their renders (`accruedCbBalance`); a stamp beyond Date's range would print an invalid date,
+  as before — unreachable, since the one writer stamps `Date.now()`.
+- Tests: `coldCard.test.tsx` (14, new), `coldStorageGroup.test.ts` (6, new), `yourPlanGoal.test.ts` (3 → 6),
+  `goalTile.test.tsx` (3 → 6), `cyclingFaceView.test.ts` (+1, ONCE), `goalViews.test.ts` (STAND COLD), `planRunWiring`
+  (GOAL), `coldWiring`; e2e `coldStorage.spec.ts` (new) and `goal.spec.ts` — § Test Suite → "BL33 — the goal and cold
+  storage sections".
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -2005,7 +2067,9 @@ mismatch would mean two runs crept in (a hand check pins the two against the par
   Strategy card — and the futures readout (Policy v2 — the lenses, R3): `<FuturesCard>` under the tiles and above
   `{lensView === 'position' ? (`, so Position and Flywheel both show it, titled with the CURRENT horizon
   (`futuresTitle(FUTURES_COUNT, months)`; the figures under it may be a run behind). One `useFutures` run feeds the
-  readout and the card's line. Summary-not-union still holds.
+  readout and the card's line. Summary-not-union still holds. BL33: the cold block left the Strategy card for its own
+  card after it (`ColdStorageCard`, § BL33) — the Strategy card's own content moved, not an addition; it gained the
+  origins line.
 - **No fourth copy of any number**: every rule is a tested helper from `cyclingFaceView` / `ownershipFaceView`
   (the B1 rule this repo already paid for once). One convention per behaviour: **Milestone rows jump the
   scrubber** (Ownership's convention) — a dead row on a face that has a scrubber is worse than a live one.

@@ -876,6 +876,9 @@ src/
                                 # printout, and THE MOVE's console clause read it; the face reads no cbPaymentStrategy
                                 # BL32: the placement memo passes goalNetBtc: s.goalNetBtc and depends on it (THE MOVE
                                 # stands down on it)
+                                # BL33: the cold-storage card (ColdStorageCard, from coldCardView) under the outcome
+                                # strip, showTotal={false} — the strip's first tile is its total — at the run's own buffer,
+                                # PLAN_COLD_BUFFER_PCT (engineInputsOf)
       decisionView.ts           # Decision face (Run A) — the SCHEDULE and THE MOVE's copy, pure. ACTION_FIELDS is
                                 # ONE field → action table in the engine's month order (a field added to CyclingRow
                                 # without a row here is a step the printed schedule silently drops; a completeness
@@ -1036,7 +1039,7 @@ src/
                                 # policyAlert; policyStopSentence; billsRemainderTail; DUST_USD / shownUsd (the ONE
                                 # dust floor — defined in utils/format since W1, re-exported here); drawPauseClause; zoneStrip / zoneStripLabel; policyLimitPct; coldShown;
                                 # the card's copy (settingReadouts, policyIgnoredNote, policyTip) and the faces'
-                                # (defenseLineNote, policyTileSub, policyColdNote); the call sentence. Policy v2 Run B
+                                # (defenseLineNote, policyTileSub, policyColdNote, policyColdGoalNote); the call sentence. Policy v2 Run B
                                 # (B1): PolicyReading.cliff (cbSeizurePrice of the inspected row, only under its price)
                                 # → the card's cliff line, right after the Coinbase line; fmtBelowPct — THE F11 wording
                                 # ("less than 1%" / "more than 99%"), shared with THE MOVE. No belief, no
@@ -1049,8 +1052,10 @@ src/
                                 # · planRuleRows(settings, expenses) → { key, label, value }[] — each setting as the plan
                                 # runs it (settingReadouts; a limit held to its defense line shows that line)
                                 # BL32: GOAL_STAND_DOWN_WORDS — the stand-down in words, ONE phrase (THE MOVE's card, the
-                                # cold card, "Why this plan?") · policyColdNote(s, goal = null) — with the run's applied
-                                # goal one more sentence; without one, the words as before
+                                # cold card, "Why this plan?"; since BL33 Settings' goal rules too) · BL33: policyColdNote(s)
+                                # — the cold card's rule alone; policyColdGoalNote(goal) — its stand-down line with the
+                                # run's applied goal, null without one (build 2b had it as policyColdNote(s, goal)'s second
+                                # sentence); the card lists them one a line (coldCardView)
       planClamp.ts              # The plan of record (Run 1) — the plan's ONE clamp: PLAN_CB_LTV_CAP_PCT (70, the
                                 # Coinbase defense line), PLAN_STRIKE_CAP_PCT / PLAN_STRIKE_CAP_EFF (the Strike cap's
                                 # defaults) and PLAN_CLAMP. Since the plan of record's Run 2 the Decision face's aliases
@@ -1175,6 +1180,21 @@ src/
                                 # 'notRun'), never for another strategy ('notCycle', R2); `.futures` / `.futuresStale`
                                 # The plan of record's Run 4: the six sliders' labels are supportPolicyView's
                                 # PLAN_RULE_LABEL — no typed copy (SIX-ONCE)
+      coldCardView.ts           # BL33 — the cold-storage card's words, ONE PURE view for the four engine faces (Cycling,
+                                # Strategy, Ownership, Decision): coldCardView(sim, settings, coldBufferPct, labels) →
+                                # { total, totalSub, parts, moves, rules } | null — null exactly when !coldShown. Every
+                                # sentence an existing one-definition helper's (coldOriginsParts, coldMovesSentence,
+                                # policyColdNote, policyColdGoalNote, policyReserveNote) behind its own gates; the rules only
+                                # while the policy applies. COLD_CARD_TITLE ("Cold storage") · COLD_RULES_TITLE ("How the
+                                # plan uses cold storage") · NOTHING_MOVES_TO_COLD (the four faces' one no-reserve sentence).
+                                # Each face supplies its own time labels. Tested in __tests__/coldCard.test.tsx (COLD VIEW,
+                                # COLD CARD, COLD FACES) and goalViews.test.ts (STAND COLD)
+      ColdStorageCard.tsx       # BL33 — THE cold-storage card (+ .module.css: Cycling's shell, label, headline and origin
+                                # line composed from CyclingFace.module.css; tokens only), pure-from-props: the label, the
+                                # total (showTotal — false on Decision, whose outcome strip carries it), the origins, the
+                                # moves line and, with rules, "How the plan uses cold storage ›" folded (<details>). A face
+                                # adds only its own: `info` (Cycling's InfoTip) and `children` (the policy-off sweep
+                                # controls, Cycling and Strategy). <section aria-label="Cold storage"> — one per face
       ControlDock.tsx           # Sticky controls (Runs 1–2) — THE control dock (+ .module.css, tokens only): a face's
                                 # controls, kept in reach while the face scrolls — on the four engine faces (Decision,
                                 # Cycling, Ownership, Strategy; Run 2 changed nothing in the .tsx). LAYOUT ONLY — the face
@@ -1285,7 +1305,9 @@ src/
 
     ui/
       SliderInput.tsx           # Stacked: label → value → slider → min/max
-      NumberInput.tsx           # prefix/suffix/decimals props (avoid suffix inside input)
+      NumberInput.tsx           # prefix/suffix/decimals props (avoid suffix inside input). BL33: + `ariaLabel?` — the
+                                # input's accessible name (the visible label is a span, not a <label>); absent, nothing
+                                # renders (Settings' "Total in cold storage" passes it)
       Toggle.tsx
       PassphraseInput.tsx       # R2c-7a-2-polish — THE masked-entry widget (+ .module.css). A controlled input +
                                 # focus-guarded Show/Hide toggle, adopted at ALL 16 RENDERED masked fields:
@@ -1477,8 +1499,10 @@ src/
                                 # VIEWER ACCESS (pulled out of the shared Nostr section; topped by the owner's OWN npub
                                 # truncated + "Copy your npub" button — reuses existing npubCopied/npubEncode logic —
                                 # so the owner can hand their npub to the viewer without navigating to Identity);
-                                # strike = BUDGET + STRIKE BLOC
-                                # inputs (+ a READ-ONLY "Strike API · Connected/Not connected" status row at the top of
+                                # strike = BUDGET + STRIKE BLOC + COLD STORAGE (BL33: its own group after STRIKE BLOC,
+                                # never behind hasCbLoan — "Total in cold storage" on the LIVE total, setColdStorageBtc,
+                                # decimals 8, coldStorageView's words; the menu row adds "cold storage") inputs (+ a
+                                # READ-ONLY "Strike API · Connected/Not connected" status row at the top of
                                 # STRIKE BLOC, mirroring the derived strikeApiConnected — no connect/key UI; the Strike
                                 # key is server-side + NIP-98-signed); plan = "Your plan" (the plan of record, Run 1 —
                                 # the 🧭 row between Strike Strategy and Coinbase Loan; the page is YourPlanSection, the
@@ -1532,14 +1556,30 @@ src/
                                 # saved support policy (D2). SupportPolicySliders over the saved plan (usePlanPolicy):
                                 # onChange={setPlanPolicy} onReset={resetPlanPolicy}, resetLabel="Back to the defaults
                                 # (C1)", offSwitch={false}, readouts through effectivePolicySettings(raw, PLAN_CLAMP).
-                                # BL14 (batch 1, build 2): + the GOAL group — GOAL_HINT, and GoalField, the goal's ONE
-                                # editor: "Your goal — net coins", saved on blur or Enter (never per keystroke) through
-                                # parseGoalInput → setPlanGoalNetBtc; after a save it shows what the plan kept (a 5c-refused
-                                # edit snaps back); "No goal" clears it; anything else says GOAL_BAD and changes nothing.
+                                # BL14 (batch 1, build 2): + the GOAL group — its hint (GOAL_HINT until BL33), and GoalField,
+                                # the goal's ONE editor: "Your goal — net coins", saved on blur or Enter (never per
+                                # keystroke) through parseGoalInput → setPlanGoalNetBtc; after a save it shows what the plan
+                                # kept (a 5c-refused edit snaps back); "No goal" clears it; anything else says GOAL_BAD and
+                                # changes nothing. BL33 (build 2c): the GOAL group (GoalGroup) comes FIRST, before the six;
+                                # the hint is GOAL_LEAD (two sentences) + GOAL_RULES folded under GOAL_RULES_TITLE ("What
+                                # happens at your goal", one fact a line — δ-L9's bills and spare income, the stand-down's
+                                # GOAL_STAND_DOWN_WORDS, the way back); GoalNow — net coins today in the Dashboard tile's
+                                # words (goalNowView), read through useNetCoinsToday on useViewerSafety(null), the owner
+                                # Dashboard's own mount, against the SAVED goal. The menu row reads "Your goal, and the
+                                # support policy's limits and zones". Tested in __tests__/yourPlanGoal.test.ts (6)
                                 # Styles come from SettingsMain's module (a `styles` prop), plus — for the goal field —
                                 # its own YourPlanSection.module.css and NumberInput's module. ⚠
                                 # Owner-only: emitPlanSets has no viewer guard, so SettingsMain mounts it (and its row)
                                 # behind !viewerMode — SETTINGS pins both, and that no other file names the setters
+      coldStorageView.ts        # BL33 — Settings → Strike Strategy's COLD STORAGE group as words, PURE: COLD_GROUP_LEAD
+                                # (in your own custody; it counts in your net coins, never in a loan's LTV),
+                                # COLD_FIELD_LABEL ("Total in cold storage"), COLD_HOW (log a move in Daily → Collateral →
+                                # Cold; entering a total dates it today) and coldAsOfLine(asOfMs, movesSince) — "Entered
+                                # <day>, plus N moves since." / "Entered <day>." / "Not dated yet — enter your total once to
+                                # date it." for a stamp the derive can't read (null or non-finite: isAfterColdAnchor's own
+                                # test); N is coldMovesSinceAnchor's, so "since", never "logged since". Never "anchor",
+                                # "journal" or the Almanac's sweep. Tested in __tests__/coldStorageGroup.test.ts (the words,
+                                # and the group's wiring read off SettingsMain's source)
       RevealRecoveryKey.tsx     # Access Phase 2 → R2c-1 — lost-my-backup escape hatch, VIEW-ONLY (+ .module.css).
                                 # Rendered ONLY in the identity subpage for a 'local' signer (leaving the page unmounts →
                                 # discards the material). Tap → PRF Face ID / PIN field → **unwrapRecoveryPayload** (EVERY

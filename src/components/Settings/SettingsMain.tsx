@@ -45,10 +45,11 @@ import { biometricLabel } from '../../lib/biometricLabel';
 import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
-import { fmtUSD, todayLocalISO, toLocalISO } from '../../utils/format';
+import { fmtUSD, todayLocalISO } from '../../utils/format';
 import { coldMovesSinceAnchor } from '../../simulation/logUtils';
 import styles from './SettingsMain.module.css';
 import YourPlanSection from './YourPlanSection';
+import { COLD_GROUP_LEAD, COLD_FIELD_LABEL, COLD_HOW, coldAsOfLine } from './coldStorageView';
 
 // Stable empty-array identity so useRelayStatus opens NO probe sockets unless the Network subpage is actually visible
 // (passing a fresh [] each render would re-key the effect; this keeps the join('') dep stable).
@@ -480,8 +481,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             {!viewerMode && <SettingsRow icon="🔑" title="Identity & Security" subtitle="Nostr login, sync, recovery" onClick={() => setSettingsPage('identity')} styles={styles} alert={backupGated && nostrSigningMethod === 'local'} />}
             {!viewerMode && <SettingsRow icon="💾" title="Backup" subtitle="Download a copy of your plan" onClick={() => setSettingsPage('backup')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="👁" title="Sharing" subtitle="Give someone read-only viewer access" onClick={() => setSettingsPage('sharing')} styles={styles} />}
-            {!viewerMode && <SettingsRow icon="⚡" title="Strike Strategy" subtitle="Budget, BLOC, collateral, start date" onClick={() => setSettingsPage('strike')} styles={styles} />}
-            {!viewerMode && <SettingsRow icon="🧭" title="Your plan" subtitle="The support policy's limits and zones" onClick={() => setSettingsPage('plan')} styles={styles} />}
+            {!viewerMode && <SettingsRow icon="⚡" title="Strike Strategy" subtitle="Budget, BLOC, collateral, start date, cold storage" onClick={() => setSettingsPage('strike')} styles={styles} />}
+            {!viewerMode && <SettingsRow icon="🧭" title="Your plan" subtitle="Your goal, and the support policy's limits and zones" onClick={() => setSettingsPage('plan')} styles={styles} />}
             {!viewerMode && (
               <div
                 className={`${styles.settingsRow} ${!hasCbLoan ? styles.settingsRowDisabled : ''}`}
@@ -750,30 +751,6 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
               </span>
             </div>
           )}
-          {/* Cold storage sits here, beside the Strike collateral field, because it is a HOLDINGS fact —
-              not a Coinbase-loan setting. It is deliberately NOT gated on hasCbLoan: self-custodied coins
-              exist whether or not you have a loan. */}
-          <div className={styles.setupFieldGroup}>
-            <NumberInput
-              label="Cold storage"
-              value={coldStorageLive}
-              onChange={setColdStorageBtc}
-              prefix="₿"
-              min={0}
-              step={0.001}
-              decimals={8}                   // sat precision — the live total is a sum, so never show float noise
-            />
-            <span className={styles.fieldHint}>
-              {coldStorageBtcAsOf !== null
-                ? `Anchored ${toLocalISO(new Date(coldStorageBtcAsOf))}${coldMovesSince > 0 ? ` · ${coldMovesSince} journal move${coldMovesSince === 1 ? '' : 's'} since` : ''}`
-                : 'Not dated yet — re-enter your total once to anchor it.'}
-            </span>
-            <span className={styles.fieldHint}>
-              Your cold total right now — BTC in self-custody, pledged to nobody. Journal moves (Daily → Collateral
-              → Cold) update it; re-entering it re-anchors. Counts toward your holdings and “Where the coins sit”,
-              never any LTV. Separate from the Almanac’s cold-storage sweep, which projects what you could move.
-            </span>
-          </div>
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
 
           {/* §2b — MINIMUM PAYMENT group (source policy + this month's statement figure + due day) */}
@@ -821,6 +798,28 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
               max={todayLocalISO()}
               onChange={(e) => setAdvisorStartDate(e.target.value)}
             />
+          </div>
+        </div>
+
+        {/* BL33 — COLD STORAGE, its own group after the Strike BLOC's: a HOLDINGS fact, neither a Strike setting nor a
+            Coinbase-loan one. Deliberately NOT gated on hasCbLoan: self-custodied coins exist whether or not you have a
+            loan. ⚠ The field is bound to the LIVE total (coldStorageLive, above), never the anchor. */}
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>COLD STORAGE</div>
+          <p className={styles.fieldHint}>{COLD_GROUP_LEAD}</p>
+          <div className={styles.setupFieldGroup}>
+            <NumberInput
+              label={COLD_FIELD_LABEL}
+              ariaLabel={COLD_FIELD_LABEL}
+              value={coldStorageLive}
+              onChange={setColdStorageBtc}
+              prefix="₿"
+              min={0}
+              step={0.001}
+              decimals={8}                   // sat precision — the live total is a sum, so never show float noise
+            />
+            <span className={styles.fieldHint}>{coldAsOfLine(coldStorageBtcAsOf, coldMovesSince)}</span>
+            <span className={styles.fieldHint}>{COLD_HOW}</span>
           </div>
         </div>
       </div>

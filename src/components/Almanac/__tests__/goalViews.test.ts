@@ -14,8 +14,9 @@ import {
 import {
   policyPauseReason, policyReading, policyHeadline, neverDrawsNote, drawPauseClause, policyStopSentence, goalStopWords,
   goalHeadlineTail, effectivePolicySettings, DEFAULT_SUPPORT_POLICY_SETTINGS, ZONE_LABEL, GOAL_BUY_ZONE_LABEL,
-  GOAL_STAND_DOWN_WORDS, policyColdNote,
+  GOAL_STAND_DOWN_WORDS, policyColdNote, policyColdGoalNote,
 } from '../supportPolicyView';
+import { coldCardView } from '../coldCardView';
 import {
   noBillsNote, playbookNote, verdictVsNeverDraw, verdictBasisClause, neverDrawTieHead, KEPT_BASIS_CLAUSE,
   GOAL_REFINANCE_CLAUSE,
@@ -644,10 +645,23 @@ describe('⭐ STAND LIMIT — the Ownership face\'s limit line at a stand-down m
 
 describe('⭐ STAND COLD — the cold-storage card names the stand-down with a goal (BL32)', () => {
   const S = effectivePolicySettings({ ...DEFAULT_SUPPORT_POLICY_SETTINGS }, { cbLtvCapPct: 70, strikeCapEffPct: 60 });
-  it('⭐ STAND COLD — one more sentence with the goal the run applied; without one, the words as before', () => {
-    expect(policyColdNote(S, 2)).toBe(`${policyColdNote(S)} At your goal with both loans repaid, ${GOAL_STAND_DOWN_WORDS}, at any price.`);
-    expect(policyColdNote(S, null)).toBe(policyColdNote(S));
+  it('⭐ STAND COLD — one more line with the goal the run applied; without one, the rules as before', () => {
+    expect(policyColdGoalNote(2)).toBe(`At your goal with both loans repaid, ${GOAL_STAND_DOWN_WORDS}, at any price.`);
+    expect(policyColdGoalNote(null)).toBeNull();
+    // BL33 — the card's rules, one fact a line, from the run's OWN goal (`sim.goalNetBtc`): the policy's rule, then the
+    // stand-down's — never one without the goal.
+    const run = (goal: number | null) => planMonthRun(facts({ goalNetBtc: goal })).sim;
+    const labels = { end: 'month 12', firstCold: null };
+    const withGoal = coldCardView(run(2), S, 30, labels);
+    const without = coldCardView(run(null), S, 30, labels);
+    expect(withGoal?.rules[0], 'STAND COLD the rule first').toBe(policyColdNote(S));
+    expect(withGoal?.rules[1], 'STAND COLD the stand-down second').toBe(policyColdGoalNote(2));
+    expect(without?.rules[0]).toBe(policyColdNote(S));
+    expect(without?.rules.join(' '), 'STAND COLD none without a goal').not.toContain(GOAL_STAND_DOWN_WORDS);
+    // The four faces build the card from their run (the goal rides inside `sim`), through the one view.
     const src = (f: string) => readFileSync(join(process.cwd(), 'src/components/Almanac', f), 'utf8');
-    for (const f of ['CyclingFace.tsx', 'UnifiedFace.tsx']) expect(src(f), f).toContain('{policyColdNote(policySettings, sim.goalNetBtc)}');
+    for (const f of ['CyclingFace.tsx', 'UnifiedFace.tsx', 'OwnershipFace.tsx', 'DecisionFace.tsx']) {
+      expect(src(f), f).toMatch(/const coldView = coldCardView\(sim, policySettings, /);
+    }
   });
 });

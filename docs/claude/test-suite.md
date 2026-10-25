@@ -167,7 +167,7 @@ goes red.)
       `policyIgnoredNote` (exhaustive; ⭐ `'strikeLadder'` reachable at a 70% Strike liquidation LTV);
     - `ZONE_COLOR` / `ZONE_ORDER` / `zoneStripLabel`; ⭐ `settingReadouts`' clamp forms (v1.2 #13) and `payDownPushed`
       (v1.3 #17); ⭐ the effective stop in `policyTileSub` / `defenseLineNote` / `policyTip` (v1.3 #18);
-      `policyColdNote`.
+      `policyColdNote` (since BL33 the rule alone — the goal's line is `policyColdGoalNote`, goalViews STAND COLD).
     - Moved pins: the latched-break headline now states the rule; P6's latched arm reads a reading with
       `rearmRule: null`; the pause-reason parenthesis.
   - `cyclingFaceView.test.ts`:
@@ -241,11 +241,15 @@ goes red.)
     the spent-and-saved FULL case is F4's fixture at k2 0.72). The three
     existing `coldShown` literals gained `openingColdBtc: 0` (type-only — no value moved).
   - `cyclingFaceView.test.ts`: `coldOriginsParts` every shape + ⭐ the footing on an engine run with all four parts;
-    `coldMovesSentence`, `seedLine`, `sweepOffReserveNote`.
+    `coldMovesSentence`, `seedLine`, `sweepOffReserveNote`. BL33: `coldMovesSentence`'s no-reserve case takes the
+    caller's sentence — its two tests retitled, with a neutral fixture in place of Cycling's retired one (the four faces'
+    one sentence is `NOTHING_MOVES_TO_COLD`, coldCard.test.tsx); `sweepOffReserveNote`'s new words, and ⭐ ONCE — it never
+    says "nothing new moves" again (the card's moves line above it does).
   - `resetMirror.test.ts`: ⭐ `openingColdBtc` in the `engineInputs` body, its deps and the lens-reset deps.
   - `coldWiring.test.ts` (new, source-reading): ⭐ the selector reads `getCurrentColdBtc()`; ⭐ `openingBtc` includes the
     reserve; ⭐ no `deriveOwnership` call under `src/components/Almanac/` takes 4 args; ⭐ the "Keep me safe down to"
-    slider sits behind `coldBufferPct > 0` (Cycling, Strategy).
+    slider sits behind `coldBufferPct > 0` (Cycling, Strategy) — since BL33 inside `<ColdStorageCard>`'s policy-off fork
+    (`{!applied && (`), one slider per face.
   - `supportPolicyReport.test.ts` (env-gated): a "Real cold" table (A5 paths + P1/P2 × {0.6, 0.5, 0.4} + the CALL
     fixture × policy off/on × seed 0/0.5) and the P1 × 0.35 doomed-top-up table.
 - **Cold rules — the doom gate ADOPTED, Strike first after a liquidation ADOPTED, C retired** (every ⭐ proven red by a
@@ -1556,7 +1560,9 @@ goes red.)
     Coinbase; a small one "can wait" in both places; "Why this plan?" from the engine's flag — never with a loan open,
     never on a 30¢ loan; no Coinbase loan never "opens one", held or not) · ⭐ STAND LIMIT (δ3 — the Ownership face's
     limit line at a stand-down month; every other month as before; the face renders the helper) · ⭐ STAND COLD (the
-    cold card's sentence with the run's applied goal; the Cycling and Unified faces pass it).
+    cold card's sentence with the run's applied goal; the Cycling and Unified faces pass it — BL33: `policyColdGoalNote`,
+    the rules' second line after the rule, from the run's own goal through `coldCardView`, and the four faces build the
+    card from their run).
   - `planRunWiring.test.ts` 22 → 23: ⭐ GOAL — THE MOVE gets the goal too (the Decision face's placement memo passes it
     and depends on it).
   - Changed: `planRun.test.ts` (15 → 15: ⭐ GOAL renamed "THE MOVE reads the goal only to stand down (BL32)" — the grid
@@ -1565,6 +1571,40 @@ goes red.)
     joins the row kinds — 12,245 → 12,275 runs) · `cyclingSimPolicy.test.ts` (⭐ I22: both engine calls with the flag;
     the flag assigned once) · fixtures only: `safetyAtSupport` (`goalNetBtc: null` ×3), `cyclingFaceView` and
     `ownershipFaceView` (`mkRow`).
+- **BL33 — the goal and cold storage sections** (spec `pbloc-spec-batch-1-v1` v0.13 §2.2c, batch 1 build 2c — the
+  reviewer's prototype v2, applied byte for byte; two new unit files and one new e2e spec; six unit files and one e2e spec
+  changed; the suite 2,875 → 2,902 (+6 skipped), 187 → 189 files; e2e 97 → 98 (+2 skipped). UI and words only: no
+  pre-existing expected figure moved. 42 planted bugs — 13 in the goal section, 11 in Settings' cold group, 18 in the
+  cold card — each an exact-once edit, red at its listed tests (54), the files restored and md5-checked:
+  `Claude outputs/batch-1/build-2c-mutations-v2.json` and `build-2c-report.md`):
+  - `src/components/Almanac/__tests__/coldCard.test.tsx` (14, new; SYNTHETIC round figures): ⭐ COLD VIEW ×7 (the outcome,
+    the origins, the moves and the rules in order; the stand-down line only with the goal the run applied, between the
+    rule and the reserve's; the reserve's line only when true of the run; the policy off — no rules; the moves line's
+    shapes and the one no-reserve sentence; no body when cold can't be non-zero; on the plan's own run the total is the
+    run's cold and the parts foot) · ⭐ COLD CARD ×2 (renders exactly the view, the rules folded one a line; the Decision
+    card leaves its total to the strip, and a bodiless card is the face's own) · ⭐ COLD FACES ×5 (an `it.each` over the
+    four faces — one card, through the one view, with the face's labels and buffer, composing none of the card's
+    sentences, never nested — and where each card sits).
+  - `src/components/Settings/__tests__/coldStorageGroup.test.ts` (6, new; source-reading — no DOM harness renders
+    SettingsMain): ⭐ COLD AS-OF ("Entered <day>, plus N moves since." — never "logged since"; "Not dated yet" for a null
+    or unreadable stamp) · ⭐ COLD WORDS (no "anchor", journal or sweep jargon) · ⭐ COLD GROUP (its own group after the
+    Strike BLOC's, never behind `hasCbLoan`) · ⭐ COLD FIELD ×2 (the live total, `setColdStorageBtc`, `decimals={8}`,
+    named; `NumberInput` names its input only when asked) · ⭐ MENU (the two rows' subtitles).
+  - `yourPlanGoal.test.ts` 3 → 6: GOAL FIELD's words are now `GOAL_LEAD` + `GOAL_RULES` (four, the stand-down's phrase
+    among them) · ⭐ GOAL FIRST · ⭐ GOAL NOW ×2 (the reading is the tile's — the saved goal, `useViewerSafety(null)`,
+    `useNetCoinsToday`, `goalNowView`; `GoalNow` renders exactly the view).
+  - `goalTile.test.tsx` 3 → 6: ⭐ GOAL NOW ×3 (with a goal it IS the tile's view; no goal, net coins alone — no bar, no
+    negative zero; nothing when net coins can't be read).
+  - `cyclingFaceView.test.ts` 135 → 136: ⭐ ONCE (`sweepOffReserveNote` never repeats the card's moves line); its new
+    words, and `coldMovesSentence`'s two retitled tests with a neutral fixture.
+  - Changed, the count unchanged: `goalViews.test.ts` (34: STAND COLD — `policyColdGoalNote`, and the card's rules from the
+    run's own goal through `coldCardView` on all four faces) · `planRunWiring.test.ts` (23: GOAL — the tile's reads and
+    gate in `useNetCoinsToday`, one `netCoinsBtc` call, Settings reads the same hook) · `coldWiring.test.ts` (the slider
+    inside the card's policy-off fork).
+  - e2e: `coldStorage.spec.ts` (1, new): COLD — GROUP (its own group, the live total, what it is made of), ENTER (a new
+    total, re-dated), NET (Your plan reads it in net coins today), FACES (one card on each of the four faces; the Decision
+    card leaves the total to its strip; the rules folded) · `goal.spec.ts` (3): + NOW (the goal group first; net coins
+    today with and without a goal), RULES (the fold and the stand-down's phrase) and the AT reading.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s

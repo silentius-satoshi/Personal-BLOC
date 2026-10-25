@@ -398,7 +398,7 @@ export function deriveColdStorage(dayLog: DayEvent[], anchorBtc: number, anchorM
   return Math.max(0, total);
 }
 
-/** How many cold moves the anchor has not absorbed yet (Settings' "N journal moves since"). Same rule as the derive. */
+/** How many cold moves the anchor has not absorbed yet (Settings' "plus N moves since"). Same rule as the derive. */
 export function coldMovesSinceAnchor(dayLog: DayEvent[], anchorMs: number | null): number {
   return dayLog.filter((e) => isColdMove(e) && isAfterColdAnchor(e, anchorMs)).length;
 }

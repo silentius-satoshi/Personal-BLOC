@@ -2,7 +2,7 @@
 // viewer only. Its words are pure (`goalTileView`); the tile composes nothing. ⚠ SYNTHETIC round figures (public repo).
 import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { goalTileView, GOAL_TILE_TITLE } from '../goalTileView';
+import { goalTileView, goalNowView, GOAL_TILE_TITLE } from '../goalTileView';
 import { GoalTile } from '../GoalTile';
 import { GOAL_EPS } from '../../../simulation/goal';
 
@@ -46,5 +46,32 @@ describe('⭐ GOAL TILE — the words', () => {
     expect(html).toContain('>net coins today · 25%<');
     expect(html).toContain('width:25.0%');
     expect(html).toContain('aria-label="Your goal: 0.500 bitcoin in net coins today, of 2.000 — 25%."');
+  });
+});
+
+describe('⭐ GOAL NOW — Settings → Your plan\'s reading (BL33): the tile\'s view, or net coins alone', () => {
+  it('⭐ GOAL NOW — with a goal it IS the tile\'s view, under, at and past it', () => {
+    for (const [net, goal] of [[0.5, 2], [2, 2], [3, 2], [1.9996, 2], [-0.2, 2], [2 * (1 - GOAL_EPS / 2), 2]] as const) {
+      expect(goalNowView(net, goal), `${net} of ${goal}`).toEqual(goalTileView(net, goal));
+    }
+  });
+
+  it('⭐ GOAL NOW — no goal: net coins today alone, no bar; a dust debt never reads as a negative zero', () => {
+    expect(goalNowView(1.8, null)).toEqual({
+      value: '₿1.800', sub: 'net coins today', fill: null, aria: 'Net coins today: 1.800 bitcoin.',
+    });
+    expect(goalNowView(-0.2, null)).toEqual({
+      value: '−₿0.200', sub: 'net coins today', fill: null, aria: 'Net coins today: minus 0.200 bitcoin.',
+    });
+    expect(goalNowView(-0.0001, null)?.value, 'dust').toBe('₿0.000');
+    expect(goalNowView(-0.0001, null)?.aria, 'dust').toBe('Net coins today: 0.000 bitcoin.');
+    expect(JSON.stringify(goalNowView(1.8, null)), 'never a plan move').not.toMatch(/borrow|buy|repay|hold|plan/i);
+  });
+
+  it('⭐ GOAL NOW — nothing to show when net coins can\'t be read', () => {
+    expect(goalNowView(null, 2)).toBeNull();
+    expect(goalNowView(null, null)).toBeNull();
+    expect(goalNowView(Number.NaN, null)).toBeNull();
+    expect(goalNowView(Number.POSITIVE_INFINITY, 2)).toBeNull();
   });
 });

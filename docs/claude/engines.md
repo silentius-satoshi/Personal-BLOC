@@ -521,7 +521,9 @@ anchor. The `DayEvent` deposit/withdraw `target` widened to `'strike' | 'cb' | '
 - 🔴 **The Settings field binds the LIVE total, never the anchor.** `NumberInput.commit()` calls `onChange` on every
   blur with no equality check. An anchor-bound field would therefore re-stamp on a mere focus-and-leave and silently
   erase every cold move since. Bound to the live total, an unchanged blur is idempotent. It uses `decimals={8}`,
-  because the total is a sum.
+  because the total is a sum. Since BL33 it sits in its own COLD STORAGE group on Settings → Strike Strategy, after the
+  Strike BLOC's and never behind `hasCbLoan` — "Total in cold storage", named for a screen reader (`NumberInput`'s
+  `ariaLabel`); its words are `coldStorageView.ts`'s.
 - 🔴 **Journal-only for the rollup.** `isMonthlyMeaningful` counts a deposit/withdraw ONLY with `target:'strike'`. A
   cold (or cb) move never creates a month, flips a manual month to daily, or reopens a confirmed one (the BUG1 class).
 - **EventSheet:**
@@ -546,7 +548,11 @@ anchor. The `DayEvent` deposit/withdraw `target` widened to `'strike' | 'cb' | '
     (real-cold spec v1 — see "Real cold in the projections" below).
   - The Daily trio card gains a quiet cold footer row — shown when the total is > 0 or any cold move exists, and
     NOT a 4th cell.
-  - Settings shows "Anchored <date> · N journal moves since", or "Not dated yet".
+  - Settings shows what the field's figure is made of (`coldAsOfLine`, BL33): "Entered <date>, plus N moves since." /
+    "Entered <date>." — N is `coldMovesSinceAnchor`, the derive's own count, so "since", never "logged since" (a move
+    logged later but dated before the entry is inside the entered total) — or "Not dated yet — enter your total once to
+    date it." for a stamp the derive can't read (null or non-finite: `isAfterColdAnchor`'s own test, so a NaN stamp no
+    longer prints a date the derive ignores).
   - The Monthly Playbook is unchanged (it is a Strike plan). ⚠ Run 2 (the plan of record): THIS MONTH's card now runs the
     plan, which starts from the real cold reserve (`usePlanMonth` reads `getCurrentColdBtc()`), and its catch-up offers
     "Move ₿X from cold storage to Coinbase" when the reserve covers it.
@@ -564,7 +570,8 @@ itself: `btcHeld`/`coldBtc` +C, `collateralValue`/`equity` +C × price, the verd
   `seedLine`'s empty position (the plan of record's Run 2 — D-R2-4 lets a fresh install with the loan switched off
   reach it): "Seeded from your live plan · nothing held or owed yet", and "… nothing owed" / "nothing held, $Y owed"
   when only one side is empty — never "0.0000 ₿ against $0".
-- **The cold card:** § Support policy — Faces (Run 2) → "Cold card with the owner's reserve".
+- **The cold card:** § Support policy — Faces (Run 2) → "Cold card with the owner's reserve"; since BL33 one card on
+  the four engine faces (`almanac.md` § BL33).
 - ⚠ **Under the support policy the emergency Coinbase top-up IS doom-gated** (the doom gate, adopted 2026-09-27 —
   § LTV defense → "The cold rules below support"): in a month Coinbase cannot survive, the reserve stays out of it. On
   P1 × 0.35 from m12 (a synthetic 0.5 ₿) the pre-adoption order poured the whole reserve into the month-12 top-up and

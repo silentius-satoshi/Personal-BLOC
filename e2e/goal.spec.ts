@@ -4,6 +4,7 @@ import { STORE_VERSION } from './helpers';
 /**
  * BL14 — the plan's goal amount (Batch 1, build 2; spec pbloc-spec-batch-1-v1 §2.2): set in Settings → Your plan; THIS
  * MONTH and Daily print the month's goal line; the Dashboard's tile reads net coins today; "No goal" clears all three.
+ * BL33 (build 2c): Your plan's goal group comes first and reads net coins today in the tile's own words.
  * Hermetic: the round synthetic loan seed — $50,000 on 1 ₿ at a manual $100,000, nothing on Strike, nothing cold — live
  * prices aborted, the price history stubbed, a fixed day. Net coins today: 1 − 50,000 / 100,000 = ₿0.500; this month, after
  * a month of Coinbase interest (6.27%): ₿0.497. Every assertion has a tag.
@@ -53,10 +54,25 @@ test.describe('the goal amount — BL14', () => {
     await openYourPlan(page);
     const field = page.getByLabel('Your goal in net coins');
     await expect(field, 'SET empty by default').toHaveValue('');
+    // NOW (BL33) — the goal group first; with no goal, net coins today alone: 1 − 50,000 / 100,000
+    const goalTop = (await page.getByText('GOAL', { exact: true }).boundingBox())?.y ?? Infinity;
+    const policyTop = (await page.getByText('SUPPORT POLICY', { exact: true }).boundingBox())?.y ?? -Infinity;
+    expect(goalTop, 'NOW the goal group first').toBeLessThan(policyTop);
+    const bare = page.getByRole('group', { name: /^Net coins today:/ });
+    await expect(bare, 'NOW no goal: the figure').toContainText('₿0.500');
+    await expect(bare, 'NOW no goal: the line').toContainText('net coins today');
     await field.fill('2');
     await field.press('Enter');
     await expect(field, 'SET saved').toHaveValue('2');
     await expect(page.getByRole('button', { name: 'No goal' }), 'SET the clear button').toBeVisible();
+    // NOW — the Dashboard tile's reading, in its words
+    const reading = page.getByRole('group', { name: /^Your goal:/ });
+    await expect(reading, 'NOW the figure').toContainText('₿0.500 of ₿2.000');
+    await expect(reading, 'NOW the share').toContainText('net coins today · 25%');
+    // RULES — what happens at the goal, folded; the stand-down in its one phrase
+    await page.getByText('What happens at your goal', { exact: true }).click();
+    await expect(page.getByText('With both loans repaid, the plan keeps nothing on Strike or Coinbase: every coin goes to cold storage.',
+      { exact: true }), 'RULES the stand-down').toBeVisible();
     await leaveSettings(page);
 
     // UNDER — Daily and THIS MONTH: the month's figure against the goal
@@ -76,6 +92,7 @@ test.describe('the goal amount — BL14', () => {
     await field.blur();
     await expect(page.getByRole('alert'), 'BAD cleared').toHaveCount(0);
     await expect(field, 'AT saved on blur').toHaveValue('0.4');
+    await expect(page.getByRole('group', { name: /^Your goal:/ }), 'AT the reading').toContainText('net coins today · at or past your goal');
     await leaveSettings(page);
 
     // AT — the plan borrows and buys nothing; this month's spare income goes to Coinbase (over its limit), as the to-do says

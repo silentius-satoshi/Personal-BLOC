@@ -23,18 +23,20 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   creditExhaustedNote, drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE, minimumPaidNote,
-  stoppedCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
+  stoppedCashFlowNote, seedLine, sweepOffReserveNote,
   playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, chartCliffUsd, openPastLltvNote,
   msYearLabel, MS_TABLE, MS_VIEWS_CYCLING,
 } from './cyclingFaceView';
 import { modeConstraints, unfundedNote } from './ownershipFaceView';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
-  policyUnpaidNote, drawPauseClause, policyTileSub, defenseLineNote, policyColdNote, policyReserveNote, policyLimitPct,
-  coldShown, shownUsd, shownBtc, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, policyCardState, type SupportPolicySettings,
+  policyUnpaidNote, drawPauseClause, policyTileSub, defenseLineNote, policyLimitPct,
+  coldShown, shownUsd, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, policyCardState, type SupportPolicySettings,
 } from './supportPolicyView';
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
+import { ColdStorageCard } from './ColdStorageCard';
+import { coldCardView } from './coldCardView';
 import { usePlanPolicy } from './usePlanPolicy';
 import { planGoalOf } from '../../lib/planGoal';
 import ControlDock, { type DockPanel } from './ControlDock';
@@ -170,13 +172,6 @@ const fmtHorizon = (v: number): string => {
   if (y === 0) return `${m} mo`;
   if (m === 0) return `${y} yr`;
   return `${y}y ${m}m`;
-};
-
-/** This face's own "nothing moves" sentence without a reserve — kept byte-identical (coldMovesSentence). */
-const NOTHING_MOVES_YET = ' Nothing moves yet on this path — the honest answer for a while.';
-/** The cold card's origin dots — the venue bar's own colours, so a part reads as the venue it came from. */
-const COLD_DOT: Record<'cold' | 'coinbase' | 'strike', string> = {
-  cold: styles.venueDotCold, coinbase: styles.venueDotCb, strike: styles.venueDotStrike,
 };
 
 interface TipItem { name?: string; dataKey?: string | number; value?: number; color?: string }
@@ -424,9 +419,11 @@ export default function CyclingFace() {
   const fairAtMonth = plBandAt('fair', startDate, monthIdx);
   const surviveMult = surviveFairMultiple(selRow.price, fairAtMonth, coldBufferPct);
   const coldDeeperThanRecord = coldBeyondRecord(selRow.price, supportAtMonth, coldBufferPct);
-  // The cold card's moves sentence speaks of NEW coins once the owner holds a reserve (real-cold spec v1).
-  const reserveShown = shownBtc(sim.openingColdBtc);
-  const firstColdLabel = sim.firstColdMonth === null ? null : bandDateLabel(sim.firstColdMonth);
+  // BL33 — the cold-storage card, the four faces' ONE view, in this face's date labels.
+  const coldView = coldCardView(sim, policySettings, coldBufferPct, {
+    end: bandDateLabel(rows.length - 1),
+    firstCold: sim.firstColdMonth === null ? null : bandDateLabel(sim.firstColdMonth),
+  });
 
   // Write the clamped value back so re-growing the horizon doesn't snap to a stale index.
   useEffect(() => { setSelectedMonth((m) => Math.min(m, baseRowCount - 1)); }, [baseRowCount]);
@@ -879,75 +876,41 @@ export default function CyclingFace() {
       </section>
 
       {/* 4a · COLD STORAGE — sits between the venue split (which now shows a cold segment) and the CB LTV
-          chart, because it is the control that MOVES the segment and MOVES the curve. The long-form
-          reasoning lives in the InfoTip, not in three paragraphs of body copy nobody re-reads. */}
+          chart, because it is the control that MOVES the segment and MOVES the curve. BL33: the four engine faces' ONE
+          card (ColdStorageCard) — the outcome, where it came from, when new coins first move, and, while the support
+          policy applies, its rules folded. The long-form sweep reasoning lives in the InfoTip, not in body copy. */}
       {/* ⚠ While the support policy applies, ITS sweep decides what goes to cold (the engine ignores the buffer), so
-          the buffer slider, its fair-value reasoning and the sweep toggle are hidden and the policy's sentence shows. */}
-      <section className={styles.card}>
-        <span className={styles.cardLabel}>
-          Cold storage
-          {!applied && <InfoTip label="About the cold-storage sweep">
-            <p>
-              Each month, any Coinbase collateral above what your chosen break requires moves to cold
-              storage — <strong>unpledged, in no LTV, and not seizable</strong>. Equivalent to a{' '}
-              <strong>{coldLtvPct.toFixed(1)}% CB LTV</strong>
-              {coldClamped && ` — clamped by your ${capPct}% CB LTV stop, since the sweep is never looser than the cap`}.
-            </p>
-            <p>
-              <strong>Calibrate against the regression line, not Support.</strong> Support is a parallel
-              line at {(PL_A_FLOOR / PL_A_FAIR * 100).toFixed(1)}% of fair and its constant was fitted to
-              the cycle bottoms — it already is the deepest drawdown on record, so “% below Support” prices
-              nothing on its own. At {coldBufferPct}% below the modeled price at {bandDateLabel(monthIdx)}{' '}
-              ({fmtUSD(selRow.price)}) you are asking to survive down to{' '}
-              <strong>{(surviveMult * 100).toFixed(1)}% of fair</strong>
-              {' '}({(surviveMult / (PL_A_FLOOR / PL_A_FAIR)).toFixed(2)}× the fitted floor). This reads the path
-              at the inspected month, so it changes with the path you pick and moves with the price stress.
-              {coldDeeperThanRecord && ' That is deeper than any bottom ever recorded — you are paying years of waiting for a scenario nothing calibrates.'}
-            </p>
-            <p>
-              <strong>Not free safety.</strong> Swept coins are gone, so every later month starts from a
-              smaller base: on a rising path that costs nothing, on a flat one it trades stack for time, and
-              on a falling one it pulls liquidation forward. Watch the liquidation month, not just the ₿.
-            </p>
-          </InfoTip>}
-        </span>
+          the buffer slider, its fair-value reasoning and the sweep toggle are hidden and the card's rules say so. */}
+      <ColdStorageCard
+        view={coldView}
+        info={!applied && <InfoTip label="About the cold-storage sweep">
+          <p>
+            Each month, any Coinbase collateral above what your chosen break requires moves to cold
+            storage — <strong>unpledged, in no LTV, and not seizable</strong>. Equivalent to a{' '}
+            <strong>{coldLtvPct.toFixed(1)}% CB LTV</strong>
+            {coldClamped && ` — clamped by your ${capPct}% CB LTV stop, since the sweep is never looser than the cap`}.
+          </p>
+          <p>
+            <strong>Calibrate against the regression line, not Support.</strong> Support is a parallel
+            line at {(PL_A_FLOOR / PL_A_FAIR * 100).toFixed(1)}% of fair and its constant was fitted to
+            the cycle bottoms — it already is the deepest drawdown on record, so “% below Support” prices
+            nothing on its own. At {coldBufferPct}% below the modeled price at {bandDateLabel(monthIdx)}{' '}
+            ({fmtUSD(selRow.price)}) you are asking to survive down to{' '}
+            <strong>{(surviveMult * 100).toFixed(1)}% of fair</strong>
+            {' '}({(surviveMult / (PL_A_FLOOR / PL_A_FAIR)).toFixed(2)}× the fitted floor). This reads the path
+            at the inspected month, so it changes with the path you pick and moves with the price stress.
+            {coldDeeperThanRecord && ' That is deeper than any bottom ever recorded — you are paying years of waiting for a scenario nothing calibrates.'}
+          </p>
+          <p>
+            <strong>Not free safety.</strong> Swept coins are gone, so every later month starts from a
+            smaller base: on a rising path that costs nothing, on a flat one it trades stack for time, and
+            on a falling one it pulls liquidation forward. Watch the liquidation month, not just the ₿.
+          </p>
+        </InfoTip>}
+      >
         {!applied && (
-          <div className={styles.presetRow}>
-            <button type="button" className={styles.ghostBtn}
-              onClick={() => set('coldStoreBufferPct', coldBufferPct > 0 ? 0 : DEFAULT_COLD_BUFFER_PCT)}>
-              {coldBufferPct > 0 ? 'Turn sweep off' : 'Sweep to cold storage'}
-            </button>
-          </div>
-        )}
-        {coldShown(coldBufferPct, sim) && (
           <>
-            {/* ⚠ The headline is the OUTCOME, not the constraint. "Survive a break of 30%" is the rule the
-                engine follows; "₿4.99 in your own custody" is the thing the owner actually wants, and
-                leading with the rule made the card read like a risk setting rather than a plan. */}
-            <div className={styles.coldHead}>
-              <span className={styles.coldBig}>{sim.totalColdBtc.toFixed(3)} ₿</span>
-              {/* "in", not "into": with a reserve the coins are there from month 0 — "in" is true either way. */}
-              <span className={styles.coldBigSub}>
-                in your own custody by {bandDateLabel(rows.length - 1)}
-              </span>
-            </div>
-            {/* Where it came from — the reserve you hold today, the sweep's two origins, less what the defenses used.
-                One helper (coldOriginsParts); the parts foot with the engine's cold ledger. */}
-            <div className={styles.coldSplit}>
-              {coldOriginsParts(sim).map((p) => (
-                <span key={p.venue ?? 'used'}>
-                  {p.venue !== null && <span className={COLD_DOT[p.venue]} />}
-                  {p.text}
-                </span>
-              ))}
-            </div>
-            {applied ? (
-              <p className={styles.noteQuiet}>
-                {policyColdNote(policySettings, sim.goalNetBtc)}
-                {policyReserveNote(sim)}
-                {coldMovesSentence(firstColdLabel, reserveShown, NOTHING_MOVES_YET)}
-              </p>
-            ) : coldBufferPct > 0 ? (
+            {coldView !== null && (coldBufferPct > 0 ? (
               <>
                 <div className={styles.sliderStack}>
                   {/* The knob is a PRICE, not a percentage. "Survive a drop to $61,236" is a decision you can
@@ -961,17 +924,22 @@ export default function CyclingFace() {
                 <p className={styles.noteQuiet}>
                   That is <strong>{coldBufferPct}% below</strong> the modeled price at {bandDateLabel(monthIdx)}
                   {' '}({fmtUSD(selRow.price)}), and it holds Coinbase at {coldLtvPct.toFixed(1)}% LTV.
-                  {coldMovesSentence(firstColdLabel, reserveShown, NOTHING_MOVES_YET)}
                 </p>
               </>
             ) : (
               // Sweep off — reachable only with a reserve, since coldShown then opens the card for the owner's cold
               // alone. No 0% slider: the knob means nothing while the sweep is off.
               <p className={styles.noteQuiet}>{sweepOffReserveNote(strikeCapEff > 0)}</p>
-            )}
+            ))}
+            <div className={styles.presetRow}>
+              <button type="button" className={styles.ghostBtn}
+                onClick={() => set('coldStoreBufferPct', coldBufferPct > 0 ? 0 : DEFAULT_COLD_BUFFER_PCT)}>
+                {coldBufferPct > 0 ? 'Turn sweep off' : 'Sweep to cold storage'}
+              </button>
+            </div>
           </>
         )}
-      </section>
+      </ColdStorageCard>
 
       {/* 4 · CB LTV */}
       <section className={styles.card}>

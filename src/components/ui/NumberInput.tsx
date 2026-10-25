@@ -15,9 +15,12 @@ interface Props {
   subtext?: string;
   readOnly?: boolean;
   valueColor?: string;
+  /** The input's accessible name (BL33). The visible label is a span, not a <label>, so a screen reader — and a test —
+   *  can't name the field from it; absent, nothing changes. */
+  ariaLabel?: string;
 }
 
-export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffix, decimals, label, subtext, readOnly, valueColor }: Props) {
+export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffix, decimals, label, subtext, readOnly, valueColor, ariaLabel }: Props) {
   const viewerMode = useStore((s) => s.viewerMode);   // read-only viewer → every NumberInput is non-editable
   const ro = readOnly || viewerMode;
   const focused = useRef(false);
@@ -53,6 +56,7 @@ export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffi
           max={max}
           step={step}
           readOnly={ro}
+          aria-label={ariaLabel}
           onChange={(e) => {
             if (ro) return;
             const raw = e.target.value;

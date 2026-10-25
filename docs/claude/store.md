@@ -151,7 +151,13 @@ plan-event fields + the 4 prefs, 108 persisted blob keys, 41 trusted settings ke
   defend Coinbase in a crash: your paycheck pays the bills, then your cash reserve if you set one, and any they can't
   cover go unpaid; spare income repays a loan over its limit first, then Strike, then Coinbase, and once both are repaid
   it stays with you." Pinned by `planGoalStore.test.ts` (GOAL EDITOR — the setter only there; GOAL READ — every reader
-  through `planGoalOf`) and `yourPlanGoal.test.ts`.
+  through `planGoalOf`) and `yourPlanGoal.test.ts`. BL33: the GOAL group comes first on the page (`GoalGroup`), and the
+  hint is now a two-sentence lead (`GOAL_LEAD`: what net coins are; at the goal the plan buys nothing and borrows only to
+  defend Coinbase in a crash) plus "What happens at your goal ›", folded (`GOAL_RULES`, one fact a line: δ-L9's bills and
+  spare income, the stand-down's ONE phrase — "With both loans repaid, the plan keeps nothing on Strike or Coinbase: every
+  coin goes to cold storage." — and the way back). Beside the field, net coins today in the Dashboard tile's words
+  (`GoalNow` — `goalNowView` through `useNetCoinsToday` on `useViewerSafety(null)`), against the SAVED goal, so it moves
+  when the field saves, never per keystroke. `yourPlanGoal.test.ts` 3 → 6.
 
 ---
 

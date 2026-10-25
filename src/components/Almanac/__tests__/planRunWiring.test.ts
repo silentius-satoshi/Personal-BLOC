@@ -200,11 +200,25 @@ describe('⭐ GOAL — BL14: the owner\'s goal reaches every run, and every scre
     expect(moveDeps, 'GOAL move depends on the goal').toMatch(/s\.goalNetBtc/);
     expect(moveDeps, 'GOAL move depends on the rate').toMatch(/s\.cbAprPct/);
     expect(VIEWER_HOME, 'GOAL tile reads the goal').toMatch(/const goal = useStore\(\(st\) => planGoalOf\(st\.planGoalNetBtc\)\);/);
-    expect(VIEWER_HOME, 'GOAL tile — the plan\'s Coinbase coins').toMatch(/const planCbBtc = useStore\(\(st\) => planCbCollateralOf\(st\)\);/);
-    expect(VIEWER_HOME, 'GOAL tile — trusted-only, with a goal').toMatch(/const goalView = s\.mode === 'trusted' && f && goal !== null\s*\? goalTileView\(netCoinsBtc\(\{/);
-    expect(VIEWER_HOME, 'GOAL tile — the figures').toMatch(/strikeBtc: venueStrikeBtc, cbBtc: planCbBtc, coldBtc: venueColdBtc,\s*strikeBalanceUsd: f\.strike\.balance, cbDebtUsd: f\.cb\.balance, price: venuePrice,/);
+    // BL33 — net coins today have ONE live reading, `useNetCoinsToday`: the tile and Settings → Your plan read it.
+    const hook = VIEWER_HOME.slice(VIEWER_HOME.indexOf('export function useNetCoinsToday('), VIEWER_HOME.indexOf('export function ViewerHomeView('));
+    expect(hook, 'GOAL hook premise').toMatch(/^export function useNetCoinsToday\(safety: ViewerSafetyResult\): number \| null \{/);
+    expect(hook, 'GOAL tile — the plan\'s Coinbase coins').toMatch(/const cbBtc = useStore\(\(st\) => planCbCollateralOf\(st\)\);/);
+    expect(hook, 'GOAL tile — Strike through its derive').toMatch(/const strikeBtc = useStore\(\(st\) => st\.getCurrentBtcHeld\(\)\);/);
+    expect(hook, 'GOAL tile — cold through its derive').toMatch(/const coldBtc = useStore\(\(st\) => st\.getCurrentColdBtc\(\)\);/);
+    expect(hook, 'GOAL tile — the live price').toMatch(/const price = useStore\(\(st\) => st\.btcPrice\);/);
+    // G2-A — trusted-only: on the safe path (no amounts) the reading is null, so the tile never draws there.
+    expect(hook, 'GOAL tile — trusted-only, the figures').toMatch(/return safety\.mode === 'trusted' && f\s*\? netCoinsBtc\(\{ strikeBtc, cbBtc, coldBtc, strikeBalanceUsd: f\.strike\.balance, cbDebtUsd: f\.cb\.balance, price \}\)\s*: null;/);
+    expect(hook, 'GOAL tile — the trusted figures').toMatch(/const f = safety\.figures;/);
+    expect(VIEWER_HOME, 'GOAL tile — the screen\'s own safety reading').toMatch(/const netToday = useNetCoinsToday\(s\);/);
+    expect(VIEWER_HOME, 'GOAL tile — with a goal (goalTileView is null without one)').toMatch(/const goalView = goalTileView\(netToday, goal\);/);
     expect((VIEWER_HOME.match(/<GoalTile\b/g) ?? []).length, 'GOAL one tile').toBe(1);
     expect(VIEWER_HOME, 'GOAL tile renders from the gated view only').toMatch(/\{goalView && <GoalTile view=\{goalView\} \/>\}/);
+    expect((VIEWER_HOME.match(/\bnetCoinsBtc\(/g) ?? []).length, 'GOAL one call, in the hook').toBe(1);
+    // Settings reads the same hook, on the owner Dashboard's own mount (AppShell: previewSafeSnap={null}).
+    const plan = read('components/Settings/YourPlanSection.tsx');
+    expect(plan, 'GOAL Settings — the owner\'s live derive').toMatch(/const safety = useViewerSafety\(null\);\s*const net = useNetCoinsToday\(safety\);/);
+    expect(plan, 'GOAL Settings — no second formula').not.toMatch(/\bnetCoinsBtc\b/);
   });
 });
 

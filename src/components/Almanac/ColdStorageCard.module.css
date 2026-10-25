@@ -1,0 +1,57 @@
+/* BL33 — the cold-storage card, the same on the four engine faces. The shell, the label, the headline and the origin
+   line are the Cycling face's own (the Strategy and Decision faces compose its card too), so the card is native on
+   every face. Tokens only. */
+.card { composes: card from './CyclingFace.module.css'; }
+.cardLabel { composes: cardLabel from './CyclingFace.module.css'; }
+.head { composes: coldHead from './CyclingFace.module.css'; }
+.big { composes: coldBig from './CyclingFace.module.css'; }
+.bigSub { composes: coldBigSub from './CyclingFace.module.css'; }
+.split { composes: coldSplit from './CyclingFace.module.css'; }
+.dotCold { composes: venueDotCold from './CyclingFace.module.css'; }
+.dotCb { composes: venueDotCb from './CyclingFace.module.css'; }
+.dotStrike { composes: venueDotStrike from './CyclingFace.module.css'; }
+
+/* The origin line wraps on a phone: its rows sit closer than its columns. A doubled selector, never beside composes:
+   (composedOverrides.test.ts, P9–P11) — the composed class's `gap` would otherwise win or lose by stylesheet order. */
+.split.split { row-gap: 6px; }
+
+/* When new coins first move — a fact of this run, so it reads at body weight, not as a footnote. */
+.moves {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* How the plan uses cold — the rules, one fact a line, folded. The summary is THIS MONTH's "Why this plan?"; opened, the
+   rules read at its body's weight (muted), never the faint of a footnote. */
+.rules {
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.rules > summary {
+  cursor: pointer;
+  list-style: none;
+  width: fit-content;
+  color: var(--text-muted);
+}
+.rules > summary::-webkit-details-marker { display: none; }
+.rules > summary::after { content: ' ›'; }
+.rules[open] > summary::after { content: ' ‹'; }
+.rules > summary:focus-visible {
+  outline: 1px solid var(--border-focus);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.rules > ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* What the face adds — with the policy off, the sweep's own controls — set off from the card's facts above. */
+.own { margin-top: 12px; }

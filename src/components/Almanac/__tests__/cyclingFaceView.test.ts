@@ -358,14 +358,15 @@ describe('coldOriginsParts — where the cold came from (real-cold spec v1)', ()
   });
 });
 
-describe('coldMovesSentence — with a reserve the sweep moves NEW coins; without one each face keeps its words', () => {
-  const NONE = ' Nothing moves yet on this path — the honest answer for a while.';
+describe('coldMovesSentence — with a reserve the sweep moves NEW coins; without one, the caller\'s sentence', () => {
+  // BL33: the card (coldCardView) is its one caller and passes NOTHING_MOVES_TO_COLD; any sentence passes through.
+  const NONE = ' The caller\'s own no-reserve sentence.';
   it('with a reserve', () => {
     expect(coldMovesSentence('Oct 2029', true, NONE)).toBe(' New coins first move Oct 2029.');
     expect(coldMovesSentence('at month 37', true, NONE)).toBe(' New coins first move at month 37.');
     expect(coldMovesSentence(null, true, NONE)).toBe(' No new coins move to cold on this path.');
   });
-  it('without one — byte-identical to the faces\' old sentences', () => {
+  it('without one — "First coins move …", or the caller\'s sentence when nothing moves', () => {
     expect(coldMovesSentence('Oct 2029', false, NONE)).toBe(' First coins move Oct 2029.');
     expect(coldMovesSentence('at month 37', false, ' Nothing moves to cold on this path.')).toBe(' First coins move at month 37.');
     expect(coldMovesSentence(null, false, NONE)).toBe(NONE);
@@ -394,9 +395,13 @@ describe('seedLine — every opening figure includes the reserve, and says how m
 describe('sweepOffReserveNote — policy off, sweep off, a reserve: a defense can still draw it', () => {
   it('names the Strike cap only while it is on (its top-up draws the reserve too)', () => {
     expect(sweepOffReserveNote(true)).toBe(
-      'Sweep off: nothing new moves to cold. A defense can still draw on your reserve if the Coinbase stop or the Strike cap is hit.');
+      'With the sweep off, a defense can still draw on your reserve if the Coinbase stop or the Strike cap is hit.');
     expect(sweepOffReserveNote(false)).toBe(
-      'Sweep off: nothing new moves to cold. A defense can still draw on your reserve if the Coinbase stop is hit.');
+      'With the sweep off, a defense can still draw on your reserve if the Coinbase stop is hit.');
+  });
+  it('⭐ ONCE — BL33: the card\'s moves line above it already says nothing new moves; this never says it again', () => {
+    expect(coldMovesSentence(null, true, ' unused')).toBe(' No new coins move to cold on this path.');   // premise
+    for (const cap of [true, false]) expect(sweepOffReserveNote(cap), 'ONCE').not.toMatch(/nothing new|no new coins/i);
   });
 });
 

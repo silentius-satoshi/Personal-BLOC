@@ -949,20 +949,24 @@ export function policyTileSub(s: EffectivePolicySettings, cbLtvCapPct: number): 
   return `limit ${fmtPolicyPct(s.cbStopEffPct)}% at support · defense ${fmtPolicyPct(cbLtvCapPct)}%`;
 }
 
-/** The cold-storage card's sentence while the policy applies (its sweep replaces the buffer's). ⚠ "unless the model is
+/** The cold-storage card's rule while the policy applies (its sweep replaces the buffer's). ⚠ "unless the model is
  *  treated as broken": the engine never sweeps while broken, even with price back above support.
- *  BL32 — with a goal the run applied (`sim.goalNetBtc`), one more sentence: at the goal with both loans repaid the plan
- *  stands down, below support and broken alike. Without one, the words are unchanged. */
-export function policyColdNote(s: EffectivePolicySettings, goal: number | null = null): string {
+ *  BL33 — one fact a line in the card's folded rules (coldCardView): the goal's sentence is policyColdGoalNote's. */
+export function policyColdNote(s: EffectivePolicySettings): string {
   const buffer = s.bearBufferMonths > 0 ? ` plus ${monthsLabel(s.bearBufferMonths)} of bills` : '';
   return `The support policy decides what goes to cold: Coinbase keeps what it needs at support${buffer}; the rest goes `
-    + 'to cold whenever price is at or above support, unless the model is treated as broken.'
-    + (goal !== null ? ` At your goal with both loans repaid, ${GOAL_STAND_DOWN_WORDS}, at any price.` : '');
+    + 'to cold whenever price is at or above support, unless the model is treated as broken.';
+}
+
+/** BL32 — the cold card's goal sentence, with a goal the run applied (`sim.goalNetBtc`): at the goal with both loans
+ *  repaid the plan stands down, below support and broken alike. `null` without one. BL33: its own line in the rules. */
+export function policyColdGoalNote(goal: number | null): string | null {
+  return goal !== null ? `At your goal with both loans repaid, ${GOAL_STAND_DOWN_WORDS}, at any price.` : null;
 }
 
 /**
- * The reserve sentence the cold card appends after `policyColdNote` when the owner holds cold (real-cold spec v1) —
- * gated per run, so every clause is TRUE of the run it describes:
+ * The reserve's line in the cold card's rules — after the rule and the goal's line (BL33) — when the owner holds cold
+ * (real-cold spec v1); gated per run, so every clause is TRUE of the run it describes:
  *  • '' when the policy is off, there is no reserve worth a line, or cold came out AT OR ABOVE support — the first clause
  *    is false then (a position that opened over a ceiling), and the policy card's `coldAlarm` already says so;
  *  • the second clause is dropped when cold went into Coinbase in ANY month up to and including the one it was
