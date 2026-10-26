@@ -139,10 +139,22 @@ export function bucketEventToMonth(date: string, advisorStartDate: string): numb
 }
 
 /**
+ * Hotfix 1 — where a day event falls within its date: the ts it was first logged with. `ts` itself is the merge version
+ * clock, and every edit and every Undo moves it (updateDayEvent, undoDayEventDeletion), so they keep that first ts as
+ * `at` (orderTs of the copy they start from). Every rule that picks a day's "latest" reading or counts what came "after" one orders by (date, then
+ * orderTs): deriveStrikeCollateral, deriveCbCollateral, rollupMonth, priorStocksForMonth, unreconciledCbFlows, the cold
+ * anchor, deriveReadingAnchors — and correctionDurability, which copies rollupMonth's, and the today sheet's prefill,
+ * whose tie keeps the first in the list. Ordering by ts let an edited, restored or backfilled older event act as the newest (audit A2-1, A2-3,
+ * A2-4). ⚠ ts stays the version wherever versions are compared or laid out — the merge (mergeRecords, unionParts), the
+ * journal's pages (layoutPages) and the "is this entry current" check (monthEntryCurrent): never orderTs there.
+ */
+export const orderTs = (e: { ts: number; at?: number }): number => e.at ?? e.ts;
+
+/**
  * Roll a month's DayEvents up into a Partial<MonthlyLogEntry> + the net Strike collateral delta. PURE.
  * Flows accumulate (draw→expensesActual, buy→btcBought [+income iff usd], paydown→paydown); target:'strike'
  * deposit/withdraw feed collateralDelta (signed by kind — deposit +, withdraw −); target:'cb' and cbCollateralReading
- * are journal-only (ignored). Stocks come from the LATEST balanceReading by ts (strikeBal/strikeLtv always; cbBal/cbLtv
+ * are journal-only (ignored). Stocks come from the LATEST balanceReading by (date, then orderTs) (strikeBal/strikeLtv always; cbBal/cbLtv
  * iff present; btcHeld iff the reading carries strikeCollateral — RECORDED exactly like strikeBal, and ABSENT when the
  * reading doesn't state it: 0 is a real position, never a placeholder). cbCollateral is NEVER placed in entry (it feeds a
  * derived store value). collateralAdjustment/source/confirmed are NEVER set here (store-owned / P2-stamped).
@@ -200,10 +212,11 @@ export function rollupMonth(
     }
   }
 
-  // Stocks: latest balanceReading by ts.
+  // Stocks: the month's latest balanceReading by (date, then orderTs) — its close. A tie (same date and place) goes to the
+  // later in the list, as the ts rule did. ⚠ correctionDurability (monthlyLogForm) copies this selection.
   const readings = inMonth.filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> => e.kind === 'balanceReading');
   if (readings.length > 0) {
-    const latest = readings.reduce((a, b) => (b.ts >= a.ts ? b : a));
+    const latest = readings.reduce((a, b) => (b.date > a.date || (b.date === a.date && orderTs(b) >= orderTs(a)) ? b : a));
     entry.strikeBal = latest.reading.strikeBal;
     entry.strikeLtv = latest.reading.strikeLtv;
     // A reading supplies real stocks — this month is no longer an estimate. EXPLICIT false, not an omitted key:
@@ -251,8 +264,9 @@ export function strikeCollateralDelta(
 }
 
 /**
- * The prior strategy-month's LAST balanceReading stocks (by ts) — the carry-forward source for rollupMonth's
- * provisional path. Extracted so the store's rerollMonth AND the reconcile's diff compute identical priorStocks.
+ * The prior strategy-month's LAST balanceReading stocks (by date, then orderTs — the prior month's close, rollupMonth's
+ * rule) — the carry-forward source for rollupMonth's provisional path. Extracted so the store's rerollMonth AND the
+ * reconcile's diff compute identical priorStocks.
  */
 export function priorStocksForMonth(
   dayLog: DayEvent[],
@@ -262,7 +276,7 @@ export function priorStocksForMonth(
   const priorReadings = dayLog
     .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> =>
       e.kind === 'balanceReading' && bucketEventToMonth(e.date, advisorStartDate) === month - 1)
-    .sort((a, b) => a.ts - b.ts);
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : orderTs(a) - orderTs(b)));   // stable: a tie keeps list order
   const pr = priorReadings.length ? priorReadings[priorReadings.length - 1].reading : undefined;
   return pr
     ? { strikeBal: pr.strikeBal, strikeLtv: pr.strikeLtv, cbBal: pr.cbBal, cbLtv: pr.cbLtv, cbCollateral: pr.cbCollateral, strikeCollateral: pr.strikeCollateral }
@@ -300,18 +314,23 @@ export const legacyBucketEventToMonth = (date: string, advisorStartDate: string)
   );
 
 /**
- * Single derived clock for cbCollateralBtc (Daily Mode P2a, Seam 2). Returns the cbCollateral of the MOST-RECENT event
- * by ts that carries one — across BOTH balanceReading (reading.cbCollateral, when present) AND cbCollateralReading
+ * Single derived clock for cbCollateralBtc (Daily Mode P2a, Seam 2). Returns the cbCollateral of the LATEST event by
+ * (date, then orderTs) that carries one — a tie (same date and place) to the later in the list, as the ts rule did.
+ * Hotfix 1 (audit A2-1): it ordered by ts alone, and every edit and Undo moves ts, so fixing a typo in an older reading,
+ * restoring one or backfilling one made its collateral the current one — the CB LTV, the crash day, the plan's run.
+ * Across BOTH balanceReading (reading.cbCollateral, when present) AND cbCollateralReading
  * (cbCollateral). If none exists, falls back to the persisted cache `currentCbCollateralBtc` — NEVER undefined
  * (consumers like runAdvisor require a number).
  */
 export function deriveCbCollateral(dayLog: DayEvent[], currentCbCollateralBtc?: number): number {
-  let best: { ts: number; v: number } | null = null;
+  let best: { date: string; at: number; v: number } | null = null;
   for (const e of dayLog) {
     const v = e.kind === 'cbCollateralReading' ? e.cbCollateral
             : e.kind === 'balanceReading'      ? e.reading.cbCollateral
             : undefined;
-    if (v !== undefined && (best === null || e.ts >= best.ts)) best = { ts: e.ts, v };
+    if (v !== undefined && (best === null || e.date > best.date || (e.date === best.date && orderTs(e) >= best.at))) {
+      best = { date: e.date, at: orderTs(e), v };
+    }
   }
   return best ? best.v : (currentCbCollateralBtc ?? 0);
 }
@@ -326,28 +345,60 @@ export function deriveCbCollateral(dayLog: DayEvent[], currentCbCollateralBtc?: 
  *            anchor.ts), signed by kind (deposit +, withdraw −; amount = magnitude — same convention as
  *            strikeCollateralDelta). No anchor → fallback ?? 0 (never undefined — runAdvisor needs a number).
  *
- * ⚠ Ordering differs from deriveCbCollateral's pure-ts on PURPOSE. A backfilled (past-dated) strike move
- * dated BEFORE the anchor is already reflected in that reading's stated total and must NOT be re-summed;
- * date-primary with a ts tiebreak encodes exactly that. And the ts tiebreak is STRICT (> not ≥) so an
- * atomic flow+reading sharing a ts (LD6 — the sheet emits the deposit and its reading with the same ts)
- * is NOT double-counted: the reading already states the post-move total. Buys are invisible by construction.
+ * ⚠ The "ts" in that rule is orderTs (e.at ?? e.ts) — Hotfix 1, audit A2-3: an edit or an Undo moves ts, and a move
+ * edited or restored after its own reading was counted on top of the total that already held it (₿1.22 for the
+ * sheet's ₿1.12). Date-primary on PURPOSE: a backfilled (past-dated) strike move dated BEFORE the anchor is already
+ * reflected in that reading's stated total and must NOT be re-summed. And the tiebreak is STRICT (> not ≥) so an atomic
+ * flow+reading sharing a ts (LD6 — the sheet emits the deposit and its reading with the same ts) is NOT double-counted:
+ * the reading already states the post-move total. Buys are invisible by construction.
  */
 export function deriveStrikeCollateral(dayLog: DayEvent[], fallback?: number): number {
   let anchor: Extract<DayEvent, { kind: 'balanceReading' }> | null = null;
   for (const e of dayLog) {
     if (e.kind !== 'balanceReading' || e.reading.strikeCollateral === undefined) continue;
-    if (anchor === null || e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts)) anchor = e;
+    if (anchor === null || e.date > anchor.date || (e.date === anchor.date && orderTs(e) > orderTs(anchor))) anchor = e;
   }
   if (anchor === null) return fallback ?? 0;
 
   let total = anchor.reading.strikeCollateral as number;
   for (const e of dayLog) {
     if ((e.kind === 'deposit' || e.kind === 'withdraw') && e.target === 'strike'
-        && (e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts))) {
+        && (e.date > anchor.date || (e.date === anchor.date && orderTs(e) > orderTs(anchor)))) {
       total += e.kind === 'withdraw' ? -e.amount : e.amount;   // amount = magnitude; sign by kind
     }
   }
   return total;
+}
+
+/**
+ * Hotfix 1 (audit A2-3) — an edit to a Strike move carries its own reading. The today sheet saves a Strike deposit or
+ * withdrawal with a balanceReading that states the post-move total (LD6, autoStrikeCollateral) — same date, same ts — so
+ * the reading is the anchor and the move sits inside it. When the move's size is corrected, that reading moves by the
+ * same change; otherwise it keeps stating the old total and the sheet's "Strike held after" never happens.
+ * Its own reading = the one balanceReading on the move's date, at the move's place (orderTs), that states Strike
+ * collateral. Returns it as it should be stored after the edit — the total moved by the change, in whole sats; ts the
+ * edit's (the version clock); `at` its place — or null: no such reading (a move logged alone, a past-dated add's reading,
+ * which states no collateral, a deleted reading, two candidates), a Coinbase or cold move, a change of date, kind or
+ * target, or no change in size. A delete or an Undo moves no reading: the reading still states what it stated.
+ */
+export function ownReadingAfterEdit(
+  dayLog: DayEvent[],
+  before: DayEvent,
+  after: DayEvent,
+  ts: number,
+): Extract<DayEvent, { kind: 'balanceReading' }> | null {
+  if ((before.kind !== 'deposit' && before.kind !== 'withdraw') || before.target !== 'strike') return null;
+  if ((after.kind !== 'deposit' && after.kind !== 'withdraw') || after.kind !== before.kind
+      || after.target !== 'strike' || after.date !== before.date) return null;
+  const delta = (before.kind === 'withdraw' ? -1 : 1) * (after.amount - before.amount);
+  if (delta === 0) return null;
+  const place = orderTs(before);
+  const own = dayLog.filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> =>
+    e.kind === 'balanceReading' && e.date === before.date && orderTs(e) === place && e.reading.strikeCollateral !== undefined);
+  if (own.length !== 1) return null;
+  const r = own[0];
+  const total = Math.round(((r.reading.strikeCollateral as number) + delta) * 1e8) / 1e8;   // whole sats
+  return { ...r, ts, at: orderTs(r), reading: { ...r.reading, strikeCollateral: total } };
 }
 
 export interface UnreconciledCbFlows {
@@ -370,7 +421,7 @@ export interface UnreconciledCbFlows {
  * needs no borrow. A logged CB flow after the anchor makes the staleness large AND knowable; interest-only staleness
  * stays undetected.
  *
- * Anchor = the balanceReading with cbBal !== undefined, latest by (DATE, then ts) — deriveStrikeCollateral's rule,
+ * Anchor = the balanceReading with cbBal !== undefined, latest by (DATE, then orderTs) — deriveStrikeCollateral's rule,
  * COPIED on purpose (its ordering is load-bearing; never refactor the three into a shared generic). A Strike-only
  * reading (no cbBal) is not an anchor and reconciles nothing. No anchor → every CB flow counts.
  * ⚠ Pre-save by nature: saving ANY CB-bearing reading — even one repeating the stale balance — makes it the anchor
@@ -380,14 +431,14 @@ export function unreconciledCbFlows(dayLog: DayEvent[]): UnreconciledCbFlows {
   let anchor: Extract<DayEvent, { kind: 'balanceReading' }> | null = null;
   for (const e of dayLog) {
     if (e.kind !== 'balanceReading' || e.reading.cbBal === undefined) continue;
-    if (anchor === null || e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts)) anchor = e;
+    if (anchor === null || e.date > anchor.date || (e.date === anchor.date && orderTs(e) > orderTs(anchor))) anchor = e;
   }
   const events: Extract<DayEvent, { kind: 'draw' | 'paydown' }>[] = [];
   let drawn = 0, fees = 0, paid = 0;
   for (const e of dayLog) {
     if (e.kind !== 'draw' && e.kind !== 'paydown') continue;
     if (flowVenue(e) !== 'cb') continue;
-    if (anchor !== null && !(e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts))) continue;
+    if (anchor !== null && !(e.date > anchor.date || (e.date === anchor.date && orderTs(e) > orderTs(anchor)))) continue;
     events.push(e);
     if (e.kind === 'draw') { drawn += e.amount; fees += e.fee ?? 0; }
     else paid += e.amount;
@@ -400,18 +451,19 @@ export function unreconciledCbFlows(dayLog: DayEvent[]): UnreconciledCbFlows {
 }
 
 /**
- * True when a cold move falls strictly AFTER the cold anchor, ordered by (DATE, then ts) — deriveStrikeCollateral's
+ * True when a cold move falls strictly AFTER the cold anchor, ordered by (DATE, then orderTs) — deriveStrikeCollateral's
  * rule, COPIED on purpose (its ordering is load-bearing; never refactor the two into a shared generic):
  *  - date-primary, so a backfilled move dated BEFORE the anchor's day is already inside the entered total;
- *  - a strict ts tiebreak on the anchor's own day, so a move logged after re-typing the total still counts.
+ *  - a strict orderTs tiebreak on the anchor's own day, so a move logged after re-typing the total still counts.
  * anchorMs null (legacy, never dated) → every move counts. The anchor's day is its LOCAL calendar day, matching
  * event dates (todayLocalISO).
- * ⚠ Residual (same as strike): updateDayEvent bumps ts, so editing a same-day move that predates the anchor makes it count.
+ * Hotfix 1: orderTs, not ts — an edit or Undo moves ts, and a same-day move that predates the anchor then counted on
+ * top of the total that already held it (the residual this note used to carry, shared with strike).
  */
-function isAfterColdAnchor(e: { date: string; ts: number }, anchorMs: number | null): boolean {
+function isAfterColdAnchor(e: { date: string; ts: number; at?: number }, anchorMs: number | null): boolean {
   if (anchorMs === null || !Number.isFinite(anchorMs)) return true;
   const anchorDate = toLocalISO(new Date(anchorMs));
-  return e.date > anchorDate || (e.date === anchorDate && e.ts > anchorMs);
+  return e.date > anchorDate || (e.date === anchorDate && orderTs(e) > anchorMs);
 }
 
 const isColdMove = (e: DayEvent): e is Extract<DayEvent, { kind: 'deposit' | 'withdraw' }> =>
@@ -458,7 +510,7 @@ export interface ReadingMutationCtx { oldDate: string; strikeBal?: number; cbBal
 
 /**
  * §5b Readings-Unification — PURE selector for the live safety anchors. Picks the DATE-latest surviving
- * balanceReading (ties → latest ts) and returns ONLY the anchor fields to write, each with asOf ← reading.date:
+ * balanceReading (ties → latest orderTs, then the later in the list) and returns ONLY the anchor fields to write, each with asOf ← reading.date:
  *   strikeBal → advisorActualBlocBalance · cbBal → cbLoanBalance · cbLiqPrice → cbLiquidationPrice.
  * - Guard (normal add / forward-edit): apply a field only if reading.date ≥ that anchor's asOf (null asOf =
  *   never anchored → always apply). Manual/knob edits stamp asOf=today, so a stale reading can't clobber them.
@@ -477,7 +529,7 @@ export function deriveReadingAnchors(
   let latest: Extract<DayEvent, { kind: 'balanceReading' }> | null = null;
   for (const e of dayLog) {
     if (e.kind !== 'balanceReading') continue;
-    if (latest === null || e.date > latest.date || (e.date === latest.date && e.ts >= latest.ts)) latest = e;
+    if (latest === null || e.date > latest.date || (e.date === latest.date && orderTs(e) >= orderTs(latest))) latest = e;
   }
   const patch: ReadingAnchorPatch = {};
   if (latest === null) return patch;   // no readings → orphaned anchors keep their last value

@@ -10,7 +10,7 @@ import { NumberInput } from '../ui/NumberInput';
 import {
   readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, COLLATERAL_TARGET_RULES, collateralAvailableFor,
   totalHoldingsAfter, DEBT_TARGET_RULES, rebuildEditedFlow, staleCbBalanceNote, buyUsdGuess, impliedBtcPrice, rebuildEditedBuy,
-  type SheetType, type SheetState, type CollateralTarget, type DebtTarget,
+  latestReadingForPrefill, type SheetType, type SheetState, type CollateralTarget, type DebtTarget,
 } from './eventSheetModel';
 import { minPaymentStatus } from '../../simulation/simpleModePlan';
 import { fmtDayOrdinal } from '../Almanac/planMonthView';
@@ -192,13 +192,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
       setCbLtv(null);
       setCbCollateral(null);
     } else {
-      // Today: pre-fill from the latest reading for convenience (LD6 reading still required).
-      const latest = dayLog
-        .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> => e.kind === 'balanceReading')
-        .reduce<Extract<DayEvent, { kind: 'balanceReading' }> | null>(
-          (best, e) => (!best || e.ts > best.ts ? e : best),
-          null,
-        );
+      // Today: pre-fill from the latest reading for convenience (LD6 reading still required) — the latest by date,
+      // then by when it was logged (Hotfix 1: never a backfilled or just-edited older one).
+      const latest = latestReadingForPrefill(dayLog);
       if (latest) {
         setStrikeBal(latest.reading.strikeBal);
         setStrikeLtv(latest.reading.strikeLtv * 100);   // fraction → percent for display

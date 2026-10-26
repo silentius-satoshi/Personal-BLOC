@@ -72,7 +72,7 @@ A pre-change backup still validates.
      balance under today's date.
    - `accruedCbBalance` then restarts its clock and the interest since the prior reading vanishes. It needs no borrow.
    - `unreconciledCbFlows(dayLog)` is the first signal the app has ever had that a reading's CB balance is stale: CB
-     flows after the latest CB-bearing reading, ordered by (date, ts) — `deriveStrikeCollateral`'s rule, copied.
+     flows after the latest CB-bearing reading, ordered by (date, then `orderTs`) — `deriveStrikeCollateral`'s rule, copied.
    - The EventSheet shows it pre-save (`staleCbBalanceNote`) as a hint with a suggested balance that excludes
      interest. It never prefills and never anchors.
    - Interest-only staleness stays undetected; prefilling from `accruedCbBalance` is the candidate fix.
@@ -331,8 +331,9 @@ move in realtime) and restores the **R2** CB-accrual freshness. Most fragile sur
   `cbCollateralBtc`:** that continuous derive DOES run in `setDayLog` (a sum over ordered events, not a synced
   scalar); the anchor derive is local-action-only.
 - **Pure `deriveReadingAnchors(dayLog, current, removed?)`** (`logUtils.ts`, mirrors `deriveCbCollateral`) — picks
-  the **DATE-latest** surviving `balanceReading` (ties → latest `ts`; select-by-DATE, not `ts`, so editing an old
-  reading — which bumps `ts` under LWW — can't resurrect it) and returns ONLY the anchor fields to write, each
+  the **DATE-latest** surviving `balanceReading` (ties → the latest `orderTs` = `at ?? ts`, then the later in the list —
+  Hotfix 1; select-by-DATE, not `ts`, so editing an old reading — which bumps `ts` under LWW — can't resurrect it) and
+  returns ONLY the anchor fields to write, each
   `asOf ← reading.date`: `strikeBal→advisorActualBlocBalance`, `cbBal→cbLoanBalance`, `cbLiqPrice→cbLiquidationPrice`.
   **Guard:** apply only if `reading.date ≥ anchor.asOf` (null asOf → always apply). **Idempotent** (already anchored
   to this exact reading → empty patch → no redundant publish). The store wrapper `refreshBalanceAnchors(ctx?)`

@@ -2,7 +2,7 @@
 // The sheet's local field-state (SheetState) → DayEvent[] (buildEventsFromSheet) and the Save gate
 // (readingComplete). Kept pure so the LD6 atomic flow+reading write + the LTV fraction conversion are unit-tested.
 import type { DayEvent } from '../../simulation/types';
-import { flowVenue, type UnreconciledCbFlows } from '../../simulation/logUtils';
+import { flowVenue, orderTs, type UnreconciledCbFlows } from '../../simulation/logUtils';
 import { cbBorrowFee } from '../../simulation/runCoinbaseLoan';
 import { fmtUSDCents } from '../../utils/format';
 
@@ -143,6 +143,22 @@ export function impliedBtcPrice(usd: number | null, amount: number | null): numb
 export function rebuildEditedBuy(ev: Extract<DayEvent, { kind: 'buy' }>, amount: number, usd: number): DayEvent {
   const { id, date, ts } = ev;
   return { id, date, ts, kind: 'buy', amount, usd: roundUsdCents(usd) };
+}
+
+/**
+ * Hotfix 1 — the reading the today sheet prefills its balances from: the latest by date, then by when it was logged
+ * (orderTs). By ts alone, a reading backfilled to an earlier date, or an older one just edited or restored, prefilled
+ * the sheet — and a Save left unedited re-stated its old balances, and its Coinbase collateral, under today's date.
+ * A tie (same date and place) keeps the first in the list, as the ts rule's strict `>` did. The rule is logUtils', copied
+ * (its ordering rules are copied on purpose, never shared).
+ */
+export function latestReadingForPrefill(dayLog: DayEvent[]): Extract<DayEvent, { kind: 'balanceReading' }> | null {
+  let best: Extract<DayEvent, { kind: 'balanceReading' }> | null = null;
+  for (const e of dayLog) {
+    if (e.kind !== 'balanceReading') continue;
+    if (best === null || e.date > best.date || (e.date === best.date && orderTs(e) > orderTs(best))) best = e;
+  }
+  return best;
 }
 
 /**

@@ -502,11 +502,12 @@ anchor. The `DayEvent` deposit/withdraw `target` widened to `'strike' | 'cb' | '
   (`VALIDATE_WHITELIST` rejects unknown keys); the new `coldStorageBtcAsOf` is additive and safe. Payload 38 → 39,
   `PLAN_EVENT_FIELDS` 34 → 35, blob 98 → 99 — all pinned, all updated.
 - 🔴 **`coldStorageBtcAsOf` is EPOCH MS, not an ISO date** (unlike every other `…AsOf`).
-  - The ordering is `deriveStrikeCollateral`'s (date, ts) rule, COPIED not shared: a move counts iff
-    `ev.date > anchorDate || (ev.date === anchorDate && ev.ts > anchorMs)`.
+  - The ordering is `deriveStrikeCollateral`'s (date, then `orderTs`) rule, COPIED not shared: a move counts iff
+    `ev.date > anchorDate || (ev.date === anchorDate && orderTs(ev) > anchorMs)`.
   - A date-only rule silently loses the commonest flow: re-type the total, then log today's move.
   - `null` (legacy) → every cold move counts.
-  - Residual (same as strike): `updateDayEvent` bumps ts, so editing a same-day pre-anchor move makes it count.
+  - Hotfix 1 closed the residual it shared with strike: an edit or an Undo moves ts, and a same-day move that
+    predated the anchor then counted on top of it. `orderTs` (`at ?? ts`) keeps the move where it was logged.
 - **Paired setter:** `setColdStorageBtc(v)` is ONE `emitPlanSets([[coldStorageBtc, v], [coldStorageBtcAsOf, Date.now()]])`
   — one ts, so the pair cannot tear. `v` is the owner's cold TOTAL now; re-entering it IS the reconciliation.
 - 🔴 **The Settings field binds the LIVE total, never the anchor.** `NumberInput.commit()` calls `onChange` on every

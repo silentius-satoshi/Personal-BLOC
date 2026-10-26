@@ -413,7 +413,7 @@ src/
                                 # (calendar-anniversary, UNclamped) + bucketEventToMonth (clamp 1–12) — THE month clock
                                 # (runAdvisor's getCurrentStrategyMonth/isStrategyComplete now delegate here) + rollupMonth (DayEvent[] →
                                 # { entry: Partial<MonthlyLogEntry>, collateralDelta }) + deriveCbCollateral (P2a:
-                                # latest cbCollateral-bearing event by ts across balanceReading + cbCollateralReading,
+                                # latest cbCollateral-bearing event by (date, then orderTs) across balanceReading + cbCollateralReading,
                                 # fallback to the cache — never undefined) + latestStrikeDepositISO (the plan of
                                 # record's Run 2, D9): the latest LOGGED target:'strike' deposit's date, any age (or
                                 # null) — Strike's 60-day hold's ONE fact. The hold only ever depends on the latest
@@ -423,6 +423,10 @@ src/
                                 # MONTH's expenses prompt's predicate (spec §9). The plan of record's Run 4 (F-R4-1): only
                                 # months before `beforeMonth` that record expenses (> 0) count; THIS MONTH passes
                                 # currentMonth (12 once the year is done — month 12 keeps every later draw, so never counts)
+                                # + orderTs (Hotfix 1 — `at ?? ts`, where an event falls in its day: every "latest" and
+                                # "after the anchor" rule orders by (date, then orderTs); ts stays the merge's version)
+                                # + ownReadingAfterEdit (an edited Strike move's own reading — same date, same place —
+                                # moved by the change, in whole sats; updateDayEvent writes both in one set)
     mergeRecords.ts             # PURE records merge (RecordsState = entries+deletions+dayLog+dayLogDeletions, mergeRecords).
                                 # Per-month entries: newest updatedAt/loggedAt wins, tombstones, 90-day GC. P3: dayLog
                                 # union-by-id (higher ts wins, exact tie→local) + dayLogDeletions tombstone suppression
@@ -1941,9 +1945,10 @@ src/
                                 # the app inferring history, and a past reading that becomes the latest-dated anchor makes
                                 # deriveStrikeCollateral count every later Strike move twice. Today + every edit unchanged. A
                                 # past Set balance's label reads "Balances on that day · required to log" (the "optional"
-                                # note is hidden for it). RESIDUALS (pre-existing): editing a reading with no strikeCollateral
-                                # seeds today's figure (`?? currentBtcHeld`) and stamps it on save; CB collateral is
-                                # latest-by-TS, so a past reading's typed CB collateral becomes the current one.
+                                # note is hidden for it). RESIDUAL (pre-existing): editing a reading with no strikeCollateral
+                                # seeds today's figure (`?? currentBtcHeld`) and stamps it on save — the double count above, once
+                                # that past reading is the latest-dated anchor (queued). CB collateral is date-first since Hotfix 1
+                                # (A2-1), so a past reading's typed CB collateral no longer becomes the current one.
                                 # The plan of record's Run 2.1 (BL19): every readout to the cent (fmtUSDCents) — a Coinbase
                                 # borrow's origination fee, Strike's minimum, the dry-powder estimate, the last liquidation
                                 # price; the minimum's estimate is `toCents` (balance × APR ÷ 12), so a minimum logged from
@@ -1966,6 +1971,8 @@ src/
                                 # edit's rebuild: id/date/ts kept, the dollars as given, to the cent — never re-priced).
                                 # + staleCbBalanceNote (the stale Coinbase-balance warning: the borrow, its fee, the paydown
                                 # and the suggested balance — to the cent since Run 2.1; tested in cbDebtSheet.test.ts).
+                                # + latestReadingForPrefill (Hotfix 1 — the today sheet's prefill: the latest reading by
+                                # date, then orderTs, never a backfilled or just-edited older one; journalOrder.test.ts).
                                 # Tested in __tests__/eventSheet.test.ts
       ReviewSheet.tsx           # The month review — Daily's sign-off (Logging Consolidation §2): the month's rolled-up
                                 # totals ("Drawn (expenses)", "BLOC paydown"), a note when the month also has a Coinbase
