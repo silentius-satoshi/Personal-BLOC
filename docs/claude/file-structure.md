@@ -468,6 +468,14 @@ src/
       monthlyLog.test.ts
       aprAnchors.test.ts
       strikeCredit.test.ts
+      strikeCreditHardening.test.ts   # Hardening 1 — HS-01
+      cbMetricsHardening.test.ts   # Hardening 1 — HS-02, HS-03
+      safetyViewHardening.test.ts   # Hardening 1 — HS-04…HS-11
+      runCoinbaseLoanHardening.test.ts   # Hardening 1 — HS-13, HS-14
+      logUtilsHardening.test.ts   # Hardening 1 — HJ-05, HJ-06, HJ-07, HJ-25, HJ-26
+      cyclingSimHardening.test.ts   # Hardening 1 — HE-02, HE-06, HE-07, HE-10, HE-11, HE-27…HE-31
+      supportPolicyHardening.test.ts   # Hardening 1 — HE-26
+      crashPlaybookHardening.test.ts   # Hardening 1 — HE-12, HE-13
 
   hooks/
     useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick). Each store push goes through setBtcPrice, which now ALSO stamps btcPriceUpdatedAt (per-device staleness clock — DevPanel readout). Poll gated on the now-self-correcting usePageVisibility. MOUNTED AT AppShell ROOT so the poll runs for the whole session (Simple Mode mounts no price-consuming sidebar — without this, btcPrice froze at its last persisted value in Simple Mode); per-tab sidebar calls remain (harmless co-mounts)
@@ -595,6 +603,7 @@ src/
                                 # `persistOptions` (annotated PersistOptions<StoreState, ReturnType<typeof partializeState>>
                                 # so its standalone merge/onRehydrate callbacks keep param types). Imports bootstrap +
                                 # leaves; does NOT import useStore
+                                # + __tests__/persistConfigHardening.test.ts (HJ-08…HJ-13, HY-17…HY-20, HK-13, HK-14 — Hardening 1: each migration keeps what is stored)
     slices/                     # Phase 1c — 9 domain slice files, each `type XSlice = Pick<StoreState,…>` + a
                                 # `createXSlice(set, get): XSlice` creator (mining takes _get, unused). ui · planInputs ·
                                 # mining · cbLoan (incl. Strike-API display fields) · advisorJournal (advisor+monthlyLog) ·
@@ -760,6 +769,14 @@ src/
                                 # in wipeLocalPlanData's inventory: kept on "Remove local key". Tested in
                                 # src/lib/__tests__/btcCandlesCache.test.ts (OLD, EDGE, NEWER, FUTURE, SHAPE, LABEL, STORE,
                                 # OWN KEY, RANGE, MONEY)
+                                # + src/lib/__tests__/ledgerCsvHardening.test.ts (HJ-23, HJ-24 — Hardening 1: CB bal / CB LTV under their own headers; RFC 4180 quote doubling)
+
+    nostr/__tests__/            # Hardening 1 — the keys tests (HK-01, HK-02, HK-06, HK-07, HK-08; each title names its identity.md row)
+      keyVaultHardening.test.ts   # Hardening 1 — HK-01, HK-02
+      establishOwnerHardening.test.ts   # Hardening 1 — HK-06
+      sessionHardening.test.ts   # Hardening 1 — HK-07, HK-08
+    crypto/__tests__/
+      cryptoClientHardening.test.ts   # Hardening 1 — HK-03, HK-04 (src/lib/crypto/__tests__/; its title names its identity.md row)
 
   utils/
     format.ts                   # fmtUSD, fmtMining (sats-aware) + DUST_USD / shownUsd — THE one $0.50 dust floor
@@ -2020,6 +2037,7 @@ src/
                                 # 'reading' any balanceReading; 'cbCollateral' a deposit target:'cb', ADDITIVE to logged). ALL
                                 # date math UTC (new Date(iso)=UTC midnight; getUTCDay, not getDay → tz-safe). Tested in
                                 # __tests__/calendarModel.test.ts (every monthDateRange date buckets back to its month — load-bearing)
+                                # + __tests__/calendarModelHardening.test.ts (HJ-21, HJ-22 — Hardening 1: the minimum is balance-neutral; a withdraw-only day carries the logged pip)
       Calendar.tsx              # Daily Mode P4c-1a — the Week|Month calendar. RENDER + SELECT only (does NOT yet drive the
                                 # activity card — P4c-1b). Props {dayLog,advisorStartDate,currentMonth,scope,selectedDay,
                                 # monthLabel,onScopeChange,onSelectDay}. .seg Week|Month toggle; .calcard title (Week→"This week",
@@ -2304,6 +2322,9 @@ src/
                                # 'personal-bloc-v1' cache. NO runtime caching (cross-origin price/candles/relays stay
                                # network-only). Compiled by tsconfig.worker.json (WebWorker lib, no DOM); registered from
                                # main.tsx via registerSW({ immediate: true })
+
+tsconfig.e2e.json            # Hardening 1 G2 — tsconfig.node.json's flags + DOM, types node; includes e2e/**/*.ts + playwright.config.ts;
+                                # referenced from the root tsconfig.json, so `tsc -b` (the build) type-checks the e2e specs too
 ```
 
 ---
