@@ -1,0 +1,196 @@
+{
+  "area": "A6",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "findings": [
+    {
+      "id": "A6-1",
+      "severity": "Medium",
+      "file": "src/simulation/__tests__/cyclingSim.test.ts",
+      "line": 833,
+      "title": "The ⭐ \"the Strike leg never breaches the margin-call LTV at the stressed price\" makes no assertion at all: its fixture repays Strike in month 1, so its filter skips all 241 rows.",
+      "evidence": "Probe 1 (assertion census): a throwaway setup file `beforeEach(() => expect.hasAssertions())` in a merged config, run through the slot over 132 test files / 2,458 tests (`npx vitest run -c a6-probe/vitest.assert.config.ts <94 files>` and a second batch of 38). 2,457 pass; the only failure is `src/simulation/__tests__/cyclingSim.test.ts | runCyclingSim — guards cold-storage sweep (coldStoreBufferPct) ⭐ the Strike leg never breaches the margin-call LTV at the stressed price | Error: expected any number of assertion, but got none`. Probe 2 (census of its rows): the test's fixture rebuilt verbatim (LIVE L40–54, run L57, geo/RISING L676–678, buffer 30) prints {\"rows\":241,\"kept\":0,\"skippedBy\":{\"m0\":1,\"postLiq\":0,\"zeroStrike\":240},\"liqMonth\":null,\"first6\":[[0,13000,\"1.0000\",false],[1,0,\"1.0000\",false],[2,0,…]],\"maxStrikeBalance\":13000}. The filter at L837 `if (x.m === 0 || x.postLiquidation || x.strikeBalance <= 0) continue;` skips every row — the Strike balance is $13,000 at month 0 and 0 in each of months 1–240 (the census), so the `expect(stressedLtv).toBeLessThanOrEqual(LIVE.strikeMarginLtv + 1e-9)` at L840 never runs. Any engine change to the Strike leg's sweep passes it.",
+      "whyItMatters": "A ⭐ test whose name promises a Safety invariant (a margin call at Strike is a forced sale) checks it on zero rows — a guard that doesn't guard, and the star tells the next reader it is pinned.",
+      "lane": "Light",
+      "fixSketch": "Give the test a fixture that keeps Strike debt after month 0, count the rows it checks, and assert that count is above 0.",
+      "notKnownBecause": "§9 lists no test-coverage item for the Strike leg's stressed LTV; the §5.1 GAPs are fullyBackedPrice and the accrual clamp.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "Re-ran the fixture (LIVE, RISING geo(240,25), cbLtvCapPct 70, cycleMonths 1, buffer 30) in a scratch test: CENSUS {\"rows\":241,\"kept\":0,\"zero\":240,\"maxB\":13000,\"first3\":[[0,13000],[1,0],[2,0]]}. The filter at cyclingSim.test.ts:837 skips every row, so the expect at :840 never runs. Medium kept (a guard that does not guard)."
+    },
+    {
+      "id": "A6-2",
+      "severity": "Minor",
+      "file": "e2e/numberFieldSwipe.spec.ts",
+      "line": 106,
+      "title": "The HELD e2e passes only by retry: its one tap on \"Strike Strategy\" ~0.3 s after the CDP touch swipe sometimes gets no click from Chromium, and the test neither waits for the swipe to finish nor confirms the tap.",
+      "evidence": "See `flake`. Base gate e2e.log L99–100: attempt 1 ✘ (7.4s), retry #1 ✓ (3.6s). My run alone (`slot npx playwright test -c <copy, port 5182> e2e/numberFieldSwipe.spec.ts:97 --retries=0`): ✘ at L107 \"element(s) not found\"; error-context.md shows the Settings MENU still up (button \"⚡ Strike Strategy …\" present), i.e. the subpage never opened. Trace: tap at (195, 276.67) \"performing tap action 17585 → tap action done 17595\", then 5 s of \"waiting for locator\". In-page recording (2 of 10 runs failed): the tap's pointerdown→touchstart→pointerup→touchend on SPAN._settingsRowSubtitle \"Budget, BLOC, collat\" @195,277 is identical in pass and fail, but in the fails NO mousedown/mouseup/click follows (passes: mousedown +3 ms, click +5 ms). Totals over my runs: 6 of 133 taps that follow the swipe dropped; 0 of ~480 taps not after a swipe; mouse `click()` instead of the tap 9/9.",
+      "whyItMatters": "A gate e2e that is green only on its retry hides real breaks the same way the sheet-entry race did (build-deploy.md: \"a spec that fails in isolation is a bug, not a retry\"); when it fails at L107 its last check (L108, no Save left over) never runs.",
+      "lane": "Light",
+      "fixSketch": "At L106 re-open the subpage with `click()` (the step tests the held figure, not touch) or end the swipe at rest and assert the subpage (`← Settings`) before reading the field.",
+      "notKnownBecause": "§9 names only controlDock.spec's LAYOUT 1023 flake; this spec landed in build 2e (c7f709e) and its flake is new.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "One isolated run, `slot npx playwright test -c <copy, port 5182, reuseExistingServer false> e2e/numberFieldSwipe.spec.ts:97 --retries=0`: 1 failed at L107 \"element(s) not found\"; error-context.md shows the Settings menu (button \"⚡ Strike Strategy …\" present), so the L106 tap did not open the subpage. SettingsMain.tsx:482 opens it only through onClick; EdgeBackGesture.tsx:108 runs onBack on a timer. A spec that fails in isolation (playwright.config.ts note)."
+    },
+    {
+      "id": "A6-3",
+      "severity": "Minor",
+      "file": "src/simulation/__tests__/goalAmount.test.ts",
+      "line": 193,
+      "title": "G3 adds timeouts to three sweeps but misses slower ones with no timeout of their own: goalAmount L193 (2.6 s) and cyclingSimPolicy L1412 (1.3 s) outlast placement L108 and crashPlaybookView L569.",
+      "evidence": "`slot npx vitest run <12 slow-candidate files> --maxWorkers=2 --reporter=json` (Node 22.22.0, busy VM): goalAmount.test.ts:193 \"⭐ GOAL ZONE — every month's zone is the price's…\" 2,642 ms; supportPolicyView.test.ts:505 2,003 ms; placement.test.ts:108 1,282 ms; cyclingSimPolicy.test.ts:1412 \"⭐ the switches — absent ≡ the playbook…\" 1,272 ms; cyclingSimPolicy.test.ts:1580 1,000 ms; crashPlaybookView.test.ts:569 977 ms. Same files on Node 26.12.0 (`slot /opt/node26/bin/node node_modules/vitest/vitest.mjs run …`): goalAmount:193 1,652; supportPolicyView:505 1,563; cyclingSimPolicy:1412 1,236; placement:108 1,102; crashPlaybookView:569 731. Closing lines (paren-matched): goalAmount L193 → L208 `});`, cyclingSimPolicy L1412 → L1438 `});`, L1580 → L1595 `});` — no timeout argument. `grep -n \"testTimeout\" vite.config.ts` → none (5 s default).",
+      "whyItMatters": "G3's own criterion (a sweep near vitest's 5 s default with no timeout of its own, on a busy machine) fits goalAmount L193 better than two of its three picks; left out, it is the likeliest next gate timeout.",
+      "lane": "Light",
+      "fixSketch": "Add goalAmount.test.ts L193 (closing L208) and cyclingSimPolicy.test.ts L1412 (L1438) to G3's `{ timeout: 60_000 }` list — goalAmount.test.ts is build 2/2b's file, so it is the owner's call against G3's \"none of build 2b's\" note.",
+      "notKnownBecause": "§8 G3 names only placement L108, supportPolicyView L505 and crashPlaybookView L569.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "goalAmount.test.ts:193 closes at :208 `});` and cyclingSimPolicy.test.ts:1412 at :1438 `});` with no timeout; vite.config.ts sets no testTimeout; spec §8 G3 names only placement L108, supportPolicyView L505, crashPlaybookView L569. Durations are A6's busy-machine figures, not re-measured."
+    },
+    {
+      "id": "A6-4",
+      "severity": "Minor",
+      "file": "src/simulation/__tests__/cyclePath.test.ts",
+      "line": 68,
+      "title": "The exp∘log canary is the one test in 1,830 that fails when approximated Math moves by one ulp: an exact `toBe` on `Math.exp(Math.log(CYCLE_LOW_MULT))`, the shape general.md's first row gives a tolerance.",
+      "evidence": "Probe: a throwaway setup file replaced Math.pow/exp/log/log10/log2/log1p/expm1/cbrt with versions returning the result 1 ulp up whenever it is finite and non-integer (control test: Math.pow(1.1,2) changed, Math.pow(2,3) still 8), merged into vite.config via mergeConfig, run through the slot over the 61 test files that import a Math-using engine module plus 20 store/view files that reach one: 1,830 tests, 1 failure — `cyclePath.test.ts | cycleMultAt 3 · returns exactly CYCLE_TOP_MULT at a high and CYCLE_LOW_MULT at a low | AssertionError: expected 0.3620689655172415 to be 0.3620689655172414 … cyclePath.test.ts:68:48`. L68 is `expect(Math.exp(Math.log(CYCLE_LOW_MULT))).toBe(CYCLE_LOW_MULT);`. The production path is already immune: cyclePath.ts:105 returns `multOf(b.kind)` on an exact turn hit, and the L64 loop over every turn passed under the same perturbation. The comment at L63–67 says no test can tell the shortcut apart; with Math.exp perturbed (vi.spyOn), the L64 loop would fail without the shortcut (at a turn t = 0, so the fallback is exp(log(mult))).",
+      "whyItMatters": "On a runtime whose exp∘log does not round-trip that constant, the gate goes red for no app change — the G1 incident general.md records (Node 22 CI vs Node 26) — while the shortcut it watches already holds.",
+      "lane": "Light",
+      "fixSketch": "Pin the shortcut directly (spy Math.exp to return 1 ulp off; cycleMultAt at every turn still equals multOf(kind)) and retire the two exact canary lines.",
+      "notKnownBecause": "§9 has no item for it; the G1 golden (cyclingSimPolicy L113–138) already stores its paths, and this canary is outside it.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "cyclePath.test.ts:68-69 are exact toBe on Math.exp(Math.log(x)), an approximated function that general.md row 1 says gets a tolerance. Note: it is a deliberate canary (comment :63-67) meant to fail when exp∘log stops round-tripping; the 1-ulp census was not re-run. Minor."
+    },
+    {
+      "id": "A6-5",
+      "severity": "Minor",
+      "file": "src/components/Auth/NostrAuthGate.tsx",
+      "line": 693,
+      "title": "No unit test names 68 of the 117 component files (not 74), and the riskiest of them carry sentences a wiring test could pin, starting with the at-rest copy general.md says once shipped false.",
+      "evidence": "Count: for each of the 117 `src/components/**/*.tsx` (outside __tests__), `grep -lE \"<Name>\\.tsx|/<Name>['\\\"]\"` over the 190 test files → 68 unnamed (all 122 .tsx in src: 72; counting a bare mention, comments included: 56; 6 of the 68 appear in an e2e spec). Pinnable lines with no test: NostrAuthGate.tsx:693–696 \"The app keeps your key protected on this device, but that's not a backup…\" (general.md: the import notice once claimed \"all your encrypted data is permanently unrecoverable\"; `grep -rnE \"at rest|encrypted data|not a backup\"` over the tests → no guard); StoreMigrationGate.tsx:60 \"Encrypt your local data\"; RecoveryKeyCeremony.tsx:436 \"Backed up. Your plan now syncs, encrypted, under your key.\"; BackupNagCard.tsx (the backup ladder's words); LiquidationModeler.tsx:29 and :53 (an inline drop % in a seizure sentence) and :139 \"CB_LIF = … (Morpho formula at 86% LLTV)\"; OwnershipBar.tsx:37–40 and VenueBar.tsx (the viewer's figures, `btc * btcPrice` inline); MonthBreakdown.tsx (8 inline formats); SharingPage.tsx / ViewerSettings.tsx (viewer-access sentences).",
+      "whyItMatters": "With no render harness, a sentence in an unread component is pinned by nothing; the at-rest copy is a security promise the rules forbid making falsely, and its earlier false version was found only by reading.",
+      "lane": "Light",
+      "fixSketch": "One source-reading test: grep src/components for at-rest claims about plan data (\"data is encrypted\", \"encrypted data\", \"stored encrypted\") and pin NostrAuthGate's \"not a backup\" line.",
+      "notKnownBecause": "§9 lists no test-coverage item for these components; the spec's own count (74) is a premise, not a queued item.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "Re-counted with the same grep (`<Name>.tsx` or `/<Name>['\"]` over the test files): 68 of 117 src/components .tsx unnamed. NostrAuthGate.tsx:693-696 holds the \"not a backup\" line and no test greps for \"not a backup\" or \"encrypted data\". The copy is correct today; this is a coverage gap, Minor."
+    },
+    {
+      "id": "A6-6",
+      "severity": "Minor",
+      "file": "src/simulation/__tests__/goalAmount.test.ts",
+      "line": 301,
+      "title": "The assertion labelled \"KEPT non-vacuous on both sides\" cannot fail: `expect.any(Number)` accepts a zero count.",
+      "evidence": "L301: `expect([runKept, baseKept], 'KEPT non-vacuous on both sides').toEqual([expect.any(Number), expect.any(Number)]);` where both are counters initialised to 0 at L288. Probe: a throwaway test with `const runKept = 0, baseKept = 0;` and that exact line → `Tests 1 passed (1)`. The real non-vacuity check is the next line, L302 `expect(Math.min(runKept, baseKept)).toBeGreaterThan(5)`.",
+      "whyItMatters": "A line that says it proves non-vacuity and proves nothing; harmless only because L302 follows it.",
+      "lane": "Light",
+      "fixSketch": "Delete L301 (L302 is the check) or make it `toBeGreaterThan(0)` on each side.",
+      "notKnownBecause": "§9 has no item for it.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "goalAmount.test.ts:301 compares counters (started at 0, :288) to expect.any(Number), which matches 0; the real check is :302 `toBeGreaterThan(5)`."
+    }
+  ],
+  "counts": {
+    "confirmed": 6,
+    "refuted": 0,
+    "unverified": 0,
+    "Critical": 0,
+    "Medium": 1,
+    "Minor": 5
+  },
+  "flake": {
+    "rootCause": "A test race in numberFieldSwipe.spec.ts HELD (L97): after the CDP touch swipe the test waits only for the menu row (L104), then taps it once (L106) and reads the field (L107) without confirming the subpage opened. The tap that follows the swipe sometimes produces no click, so SettingsRow onClick (SettingsMain.tsx:482) never runs and the menu stays up. Not an app defect. The exact Chromium mechanism is unconfirmed, as A6 says.",
+    "confirmed": true,
+    "evidence": "Base gate e2e.log L99 ✘ (7.4s), L100 ✓ retry #1 (3.6s). Verifier run alone through the slot on a port-5182 copy (reuseExistingServer false, --retries=0): 1 failed at L107 \"expect(locator).toHaveValue('20000') … element(s) not found\"; error-context.md snapshot is the Settings menu with button \"⚡ Strike Strategy Budget, BLOC, collateral, start date, cold storage ›\", so the L106 tap did not open the subpage. The failure mode reproduces; A6's no-click-after-touchend recorder evidence was not re-run. Probe files deleted, worktree status empty."
+  },
+  "slowTests": [
+    {
+      "file": "src/lib/nostr/__tests__/journalSweep.test.ts",
+      "line": 424,
+      "title": "SWEEP — no loss, no duplicate, no resurrection, and every device converges to the oracle",
+      "ms": 35788,
+      "ownTimeout": "600_000 (L437)"
+    },
+    {
+      "file": "src/components/Almanac/__tests__/planMonthView.test.ts",
+      "line": 97,
+      "title": "⭐ WORDS — every sentence THIS MONTH and Daily print, over the sweep, every month of every run",
+      "ms": 8518,
+      "ownTimeout": "60_000 (L113)"
+    },
+    {
+      "file": "src/components/Almanac/__tests__/decisionView.test.ts",
+      "line": 110,
+      "title": "⭐ the sweep (12275 runs) — no action is dropped, and every kind is reached",
+      "ms": 6913,
+      "ownTimeout": "600_000 (L151)"
+    },
+    {
+      "file": "src/lib/planEvents/__tests__/planLogSize.test.ts",
+      "line": 201,
+      "title": "⭐ FOLD-SAFE — 1,500 random logs: the fold never changes…",
+      "ms": 4786,
+      "ownTimeout": "60_000 (L238)"
+    },
+    {
+      "file": "src/components/Almanac/__tests__/supportPolicyView.test.ts",
+      "line": 523,
+      "title": "⭐ exhaustive: every A5 path (cash 0 and 6) and every grid cell, latched and re-arm 6 — non-null and TRUE",
+      "ms": 4507,
+      "ms26": 3175,
+      "ownTimeout": "20_000 (L582)"
+    },
+    {
+      "file": "src/simulation/__tests__/goalAmount.test.ts",
+      "line": 193,
+      "title": "⭐ GOAL ZONE — every month's zone is the price's, goal or not, over the face grids",
+      "ms": 2642,
+      "ms26": 1652,
+      "ownTimeout": "none (closes L208) — not in G3"
+    },
+    {
+      "file": "src/components/Almanac/__tests__/supportPolicyView.test.ts",
+      "line": 505,
+      "title": "⭐ liquidated: a month-0 breach \"starts past its liquidation line\" — never \"in month 0\" (v1.1 #6)",
+      "ms": 2003,
+      "ms26": 1563,
+      "ownTimeout": "none (closes L516) — G3"
+    },
+    {
+      "file": "src/simulation/__tests__/placement.test.ts",
+      "line": 108,
+      "title": "⭐ 20,001 random positions across all three zones: month 1 ≡ plan.after",
+      "ms": 1282,
+      "ms26": 1102,
+      "ownTimeout": "none (closes L168) — G3"
+    },
+    {
+      "file": "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+      "line": 1412,
+      "title": "⭐ the switches — absent ≡ the playbook (rules on, top up first on, any depth off); the policy-off arm ignores all three",
+      "ms": 1272,
+      "ms26": 1236,
+      "ownTimeout": "none (closes L1438) — not in G3"
+    },
+    {
+      "file": "src/lib/nostr/__tests__/keyVault.test.ts",
+      "line": 150,
+      "title": "LEGACY: meta with NO payloadKind unwraps as 'sk', byte-identically, even after a JSON round-trip",
+      "ms": 1018,
+      "ownTimeout": "none (closes L160)"
+    },
+    {
+      "file": "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+      "line": 1580,
+      "title": "a top-up that restores the line in full books no shift — never the float dust of its own arithmetic (the synthetic grid)",
+      "ms": 1000,
+      "ms26": 671,
+      "ownTimeout": "none (closes L1595)"
+    },
+    {
+      "file": "src/components/Tools/__tests__/crashPlaybookView.test.ts",
+      "line": 569,
+      "title": "no card string prints NaN, Infinity, undefined, \"$0\" or \"0.00000 ₿\"",
+      "ms": 977,
+      "ms26": 731,
+      "ownTimeout": "none (closes L573) — G3"
+    }
+  ]
+}

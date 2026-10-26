@@ -1,0 +1,127 @@
+{
+ "area": "A2",
+ "findings": [
+  {
+   "id": "A2-1",
+   "severity": "Critical",
+   "file": "src/simulation/logUtils.ts",
+   "line": 277,
+   "title": "Editing, backfilling or un-deleting an older balance reading makes that reading's Coinbase collateral the current one. The live CB LTV, the crash-day gate and the plan's run all read that figure, because deriveCbCollateral picks the latest reading by ts and every edit or Undo bumps ts.",
+   "evidence": "cd /tmp/hardening-1/audit-A2 && /tmp/hardening-1/bin/slot npx vitest run src/__probe__/A2-probe.test.ts --maxWorkers=2 --silent=false --reporter=verbose (probe deleted after; real store via useStore.setState reset: advisorStartDate 2026-01-01, hasCbLoan true, btcPrice 100000, isAuthenticated false, planEvents []). P1: addDayEvent A {date 2026-03-05, ts 1000, reading {strikeBal 10000, strikeLtv .10, strikeCollateral 1, cbBal 4000, cbLtv .40, cbCollateral 1}}; addDayEvent B {date 2026-03-25, ts 2000, ... cbCollateral 2}. Output: 'P1 before edit: {...\"cbCollateralBtc\":2,\"anchor\":12000,\"anchorAsOf\":\"2026-03-25\"}'. Then the owner fixes a typo: updateDayEvent(A with strikeBal 10500, CB fields re-saved as stored — EventSheet.tsx:161-166 seeds them, :413-417 writes them back). Output: 'P1 after edit : {...\"cbCollateralBtc\":1,\"anchor\":12000,\"anchorAsOf\":\"2026-03-25\",\"planCbCollateral\":1}'. P12 (same events, cbLoanBalance 80000, trigger 75): 'P12: {\"before\":{\"cbCollateralBtc\":2,\"crashDay\":false},\"after\":{\"cbCollateralBtc\":1,\"crashDay\":true},\"trigger\":75}'. Path: dayLogSlice.ts:40 sets ts=Date.now(), then :48 refreshCbCollateralCache (dailyRouting.ts:24-27) calls logUtils.ts:277 `e.ts >= best.ts`, which selects A. Other triggers with the same effect: undoDayEventDeletion (dayLogSlice.ts:81, fresh ts); a past-dated add with its reading filled (cbCollateral is required with a loan, eventSheetModel.ts:157), including the Review's 'Add balance reading' for a past month (DailyModeView.tsx:555-559). Readers: planRun.ts:48-49 planCbCollateralOf (the plan's run), DailyModeView.tsx:144-147 → crashPlaybookView.ts:66-72 isCrashDay, payloads.ts:112 (trusted viewer snapshot), and setDayLog (dayLogSlice.ts:100) re-derives it on every device that pulls the edit.",
+   "whyItMatters": "A typo fix in a weeks-old reading halves or doubles the Coinbase collateral behind the Safety gauge, the Emergency Console's gate and the plan's to-do list. With $80,000 owed at $100,000/BTC the LTV jumps from 40% to 80%, and Daily and THIS MONTH flip to 'Crash day — work from the Emergency Console'. In the other direction it hides a real margin call. The wrong figure syncs to every device and to the trusted viewer.",
+   "fixSketch": "Order deriveCbCollateral by (date, ts) as deriveStrikeCollateral and deriveReadingAnchors do (logUtils.ts:302, :443). The existing tests use a single date (dailyMode.test.ts:281), so they stay green.",
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A2 (batched store probe, deleted): readings Mar 5 (cbCollateral 1) and Mar 25 (cbCollateral 2); editing only the Mar 5 strikeBal moves cbCollateralBtc 2 → 1. Code: updateDayEvent bumps ts (dayLogSlice.ts:40), deriveCbCollateral (logUtils.ts:270-280) picks max ts; EventSheet.tsx:163-165/413-416 re-saves the CB fields. deriveStrikeCollateral and deriveReadingAnchors order by (date, ts). Not in §9 (§9's same-day typed-balance case is different). Critical kept: the CB collateral behind the LTV gauge, the crash gate and the plan's run.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A2-2",
+   "severity": "Critical",
+   "file": "src/lib/backup/validatePlanBackup.ts",
+   "line": 74,
+   "title": "A Strike balance re-anchored while no Strike collateral is recorded writes strikeLtv = Infinity into the month entry. JSON turns it into null, and the restore validator then rejects the whole backup as malformed.",
+   "evidence": "cd /tmp/hardening-1/audit-A2 && /tmp/hardening-1/bin/slot npx vitest run src/__probe__/A2-probe.test.ts --maxWorkers=2 --silent=false --reporter=verbose (probe deleted after; real store via useStore.setState reset: advisorStartDate 2026-01-01, hasCbLoan true, btcPrice 100000, isAuthenticated false, planEvents []). P4: reset advisorStartDate=todayLocalISO(), hasCbLoan false, strikeCollateralBtc 0; emitBalanceReading({ strikeBal: 5000 }) (the call SafetyDashboard.tsx:148 saveStrike and SimpleModeView.tsx:114 Quick Setup make). Output: 'P4 entry strikeLtv: Infinity' — dayLogSlice.ts:118 computeStrikeLtv → ltv.ts:21 (+∞ for debt with 0 collateral) → logUtils.ts:171 copies it into the entry. JSON.parse(JSON.stringify(buildPlanBackup(state))), the same serialisation exportPlan.ts:52 uses → 'P4 backup entry strikeLtv after JSON: null' → validatePlanBackup → 'P4 validate: {\"code\":\"bad-records\",\"message\":\"This backup contains a malformed month entry.\"}'. validatePlanBackup.ts:74-76 requires typeof number on strikeLtv. localStorage persists the same JSON, so after a reload the in-memory entry is already null, and every later backup fails too.",
+   "whyItMatters": "The backup file is the owner's recovery path. One month logged in this state makes the app refuse the whole file: every month, every day event and every setting. The error blames the file, and the owner finds out only on the day they need to restore.",
+   "fixSketch": "Never store a non-finite LTV in a reading or month entry: leave it absent, or represent ∞ explicitly, at emitBalanceReading and rollupMonth. Have the validator accept a null strikeLtv/cbLtv instead of dropping the backup.",
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A2 (batched store probe, deleted): hasCbLoan off, no Strike collateral, emitBalanceReading({strikeBal 5,000}) → month 1 strikeLtv Infinity (ltv.ts:19-21 via computeStrikeLtv); JSON round-trip of buildPlanBackup → null; validatePlanBackup → {code 'bad-records', 'This backup contains a malformed month entry.'} (validatePlanBackup.ts:74-76). Data loss on restore: Critical kept.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A2-3",
+   "severity": "Critical",
+   "file": "src/simulation/logUtils.ts",
+   "line": 309,
+   "title": "Correcting a just-logged Strike deposit, or tapping Undo after deleting it, counts the deposit twice in Strike collateral. The sheet's own readout says ₿1.12; the store then holds ₿1.22.",
+   "evidence": "cd /tmp/hardening-1/audit-A2 && /tmp/hardening-1/bin/slot npx vitest run src/__probe__/A2-probe.test.ts --maxWorkers=2 --silent=false --reporter=verbose (probe deleted after; real store via useStore.setState reset: advisorStartDate 2026-01-01, hasCbLoan true, btcPrice 100000, isAuthenticated false, planEvents []). P5: today-dated reading {strikeCollateral 1, ts 1000}, then the sheet's LD6 pair: deposit 0.1 target strike ts 2000 + reading {strikeCollateral 1.1, ts 2000}. getCurrentBtcHeld = 1.1. updateDayEvent(deposit amount 0.12) → 'P5: {\"before\":1.1,\"after\":1.2200000000000002}'. EventSheet.tsx:329-332 shows the pre-save readout as currentBtcHeld − origEffect + amount = 1.1 − 0.1 + 0.12 = 1.12. Path: dayLogSlice.ts:40 sets ts=Date.now(); logUtils.ts:308-309 then counts a same-date move with e.ts > anchor.ts on top of the reading, which already states the post-move total. P7: the same pair, deleteDayEvent('dep') → 1.1 (the reading still states it), then undoDayEventDeletion(ev) (dayLogSlice.ts:81, fresh ts) → 'P7: {\"before\":1.1,\"afterDelete\":1.1,\"afterUndo\":1.2000000000000002}'.",
+   "whyItMatters": "Strike collateral is overstated by the deposit's amount. The Strike LTV and liquidation on Safety, Daily's 'Avail credit' (DailyModeView.tsx:136) and the plan's run all read it, so the owner sees more room to draw than Strike gives. Both triggers are the commonest corrections: fixing an amount right after saving, and undoing an accidental swipe-delete.",
+   "fixSketch": "Keep an edited or restored strike move out of its anchor's window: separate the merge version clock from the occurrence order, or re-emit the paired reading on edit. Undo should restore the exact prior state.",
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A2 (batched store probe, deleted): today reading 1 ₿ (ts 1000), deposit 0.1 + reading 1.1 (both ts 2000): held 1.1; edit deposit to 0.12 → 1.22 (sheet readout would say 1.12); delete → 1.1; Undo → 1.22. Code: bumped ts (dayLogSlice.ts:40, :81) makes the same-date move strictly after its reading in deriveStrikeCollateral (logUtils.ts:308-309). Overstates Strike collateral, so Strike's LTV and available credit: Critical kept.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A2-4",
+   "severity": "Critical",
+   "file": "src/simulation/logUtils.ts",
+   "line": 166,
+   "title": "A month's recorded closing balances come from its latest reading by ts, not by date. Editing or backfilling an earlier reading in the month therefore replaces the month-end Strike balance, the LTVs and the Coinbase balance in the Ledger, its CSV, THIS MONTH's past-month view and the next month's carry-forward.",
+   "evidence": "cd /tmp/hardening-1/audit-A2 && /tmp/hardening-1/bin/slot npx vitest run src/__probe__/A2-probe.test.ts --maxWorkers=2 --silent=false --reporter=verbose (probe deleted after; real store via useStore.setState reset: advisorStartDate 2026-01-01, hasCbLoan true, btcPrice 100000, isAuthenticated false, planEvents []). P1 (the events of A2-1): before the edit m3 = {strikeBal 12000, strikeLtv .12, cbLtv .20}; after editing the Mar 5 reading m3 = {strikeBal 10500, strikeLtv .10, cbLtv .40}, while the live anchor stays 12000 @ 2026-03-25. P2: m3 has a Mar 25 reading (12000) and is confirmed; backfilling a Mar 5 buy plus its typed reading (10000, ts 3000) gives 'P2: {\"m3\":{\"strikeBal\":10000,\"confirmed\":false},\"m4\":{\"strikeBal\":10000,\"provisional\":true},...}'. The m4 figure comes from a reading-less Apr 10 draw, because priorStocksForMonth (logUtils.ts:225-229) also sorts by ts. Readers: LedgerFace.tsx:172/227, ledgerCsv.ts:140, planMonthView.ts:454-456 (its doc comment: 'A logged month's end'), logUtils.ts:36 deriveCurrentPosition (the Advisor's position). Every other reading reader orders by (date, ts): deriveStrikeCollateral logUtils.ts:302, deriveReadingAnchors :443, unreconciledCbFlows :346.",
+   "whyItMatters": "The month-end Strike balance and the LTVs beside it are wrong money figures in the record the owner signs and exports. They disagree with the Safety gauge, which reads the same readings by date, and re-signing the reopened month attests the wrong figure.",
+   "fixSketch": "Select the month's stock reading by (date, ts) in rollupMonth and priorStocksForMonth. dailyMode.test.ts:205 uses a single date, so it stays green.",
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A2 (batched store probe, deleted): the A2-1 events: month 3 strikeBal/cbLtv 12,000/0.20 before, 10,500/0.40 after editing the earlier Mar 5 reading, while the live anchor stays 12,000. Code: rollupMonth logUtils.ts:166-169 latest by ts; priorStocksForMonth :225-229 sorts by ts. Kept Critical (wrong month-end money figures in the Ledger/CSV and the carry-forward), noting the edited month reopens (confirmed false), so the owner re-signs the wrong figure rather than a signed figure changing silently.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A2-5",
+   "severity": "Critical",
+   "file": "src/store/slices/advisorJournalSlice.ts",
+   "line": 44,
+   "title": "Changing the 'Strategy start date' in Settings re-buckets the journal but leaves the month log on the old months. The next event then double-counts in the Ledger, and signed months keep figures their review no longer shows.",
+   "evidence": "cd /tmp/hardening-1/audit-A2 && /tmp/hardening-1/bin/slot npx vitest run src/__probe__/A2-probe.test.ts --maxWorkers=2 --silent=false --reporter=verbose (probe deleted after; real store via useStore.setState reset: advisorStartDate 2026-01-01, hasCbLoan true, btcPrice 100000, isAuthenticated false, planEvents []). P6: start 2026-01-01; Jan 20 draw 1000 + reading; Feb 10 draw 2000 + reading; confirmMonth(1), confirmMonth(2). setAdvisorStartDate('2026-01-15') (the SettingsMain.tsx:791-797 date input; AdvisorSidebar.tsx:95) → 'P6 after date change: {\"start\":\"2026-01-15\",\"log\":[{\"m\":1,\"exp\":1000,\"confirmed\":true},{\"m\":2,\"exp\":2000,\"confirmed\":true}],\"review1Drawn\":3000,\"review2Drawn\":0,\"bucketFeb10\":1}'. Adding a Feb 12 buy + reading (now month 1) → 'P6 after one more month-1 event: {\"log\":[{\"m\":1,\"exp\":3000,\"confirmed\":false},{\"m\":2,\"exp\":2000,\"confirmed\":true}],\"ledgerTotalExpenses\":5000,\"drawnInJournal\":3000}'. Path: advisorJournalSlice.ts:44 only calls emitPlanSets. rerollMonth (dailyRouting.ts:111) runs only from a day-event mutator, for that event's month. reconcileMonthBuckets is one-shot: the flag is set at :139, and useMonthBucketReconcile.ts:26 returns once it is done.",
+   "whyItMatters": "The Ledger and its CSV show $5,000 of expenses for $3,000 drawn. Month 2 stays signed with $2,000 that its review now shows as $0. THIS MONTH's expenses prompt averages expensesActual (logUtils.ts:63), and its Update writes that average into the plan.",
+   "fixSketch": "On a start-date change, re-roll all twelve months (the reconcile without its one-shot flag), or refuse the change once the journal holds events.",
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A2 (batched store probe, deleted): Jan 20 draw 1,000, Feb 10 draw 2,000 (with readings), both months signed; setAdvisorStartDate('2026-01-15') leaves the log at m1 1,000 / m2 2,000 signed though Feb 10 now buckets to month 1; one more month-1 event → m1 expensesActual 3,000 (reopened), m2 still 2,000 signed: $5,000 for $3,000 drawn. Code: advisorJournalSlice.ts:44 only emits the plan set; rerollMonth runs per event month; the reconcile is one-shot. Kept Critical (a wrong money total in the Ledger and the expenses prompt's average); trigger is a rare Settings change.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A2-6",
+   "severity": "Medium",
+   "file": "src/store/dailyRouting.ts",
+   "line": 153,
+   "title": "A signed month's 'Expenses actually paid' adjustment is overwritten by the ledger's draws on any later re-roll (a reading added, a buy logged). The re-review seeds from the draws again, so the adjustment is lost unless the owner retypes it.",
+   "evidence": "cd /tmp/hardening-1/audit-A2 && /tmp/hardening-1/bin/slot npx vitest run src/__probe__/A2-probe.test.ts --maxWorkers=2 --silent=false --reporter=verbose (probe deleted after; real store via useStore.setState reset: advisorStartDate 2026-01-01, hasCbLoan true, btcPrice 100000, isAuthenticated false, planEvents []). P3: Mar 10 draw 3000 + reading; confirmMonth(3, {expensesActual: 3500, strikeMinSource:'roll'}) → 'P3 signed: {\"expensesActual\":3500,\"confirmed\":true}'. Adding a Mar 31 reading → 'P3 after a reading: {\"expensesActual\":3000,\"confirmed\":false}'. Path: addDayEvent → rerollMonth → dailyRouting.ts:153 `{ ...base, ...rollupEntry }`, where rollupEntry.expensesActual is the sum of Strike draws (logUtils.ts:136). ReviewSheet.tsx:60 re-seeds toCents(rollup.streams.draw) under the hint 'adjust if you covered expenses from savings' (:128). The 5d comment at dailyRouting.ts:128-131 names this overwrite, but only for the dollars-only path.",
+   "whyItMatters": "The adjustment the review invites (bills paid from savings) disappears without a word; the banner says only 'confirm your log'. expensesActual feeds THIS MONTH's expenses prompt (computeExpenseReanchor, logUtils.ts:57-70), whose Update writes the plan's expenses.",
+   "fixSketch": "Keep the signed expensesActual apart from the rollup's draws (an override the re-roll leaves alone), or seed the re-review from the previously signed figure with the draws shown beside it.",
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A2 (batched store probe, deleted): confirmMonth(3, {expensesActual 3,500}) → 3,500 signed; adding a Mar 31 reading → expensesActual 3,000, confirmed false. Code: dailyRouting.ts:153 spreads rollupEntry (expensesActual = Σ draws) over the signed entry; only the 5d dollars-only path is spared.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A2-7",
+   "severity": "Medium",
+   "file": "src/components/Daily/EventSheet.tsx",
+   "line": 773,
+   "title": "The past-date note promises 'this month is marked provisional until a reading is logged'. With no reading in the prior month, the month is instead written with a $0 Strike balance and 0.0% LTV and is not marked provisional. The review then says 'Confirm these figures are correct' and offers no 'Add balance reading'.",
+   "evidence": "cd /tmp/hardening-1/audit-A2 && /tmp/hardening-1/bin/slot npx vitest run src/__probe__/A2-probe.test.ts --maxWorkers=2 --silent=false --reporter=verbose (probe deleted after; real store via useStore.setState reset: advisorStartDate 2026-01-01, hasCbLoan true, btcPrice 100000, isAuthenticated false, planEvents []). P9: start 2026-01-01; addDayEvent Jan 10 draw 1000 with the reading skipped (what EventSheet.tsx:440-442 writes for a past add) → 'P9 m1: {\"strikeBal\":0,\"strikeLtv\":0,\"confirmed\":false}' (no provisional key). A reading-less Feb 10 draw → 'P9 m2: {\"strikeBal\":0,\"strikeLtv\":0}'. Path: logUtils.ts:181 carries stocks forward only `if (hasFlow && priorStocks)`, and dailyRouting.ts:141-151 seeds strikeBal 0 / strikeLtv 0. Consequences: DailyModeView.tsx:129 isProvisional is false, so the banner reads 'Month 1 — confirm your log' (:306); ReviewSheet.tsx:171-173 shows 'Confirm these figures are correct…' with Confirm only (:186-189); LedgerFace.tsx:161/172/179 prints '0' and a green 0.0% in a row that isn't italic; planMonthView.ts:456 prints 'Strike $0.00 · 0.0% LTV'. P10: the delete confirm at EventSheet.tsx:828 says 'If a today flow loses its reading, the month is marked provisional', but deleting month 1's only reading left {\"strikeBal\":5000,\"strikeLtv\":0.05,\"cbBal\":4000,\"btcHeld\":1,\"provisional\":false}.",
+   "whyItMatters": "Two sentences on the sheet are false for the first month and for any month after a reading-less one. The month's balances read as recorded fact ($0 owed, 0% LTV, green) when nothing was read, and the owner signs them.",
+   "fixSketch": "Mark a month with flows and no reading as provisional even without prior stocks, leaving its stocks absent rather than 0. Otherwise, make both sentences conditional on a prior-month reading.",
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced at base: logUtils.ts:181 carries stocks forward only `if (hasFlow && priorStocks)`, so a reading-less month with no prior-month reading gets the seed strikeBal 0 / strikeLtv 0 (dailyRouting.ts:141-151) and no provisional flag; EventSheet.tsx:773 promises 'this month is marked provisional until a reading is logged'. The delete note (:828) is false likewise when the deleted reading leaves the base entry's stocks in place. Not §9's month-log edit form.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A2-8",
+   "severity": "Medium",
+   "file": "src/simulation/simpleModePlan.ts",
+   "line": 98,
+   "title": "Strike's minimum shows MISSED for the first part of every strategy month that starts after the due day. The chip compares today's calendar day with the due day but counts payments by strategy month, so a bill paid on time lands in the previous month.",
+   "evidence": "cd /tmp/hardening-1/audit-A2 && /tmp/hardening-1/bin/slot npx vitest run src/__probe__/A2-probe.test.ts --maxWorkers=2 --silent=false --reporter=verbose (probe deleted after; real store via useStore.setState reset: advisorStartDate 2026-01-01, hasCbLoan true, btcPrice 100000, isAuthenticated false, planEvents []). P11 uses the inputs that DailyModeView.tsx:160-166, PlanMonthCard.tsx:157-160 and EventSheet.tsx:478-485 pass. Start 2026-01-20; today 2026-02-25, in strategy month 2 (Feb 20 – Mar 19), whose bill is due Mar 15. The Feb 15 minimum was logged on time; bucketEventToMonth puts it in month 1. Output: 'P11: {\"month\":2,\"paidSoFar\":0,\"status\":\"MISSED\",\"feb15Month\":1,\"mar15Month\":2}'. The cause is simpleModePlan.ts:98 `isCurrent && todayDay > dueDay → 'MISSED'`. It also errs the other way: on 2026-01-25 a Jan 15 payment made before the start is clamped into month 1 and reads PAID for the Feb 15 bill (first probe run).",
+   "whyItMatters": "Every month, from the start day to the end of the calendar month, the Daily plan card, THIS MONTH's foot and the paydown sheet tell an owner who paid on time that they missed Strike's minimum, weeks before the next bill is due.",
+   "fixSketch": "Decide DUE / MISSED against the due date that falls inside the strategy month (a date, not a day-of-month), and count payments from the previous due date.",
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced at base: DailyModeView.tsx:160-166 sums minPayments bucketed to the current STRATEGY month but passes todayDay = calendar day-of-month; simpleModePlan.ts:98 returns MISSED when todayDay > dueDay. Start the 20th, due the 15th: on the 25th the on-time payment of the 15th sits in the previous strategy month, so paidSoFar 0 and MISSED. Not §9's 'two estimates' (that is the owed figure, not the status).",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A2-9",
+   "severity": "Medium",
+   "file": "src/components/Almanac/LedgerFace.tsx",
+   "line": 247,
+   "title": "The Ledger's footnote '† includes a non-draw / minimum payment.' is false. The dagger sits on the Paydown cell, which never includes Strike's minimum or the NDP, and the minimum's amount appears nowhere in the Ledger or its CSV.",
+   "evidence": "cd /tmp/hardening-1/audit-A2 && /tmp/hardening-1/bin/slot npx vitest run src/__probe__/A2-probe.test.ts --maxWorkers=2 --silent=false --reporter=verbose (probe deleted after; real store via useStore.setState reset: advisorStartDate 2026-01-01, hasCbLoan true, btcPrice 100000, isAuthenticated false, planEvents []). P8: rollupMonth([minPayment 150 on 2026-03-15, reading]) → 'P8 rollup: {\"strikeMinPaid\":150,\"strikeMinSource\":\"income\",\"strikeBal\":12000,\"strikeLtv\":0.12,\"provisional\":false}'. There is no paydown key: logUtils.ts:149-156 makes the minimum balance-neutral and never adds it to paydown. LedgerFace.tsx:153 sets rowNote = ndpPaid != null || strikeMinPaid != null; :166-167 prints fmtUsd0(e.paydown) = '0' with '†'; :247 reads '† includes a non-draw / minimum payment.' ReviewSheet.tsx:79 writes strikeMinPaid on every income-mode sign-off, so every such month carries the dagger. ledgerCsv.ts:127-131 has no strikeMinPaid or ndpPaid column.",
+   "whyItMatters": "A '0†' paydown reads as '$0, including a minimum payment'. The owner can't see what was paid, and the CSV drops the minimum and the NDP entirely.",
+   "fixSketch": "Reword the footnote (e.g. '† Strike's minimum / NDP paid this month — not in Paydown') and show the amount in the table and the CSV.",
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced at base: LedgerFace.tsx:153 rowNote = ndpPaid != null || strikeMinPaid != null; :166-167 hangs † on the Paydown cell; :247 '† includes a non-draw / minimum payment.'; logUtils.ts:149-156 never adds a minPayment to paydown, so the sentence is false for the minimum and its amount is shown nowhere.",
+   "lane": "Light"
+  }
+ ],
+ "counts": {
+  "confirmed": 9,
+  "refuted": 0,
+  "unverified": 0
+ }
+}

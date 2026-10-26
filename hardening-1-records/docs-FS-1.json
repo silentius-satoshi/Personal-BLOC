@@ -1,0 +1,2452 @@
+{
+ "key": "FS-1",
+ "doc": "docs/claude/file-structure.md",
+ "lines": "1-471, 472-852",
+ "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+ "counts": {
+  "TRUE": 381,
+  "STALE": 7,
+  "FALSE": 6,
+  "HISTORY": 13,
+  "UNCHECKABLE": 7
+ },
+ "records": [
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 99,
+   "claim": "placement.ts — PURE LEAF: supportPolicy + cbDefense + cbMetrics + strikeCredit + runCoinbaseLoan + emergencyModel + ltv (the import list)",
+   "verdict": "STALE",
+   "evidence": "src/simulation/placement.ts:14 `import { goalOf, netCoinsBtc, atGoalOf, goalStandsDown } from './goal';` — the list omits ./goal (BL32); everything else holds (grep ^import placement.ts:1-14). The doc's own line 79 names goal.ts's goalOf.",
+   "correction": {
+    "before": "+ emergencyModel + ltv.",
+    "after": "+ emergencyModel + ltv + goal."
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 150,
+   "claim": "cyclingSim.ts — §2 wall side B: imports ONLY … + the zero-import ltvOf (./ltv) + the leaf ./supportPolicy …",
+   "verdict": "STALE",
+   "evidence": "src/simulation/cyclingSim.ts:7 `import { netCoinsBtc, atGoalOf, goalOf, goalStandsDown } from './goal';` — the 'imports ONLY' list omits the zero-import ./goal (doc line 264 itself says 'cyclingSim imports it'). The wall claim (nothing from powerLaw/cycleModel/store) holds: cyclingSim.ts:1-12.",
+   "correction": {
+    "before": "the zero-import ltvOf (./ltv) +",
+    "after": "the zero-import ltvOf (./ltv) + the zero-import ./goal +"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 149,
+   "claim": "cyclingSim imports from runCoinbaseLoan 'CB_LLTV/CB_LIF/cbBorrowFee/cbLiquidationPrice + the fee-bracket constants'",
+   "verdict": "STALE",
+   "evidence": "src/simulation/cyclingSim.ts:1 imports `CB_LLTV, CB_LIF, cbBorrowFee, cbMaxDrawForHeadroom, cbLiquidationPrice` — no CB_FEE_TIER* constant (grep CB_FEE_TIER cyclingSim.ts → none; `git log -S CB_FEE_TIER1_PCT -- src/simulation/cyclingSim.ts` → no commit ever). The fifth import is the bracket inverse cbMaxDrawForHeadroom.",
+   "correction": {
+    "before": "fee-bracket constants (runCoinbaseLoan, a leaf)",
+    "after": "fee-bracket inverse cbMaxDrawForHeadroom (runCoinbaseLoan, a leaf)"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 149,
+   "claim": "cyclingSim imports 'defendCbLtv/topUpToCbLtv (cbDefense)' (as part of 'imports ONLY')",
+   "verdict": "STALE",
+   "evidence": "src/simulation/cyclingSim.ts:2-5 imports defendCbLtv, topUpToCbLtv, topUpStrikeLtv, cbSurvivalCollateralBtc, cbDoomedThisMonth, TOPUP_MARGIN_BUFFER, CB_SURVIVAL_BUFFER, strikeReleasableBtc, ceilingLiquidationMultiple, SHIFT_DUST_USD from ./cbDefense (a leaf importing only ./ltv, cbDefense.ts:27) — the named pair is a subset; the wall still holds.",
+   "correction": {
+    "before": "defendCbLtv/topUpToCbLtv (cbDefense)",
+    "after": "defendCbLtv/topUpToCbLtv and the other defense leaves (cbDefense)"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 214,
+   "claim": "openingColdBtc is WIRED from the three engine faces (real-cold spec v1): each passes getCurrentColdBtc()",
+   "verdict": "STALE",
+   "evidence": "Four faces pass it: DecisionFace.tsx:321, UnifiedFace.tsx:205, OwnershipFace.tsx:236, CyclingFace.tsx:213 (`openingColdBtc: st.getCurrentColdBtc()`); coldWiring.test.ts:21 `FACES = ['CyclingFace.tsx','OwnershipFace.tsx','UnifiedFace.tsx','DecisionFace.tsx']` (its own docblock line 6 also still says 'three'; rules/engine.md says 'The three engine faces' too — a rule row, finding only). usePlanMonth.ts:46 passes it as well.",
+   "correction": {
+    "before": "WIRED from the three engine faces",
+    "after": "WIRED from the four engine faces"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 491,
+   "claim": "useRelayStatus probes only the urls passed in (SettingsMain gates on settingsPage==='network' ? nostrRelays : EMPTY_RELAYS)",
+   "verdict": "STALE",
+   "evidence": "src/components/Settings/SettingsMain.tsx:258 `useRelayStatus(settingsPage === 'network' && !backupGated ? nostrRelays : EMPTY_RELAYS)` — the quoted gate gained `&& !backupGated` (no probe sockets behind the interstitial); the claim (no sockets unless viewing) still holds.",
+   "correction": {
+    "before": "settingsPage==='network' ? nostrRelays",
+    "after": "settingsPage==='network' && !backupGated ? nostrRelays"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 636,
+   "claim": "demoSeed.ts — Imports ONLY utils/format + type-only shapes",
+   "verdict": "STALE",
+   "evidence": "src/lib/demo/demoSeed.ts:15-18 — imports toLocalISO (utils/format), CURRENT_STORE_VERSION (../storeVersion, zero-import), CB_APR_SEED_PCT (../../simulation/runCoinbaseLoan, imports only ./ltv) + type-only shapes. The never-pull-useStore claim holds (no store import).",
+   "correction": {
+    "before": "Imports ONLY utils/format + type-only shapes",
+    "after": "Imports ONLY utils/format, lib/storeVersion, simulation/runCoinbaseLoan + type-only shapes"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 388,
+   "claim": "emergencyModel ⚠ NAMED FOLLOW-UP (not fixed here): runAdvisor (4 copies) + AdvisorMain (1 …) still open-code `x > 0 ? a/b : 0`",
+   "verdict": "FALSE",
+   "evidence": "`grep -n '> 0 ?' src/simulation/runAdvisor.ts src/components/Advisor/AdvisorMain.tsx` → no hits; runAdvisor.ts:1-40 holds only getCurrentStrategyMonth/isStrategyComplete/getNdpStatus (the engine left in 5e). The doc's own ltv.ts entry (lines 361-364) says 'The NAMED FOLLOW-UP is closed … runAdvisor's four in 5e (D5-A)'. Contradicted by the code and by the same doc; the zero-collateral half of the sentence still holds (emergencyModel.ts:32-34,48).",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 473,
+   "claim": "useBtcPrice.ts — Coinbase API, 60s interval",
+   "verdict": "FALSE",
+   "evidence": "src/hooks/useBtcPrice.ts:7 `const POLL_MS = 10_000; // display refresh cadence` and :57 `setInterval(() => void fetchPrice(), POLL_MS)` — it polls every 10 s; 60 s is STORE_SYNC_MS (:8), the store's maximum staleness.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 473,
+   "claim": "useBtcPrice syncs store on every fetch (gated by btcPriceMode)",
+   "verdict": "FALSE",
+   "evidence": "src/hooks/useBtcPrice.ts:38-47 — in 'live' mode it calls setBtcPrice only when the price moved ≥ STORE_SYNC_THRESHOLD 0.1% (:9) or STORE_SYNC_MS 60 s elapsed (:8) since the last push; not on every fetch. The btcPriceMode gate (:38) holds.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 528,
+   "claim": "usePointerDrag.ts — NO consumer yet (P0 is foundation-only; P1+ wire it)",
+   "verdict": "FALSE",
+   "evidence": "`grep -rln usePointerDrag src` (non-test) → src/components/ui/SwipeStrip.tsx, ui/DraggableSheet.tsx, ui/EdgeBackGesture.tsx, Daily/MonthEventsModal.tsx (plus useChartZoom.ts / gestureModel.ts in comments). The doc's own useChartZoom entry (line 557) and AppShell entry (EdgeBackGesture) describe consumers.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 541,
+   "claim": "useReducedMotion.ts — NO consumer yet (P1+)",
+   "verdict": "FALSE",
+   "evidence": "`grep -rln useReducedMotion src` (non-test) → ui/SwipeStrip.tsx, ui/DraggableSheet.tsx, ui/EdgeBackGesture.tsx, hooks/useCountTo.ts:2 (doc line 476 itself says useCountTo uses it), hooks/useMediaQuery.ts (comment).",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 704,
+   "claim": "parseGoalInput(raw): empty → null (clears), an amount above zero → it, anything else → undefined (changes nothing)",
+   "verdict": "FALSE",
+   "evidence": "src/lib/planGoal.ts:39 `if (v === 0) return null;` — a typed 0 clears the goal (null), not undefined; pinned by src/lib/__tests__/planGoal.test.ts:26 `expect(parseGoalInput('0'), 'zero → no goal').toBeNull()`. The sentence's 'anything else → undefined' is incomplete (likely the doc, not the code, is what drifted).",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 128,
+   "claim": "REPRO, 20 yr, policy off: liqMonth 0.6% of the futures vs the way-down test 95.1% (F4)",
+   "verdict": "UNCHECKABLE",
+   "evidence": "A measurement over the 1,000 futures; not re-run (read-only discovery).",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 59,
+   "claim": "calibration measured 0.80 × / 0.59 × / −34% / 67% vs memo 0.82 / 0.61 / −35% / 64%",
+   "verdict": "UNCHECKABLE",
+   "evidence": "Measurement; pricePaths.ts:26-30 states the same figures; futures.test.ts:84-85 holds the bounds (L-I3). Not re-measured.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 605,
+   "claim": "the two dynamic import paths deepened one level (../../lib/nostr/...)",
+   "verdict": "HISTORY",
+   "evidence": "A note of the Phase 1c move. Today the slices hold four dynamic imports (syncSlice.ts:110,117,195; identitySlice.ts:100) — left alone as history of the move.",
+   "correction": null
+  }
+ ],
+ "trueClaims": [
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 10,
+   "claim": "types.ts exports SimInputs (creditLine?), LivingInputs, StrategyResult, MonthlyLogEntry",
+   "evidence": "types.ts:1,7,32,59,111"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 11,
+   "claim": "DayEvent union; source?/confirmed?/provisional? on MonthlyLogEntry",
+   "evidence": "types.ts:80,132-134"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 12,
+   "claim": "livingUtils getBtcPrice 8 params, bear-market aware",
+   "evidence": "livingUtils.ts:1-10"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 13,
+   "claim": "powerLaw PL_B, PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING 2.4e-17, GENESIS",
+   "evidence": "powerLaw.ts:1-14"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 13,
+   "claim": "'Resistance' is the UI label, key stays 'ceiling'",
+   "evidence": "powerLaw.ts:37,58"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 14,
+   "claim": "powerLaw has ZERO imports",
+   "evidence": "grep ^import powerLaw.ts → none"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 15,
+   "claim": "plBandsAt(date) → {floor,fair,ceiling}, each from its own A constant",
+   "evidence": "powerLaw.ts:62-64"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 16,
+   "claim": "plConvergencePath(anchor, band, startDate, months, convergeMonths)",
+   "evidence": "powerLaw.ts:130-136"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 19,
+   "claim": "reverts in log space, w = max(0, 1 − m/convergeMonths)",
+   "evidence": "powerLaw.ts:147-148"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 22,
+   "claim": "pinned by the not-constant-ratio test",
+   "evidence": "powerLaw.test.ts:91"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 22,
+   "claim": "m===0 special-cased to return the anchor exactly",
+   "evidence": "powerLaw.ts:145"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 24,
+   "claim": "local addMonths, UTC, day-of-month clamped",
+   "evidence": "powerLaw.ts:108-113"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 26,
+   "claim": "plBandAt(band, startDate, months)",
+   "evidence": "powerLaw.ts:85-87"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 28,
+   "claim": "addMonths exported, shared with cyclePath.ts",
+   "evidence": "powerLaw.ts:108; cyclePath.ts:26"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 30,
+   "claim": "plDateAtPrice(band, usd), days = max(1, ceil((usd/A)^(1/B)))",
+   "evidence": "powerLaw.ts:75-78"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 33,
+   "claim": "Power Law face's model card reads plDateAtPrice",
+   "evidence": "PowerLaw/powerLawView.ts imports it"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 33,
+   "claim": "Support $100k → Feb 2028, Fair $1M → Nov 2032",
+   "evidence": "node calc: 2028-02-29, 2032-11-24"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 35,
+   "claim": "supportToday(todayISO) = plBandAt('floor', today, 0)",
+   "evidence": "powerLaw.ts:94-96"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 36,
+   "claim": "Safety's callers ask supportToday and pass the figure in",
+   "evidence": "SafetyDashboard.tsx:78; payloads.ts:83"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 38,
+   "claim": "cyclePath PathKind = PlBand | 'fourYear'",
+   "evidence": "cyclePath.ts:29"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 39,
+   "claim": "cyclePath imports both belief leaves (powerLaw, cycleModel)",
+   "evidence": "cyclePath.ts:26-27"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 40,
+   "claim": "CYCLE_TOP_MULT 1.00",
+   "evidence": "cyclePath.ts:54"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 41,
+   "claim": "CYCLE_LOW_MULT = PL_A_FLOOR/PL_A_FAIR (derived)",
+   "evidence": "cyclePath.ts:36"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 42,
+   "claim": "cycleConvergencePath exists",
+   "evidence": "cyclePath.ts:125"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 43,
+   "claim": "CYCLE_SHIFT_MONTH_MS = 30.4375 d in ms",
+   "evidence": "cyclePath.ts:67"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 44,
+   "claim": "shiftedCycleTurns feeds upcomingCycleTurns + cycleTurnsInHorizon",
+   "evidence": "cyclePath.ts:155,167,185"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 46,
+   "claim": "ties → later row; row 0 snaps to 1",
+   "evidence": "cyclePath.ts:176-178"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 46,
+   "claim": "cyclePath never imported by the risk core",
+   "evidence": "grep: only components/Almanac import cyclePath"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 47,
+   "claim": "pricePaths imports ONLY ./powerLaw and ./cycleModel",
+   "evidence": "pricePaths.ts:37-38"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 48,
+   "claim": "risk core never imports pricePaths",
+   "evidence": "grep importers: futuresRun, UnifiedFace only"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 49,
+   "claim": "futuresRun hands futures to the engine",
+   "evidence": "futuresRun.ts:1 priceFutures; UnifiedFace imports FUTURES_COUNT only"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 50,
+   "claim": "priceFutures({...}) → {regime, prices}[]; FUTURES_SEED 2026",
+   "evidence": "pricePaths.ts:58,144"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 51,
+   "claim": "FUTURES_COUNT 1000, FUTURES_MAX_MONTHS 240; R13 pins 1000/300",
+   "evidence": "pricePaths.ts:59,61; futures.test.ts:48"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 52,
+   "claim": "futureSeed(seed, i)",
+   "evidence": "pricePaths.ts:81"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 53,
+   "claim": "price[0] = anchor exactly",
+   "evidence": "pricePaths.ts:196"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 53,
+   "claim": "slope PL_B + 0.15·z, level × exp(0.08·z′)",
+   "evidence": "pricePaths.ts:168-169"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 55,
+   "claim": "each leg × U(0.75,1.25); troughs LogU(0.85,1.8) × support share",
+   "evidence": "pricePaths.ts (futureTurns) uniform 0.75,1.25; logUniform 0.85,1.8"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 56,
+   "claim": "first top LogU(0.6,2.3); later tops keep 40–70%",
+   "evidence": "pricePaths.ts: logUniform(0.6,2.3); uniform(0.4,0.7)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 57,
+   "claim": "regimes 70/15/10/5",
+   "evidence": "pricePaths.ts:167"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 58,
+   "claim": "AR(1) φ 0.85, σ U(0.04,0.10); 15–45% shock 1 in 60; 3–18 months back",
+   "evidence": "pricePaths.ts:66-67,170,186-188"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 63,
+   "claim": "seeded per-future mulberry32, prefix-stable, drawn to 240 and cut",
+   "evidence": "pricePaths.ts:146,165"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 65,
+   "claim": "junk in → flat futures at the anchor",
+   "evidence": "pricePaths.ts:141"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 68,
+   "claim": "placementPlan calls strikeKeepCollateralBtc and cbKeepCollateralBtc",
+   "evidence": "placement.ts:224,238"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 72,
+   "claim": "equivalence sweep over 20,001 positions pins month 1 ≡ plan.after",
+   "evidence": "placement.test.ts:108"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 73,
+   "claim": "state order unavailable→cbPastLiquidation→broken→paused→ready",
+   "evidence": "placement.ts:205-220"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 76,
+   "claim": "'broken' reads the same breaker seed as openingBreaker",
+   "evidence": "placement.ts:78"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 78,
+   "claim": "every state but 'ready' is inert",
+   "evidence": "placement.ts:136"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 79,
+   "claim": "goalNetBtc read through goal.ts's goalOf → standDown",
+   "evidence": "placement.ts:14,197"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 80,
+   "claim": "at the stand-down neither broken nor paused applies",
+   "evidence": "placement.ts:214,219"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 83,
+   "claim": "STAND I3 in goalStandDown.test.ts, 3,000 positions",
+   "evidence": "goalStandDown.test.ts:306-311"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 85,
+   "claim": "opening vs after; opening = after when seeded",
+   "evidence": "placement.ts:121,249-252"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 90,
+   "claim": "StrikeLeg moves/nothing/hold/ltv",
+   "evidence": "placement.ts:93"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 91,
+   "claim": "cbOverCeilingUsd reported in every state but unavailable",
+   "evidence": "placement.ts:191,210,270"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 92,
+   "claim": "MOVE_THRESHOLD_BTC 0.01",
+   "evidence": "placement.ts:47"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 93,
+   "claim": "suggestedLineUsd: 2 months bills or one paydown × 1.25, clamped",
+   "evidence": "placement.ts:298-318"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 96,
+   "claim": "Smart BLOC sidebar shows 'Your plan's suggested line'",
+   "evidence": "InputsPanel.tsx:59,239"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 99,
+   "claim": "placement: no belief, no store, no React, no components/",
+   "evidence": "placement.ts:1-14 imports"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 100,
+   "claim": "planSearch is a consumer of runCyclingSim",
+   "evidence": "planSearch.ts:1"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 102,
+   "claim": "evaluatePaths, worstIndex, worstBy",
+   "evidence": "planSearch.ts:119,137"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 104,
+   "claim": "minCushionOf from month 1, price ÷ cbSeizurePrice, ∞ with no loan",
+   "evidence": "planSearch.ts:53-65"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 106,
+   "claim": "CUSHION_EPS 1e-9 relative",
+   "evidence": "planSearch.ts:39,82"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 107,
+   "claim": "pickWorst worstBy, 'index' if none",
+   "evidence": "planSearch.ts:103,119"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 108,
+   "claim": "M4: run whose policyApplied differs is not ranked",
+   "evidence": "planSearch.ts:156"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 110,
+   "claim": "yoursAtHorizon = deriveOwnership at three args",
+   "evidence": "planSearch.ts:152"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 110,
+   "claim": "worstCasePath stitched floor; ragged → []",
+   "evidence": "planSearch.ts:169-174"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 112,
+   "claim": "sameSeries bit for bit, Object.is",
+   "evidence": "planSearch.ts:182-184"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 115,
+   "claim": "monteCarlo imports ONLY ./cyclingSim and ./ownership",
+   "evidence": "monteCarlo.ts:26-27"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 115,
+   "claim": "futureOutcome yours = deriveOwnership 3 args; cold = last.coldBtc",
+   "evidence": "monteCarlo.ts:78-79"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 117,
+   "claim": "beatsNeverDraw via engine's one rule",
+   "evidence": "monteCarlo.ts:80; cyclingSim.ts:734"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 119,
+   "claim": "tiesNeverDraw = neverDrawTie, only with a goal",
+   "evidence": "monteCarlo.ts:81; cyclingSim.ts:726-730"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 120,
+   "claim": "seized = liqMonth OR firstOpenPastLltvMonth; seizedMonth the earlier",
+   "evidence": "monteCarlo.ts:75-83"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 122,
+   "claim": "runFutures(inputs, paths, startISO) → FuturesSummary fields",
+   "evidence": "monteCarlo.ts:43-65,102-133"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 123,
+   "claim": "seizedWithinYear month 12 included",
+   "evidence": "monteCarlo.ts:129"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 124,
+   "claim": "seizedHalfByMonth lower median; null when none",
+   "evidence": "monteCarlo.ts:130"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 126,
+   "claim": "quantile linear between nearest ranks",
+   "evidence": "monteCarlo.ts:88-89"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 127,
+   "claim": "countsSeizures = the policy applied",
+   "evidence": "monteCarlo.ts:132"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 132,
+   "claim": "strikeLtvCapPct input; HEAD golden pins off",
+   "evidence": "cyclingSim.test.ts:1036"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 135,
+   "claim": "cbSurvivalGuard/cbFutilityCheck default ON",
+   "evidence": "cyclingSim.ts:875-876"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 136,
+   "claim": "doomGateCbTopUp, strikeFirstAfterLiquidation, strikeReleaseRules, topUpBeforeShift default ON",
+   "evidence": "cyclingSim.ts:959-963"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 139,
+   "claim": "topUpFirstAnyDepth test-only default OFF",
+   "evidence": "cyclingSim.ts:962"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 140,
+   "claim": "seizeOnTheWayDown policy-only default ON",
+   "evidence": "cyclingSim.ts:971"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 135,
+   "claim": "no face may pass the test-only inputs (grep test)",
+   "evidence": "cyclingSim.test.ts:1362"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 142,
+   "claim": "effectiveStrikeCapPct exported",
+   "evidence": "cyclingSim.ts export"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 143,
+   "claim": "telemetry firstSurvivalYieldMonth/strikeReserveCutBtc",
+   "evidence": "grep cyclingSim.ts: 5 hits each"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 146,
+   "claim": "pays cbBorrowFee on the sweep and capitalises; totalCbFees/cbFeeCount",
+   "evidence": "cyclingSim.ts:1382"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 153,
+   "claim": "cyclingSim imports nothing from powerLaw/cycleModel/store",
+   "evidence": "cyclingSim.ts:1-12"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 152,
+   "claim": "absent supportPolicy ⇒ byte-identical, pinned by G1 golden",
+   "evidence": "cyclingSimPolicy.test.ts:28,1008"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 152,
+   "claim": "incomePath / modelStrikeLiquidation test-only",
+   "evidence": "cyclingSim.test.ts:1362"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 166,
+   "claim": "creditExhaustedMonth surfaced",
+   "evidence": "grep cyclingSim.ts: 6 hits"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 167,
+   "claim": "Morpho seizes on the way down at cbLiquidationPrice, debt exactly 0",
+   "evidence": "cyclingSim.ts:1115-1122"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 170,
+   "claim": "CB_LIF × CB_LLTV ≈ 0.898 of the pool",
+   "evidence": "cyclingSim.ts:1120; CB_LIF≈1.04384"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 171,
+   "claim": "result seizedOnTheWayDown / seizurePriceUsd",
+   "evidence": "cyclingSim.ts:1118-1119"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 173,
+   "claim": "month-end seizure min(cbColl, cbDebt×CB_LIF/price)",
+   "evidence": "cyclingSim.ts:1749"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 178,
+   "claim": "CB_LIQUIDATION_PENALTY = CB_LIF − 1",
+   "evidence": "cyclingSim.ts:667"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 179,
+   "claim": "supportPolicyResolution → {policyApplied, policyIgnoredReason}",
+   "evidence": "cyclingSim.ts export"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 181,
+   "claim": "run and resolution share resolveRunPolicy; resolveSupportPolicy no other caller",
+   "evidence": "cyclingSim.ts:819,834,954"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 182,
+   "claim": "firstOpenPastLltvMonth via one opensPastLltv condition",
+   "evidence": "cyclingSim.ts:1112-1115"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 187,
+   "claim": "refinance/migration gated liqMonth === null",
+   "evidence": "cyclingSim.ts:1150,1158,1343"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 192,
+   "claim": "row unfundedUsd + totalUnfundedUsd/firstUnfundedMonth",
+   "evidence": "grep cyclingSim.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 197,
+   "claim": "defendCbLtv?: boolean default FALSE",
+   "evidence": "cyclingSim.ts:869"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 199,
+   "claim": "due refinance sweeps up to cbMaxDrawForHeadroom",
+   "evidence": "cyclingSim.ts:1361,1380"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 203,
+   "claim": "defense/top-up row & result fields exist",
+   "evidence": "grep cyclingSim.ts: all present"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 210,
+   "claim": "openingColdBtc default 0; added to never-draw baseline",
+   "evidence": "cyclingSim.ts:921-924,1774"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 215,
+   "claim": "emergency CB top-up doom-gated under the policy (default on)",
+   "evidence": "cyclingSim.ts:959"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 218,
+   "claim": "effectivePolicyStops the one clamp; faces' readout calls it",
+   "evidence": "cyclingSim.ts:685,779; supportPolicyView.ts:91"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 220,
+   "claim": "source test forbids inline copy of the clamp",
+   "evidence": "cyclingSimPolicy.test.ts:978"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 220,
+   "claim": "allInEquity/baselineAllInEquity exported",
+   "evidence": "cyclingSim.ts exports"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 222,
+   "claim": "baselineUnfundedUsd + totalStrikeCureColdBtc",
+   "evidence": "grep cyclingSim.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 227,
+   "claim": "row strikeRepaidUsd/cbRepaidUsd; result firstUnheldMonth",
+   "evidence": "grep cyclingSim.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 230,
+   "claim": "parity test pins engine ≡ crashPlaybook",
+   "evidence": "cyclingSimPolicy.test.ts:1694"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 231,
+   "claim": "strikeMinFromIncome?: boolean, true only when === true",
+   "evidence": "cyclingSim.ts:965"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 235,
+   "claim": "every face/main screen passes the owner's setting",
+   "evidence": "DecisionFace:325, UnifiedFace:207, OwnershipFace:238, usePlanMonth:50"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 238,
+   "claim": "row strikeInterestUsd / strikeMinPaidUsd; totalStrikeInterest",
+   "evidence": "grep cyclingSim.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 241,
+   "claim": "validOpeningBreaker exported, read by planRun's planBreakerCacheOf",
+   "evidence": "cyclingSim.ts:843; planRun.ts:260-264"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 244,
+   "claim": "goalNetBtc?: number|null real input",
+   "evidence": "cyclingSim.ts goalNetBtc"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 247,
+   "claim": "goal read once a month after interest and seizure, before acting",
+   "evidence": "cyclingSim.ts:1126-1132"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 249,
+   "claim": "row netCoinsBtc/atGoal/goalHeldUsd; result totalGoalHeldUsd/baselineGoalHeldUsd",
+   "evidence": "grep cyclingSim.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 252,
+   "claim": "neverDrawTie / beatsNeverDraw one rule; NEVER_DRAW_TIE_USD 0.5 = DUST_USD",
+   "evidence": "cyclingSim.ts:720,726-735; format.ts:47"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 258,
+   "claim": "row strikeToColdBtc / goalStandDown; goalOf via goal.ts",
+   "evidence": "cyclingSim.ts:7"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 261,
+   "claim": "netCoinsBtc({...}) null when unreadable",
+   "evidence": "goal.ts:35-40"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 263,
+   "claim": "atGoalOf within GOAL_EPS = 1e-12 relative",
+   "evidence": "goal.ts:18,43-45"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 264,
+   "claim": "goal.ts ZERO imports; cyclingSim imports it",
+   "evidence": "goal.ts (no import); cyclingSim.ts:7"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 265,
+   "claim": "goalOf(v): finite above zero else null",
+   "evidence": "goal.ts:12-14"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 266,
+   "claim": "goalStandsDown(atGoal, strikeBal, cbDebt) — both exactly 0",
+   "evidence": "goal.ts:55-57"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 268,
+   "claim": "tested in goalAmount.test.ts and goalStandDown.test.ts",
+   "evidence": "ls simulation/__tests__"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 269,
+   "claim": "supportPolicy imports only ./ltv",
+   "evidence": "supportPolicy.ts:21"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 270,
+   "claim": "policyZone k = price ÷ support, junk → 'paused'",
+   "evidence": "supportPolicy.ts:39-46"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 271,
+   "claim": "ceilingHeadroomUsd may be negative",
+   "evidence": "supportPolicy.ts:50-53"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 272,
+   "claim": "sweepKeepBtc (debt+buffer)/(S×stop), junk → +∞",
+   "evidence": "supportPolicy.ts:58-65"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 273,
+   "claim": "strikeKeepCollateralBtc max(line,bal)/(skStop×S)",
+   "evidence": "supportPolicy.ts:77-84"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 274,
+   "claim": "cbKeepCollateralBtc max(sweepKeep, debt/(cap×price))",
+   "evidence": "supportPolicy.ts:93-99"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 276,
+   "claim": "both take standDown → 0; junk still +∞",
+   "evidence": "supportPolicy.ts:83,98"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 277,
+   "claim": "collateralToSellForLtv; resolveStrikeCall cash→cold→sale; no phantom sales",
+   "evidence": "supportPolicy.ts:105-188"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 279,
+   "claim": "nextBreakerState 2 month-ends < 0.9×S, latched",
+   "evidence": "supportPolicy.ts:202-209"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 280,
+   "claim": "nextRearmableBreakerState layer; engine imports only it",
+   "evidence": "supportPolicy.ts:231; cyclingSim.ts:10"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 281,
+   "claim": "allocatePayDown Strike first; SUPPORT_EPS 1e-9; HARD_BREAKER_DEPTH/_MONTHS",
+   "evidence": "supportPolicy.ts:27-30,244"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 283,
+   "claim": "cbDefense imports only ./ltv",
+   "evidence": "cbDefense.ts:27"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 284,
+   "claim": "topUpStrikeLtv, strikeCollateralAboveLtv, strikeFloorLtv optional",
+   "evidence": "cbDefense.ts:151,226,324"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 286,
+   "claim": "CB_SURVIVAL_BUFFER 0.05 own constant",
+   "evidence": "cbDefense.ts:349"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 288,
+   "claim": "cbDoomedThisMonth buffer 0 and margin bound",
+   "evidence": "cbDefense.ts:420-433"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 290,
+   "claim": "cbSurvivalCollateralBtc optional 6th stopLtv; looser target",
+   "evidence": "cbDefense.ts:366-379"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 293,
+   "claim": "topUpToCbLtv cold guard Number.isFinite && > 0",
+   "evidence": "cbDefense.ts:187"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 296,
+   "claim": "strikeDrawCapacity(collBtc, drawn, price, maxDrawLtv, creditLine=∞)",
+   "evidence": "cbDefense.ts:34-45"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 298,
+   "claim": "defendCbLtv result fields",
+   "evidence": "cbDefense.ts:61-86"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 300,
+   "claim": "topUpToCbLtv result fields; cold first then Strike to margin×(1−buffer)",
+   "evidence": "cbDefense.ts:180-215"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 305,
+   "claim": "TOPUP_MARGIN_BUFFER 0.05 exported",
+   "evidence": "cbDefense.ts:88"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 308,
+   "claim": "defendCbLtv LTVs via shared ltvOf",
+   "evidence": "cbDefense.ts:27"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 311,
+   "claim": "consumed by cyclingSim and crashPlaybook",
+   "evidence": "cyclingSim.ts:2-5; crashPlaybook.ts:1-4"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 313,
+   "claim": "strikeReleasableBtc: hold → 0, retrieve/after LTVs × (1−STRIKE_RELEASE_EPS 1e-9), junk → 0",
+   "evidence": "cbDefense.ts:239,264-273"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 316,
+   "claim": "ceilingLiquidationMultiple = stop ÷ lltv, junk → +∞",
+   "evidence": "cbDefense.ts:283-287"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 317,
+   "claim": "SHIFT_DUST_USD 0.005",
+   "evidence": "cbDefense.ts:297"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 318,
+   "claim": "strikeReleaseCapBtc? and strikeReleasableBtc? optional",
+   "evidence": "cbDefense.ts:156,397"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 321,
+   "claim": "crashPlaybook imports ./cbDefense, ./ltv, SUPPORT_EPS only",
+   "evidence": "crashPlaybook.ts:1-6"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 322,
+   "claim": "order none|topUpFirst|shiftFirst; steps kinds; result fields",
+   "evidence": "crashPlaybook.ts:67-93"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 325,
+   "claim": "top up first when k ∈ [stop/lltv, 1) and not doomed",
+   "evidence": "crashPlaybook.ts:152"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 327,
+   "claim": "fallback top-up skipped when doomed after shift",
+   "evidence": "crashPlaybook.ts:184"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 330,
+   "claim": "consumers: Emergency Console via crashPlaybookView, playbook line",
+   "evidence": "importers: crashPlaybookView, EmergencyConsole, usePlanCardInputs"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 332,
+   "claim": "runNoBitcoin/runSellToLive/runSmartBLOC_Living/runMaxLeverage exist; Living hook",
+   "evidence": "useLivingSimulation.ts:4-7"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 336,
+   "claim": "runBLOC 5-year, creditLine ?? Infinity",
+   "evidence": "runBLOC.ts:35,44"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 337,
+   "claim": "runBlocYearOne 12 months + getCollateralForTier",
+   "evidence": "runBlocYearOne.ts:39,61"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 338,
+   "claim": "runCoinbaseLoan CB_LLTV/CB_LIF/CB_WARN_LTV + computeLiquidationAnalysis",
+   "evidence": "runCoinbaseLoan.ts:2-4,129"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 342,
+   "claim": "CB_PLATFORM_FEE_PCT 1.5 + cbNetApr()",
+   "evidence": "runCoinbaseLoan.ts:45,55"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 344,
+   "claim": "fee tiers 2%/1%/$250k; cbBorrowFee marginal; cbMaxDrawForHeadroom inverse",
+   "evidence": "runCoinbaseLoan.ts:73-103"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 347,
+   "claim": "runCoinbaseLoan imports only ./ltv",
+   "evidence": "runCoinbaseLoan.ts:1"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 349,
+   "claim": "cbLiquidationPrice = balance ÷ (coll × CB_LLTV), 0 with no coll",
+   "evidence": "runCoinbaseLoan.ts:13-15"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 350,
+   "claim": "cbMetrics' liqPriceOf and engine's seizure read it",
+   "evidence": "cbMetrics.ts:2,16; cyclingSim.ts:1116"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 354,
+   "claim": "ltvOf(debt,collBtc,price) + ltvOfUsd(debt,collUsd,collBtc); zero imports",
+   "evidence": "ltv.ts:18,31"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 355,
+   "claim": "debt no collateral → ∞; no price → 0",
+   "evidence": "ltv.ts:19-21"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 359,
+   "claim": "ltv.test greps src/ excluding __tests__ and fails on a new copy",
+   "evidence": "ltv.test.ts:61-65; grep → only ltv.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 360,
+   "claim": "classifyStage routes through ltvOf",
+   "evidence": "emergencyModel.ts:46"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 363,
+   "claim": "grep matches only the `<= 0 ? Infinity` shape",
+   "evidence": "ltv.test.ts:62"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 365,
+   "claim": "cbMetrics exports cbMetrics, accruedCbBalance, barLevel/worseLevel",
+   "evidence": "cbMetrics.ts:26,72,92,112"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 366,
+   "claim": "consumed by SafetyDashboard (via safetyView) + CoinbaseLoanMain/Sidebar",
+   "evidence": "importers grep"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 367,
+   "claim": "cbMetrics imports cbLiquidationPrice and ltvOfUsd; source test pins",
+   "evidence": "cbMetrics.ts:1-2; seizeOnTheWayDown.test.ts:313-315"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 370,
+   "claim": "cbSeizurePrice(row) via liqPriceOf",
+   "evidence": "cbMetrics.ts:59-65"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 371,
+   "claim": "cliffPath / Worst ranking / policy card / chartCliffUsd read it",
+   "evidence": "importers: planSearch, decisionChartView, supportPolicyView, cyclingFaceView"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 374,
+   "claim": "null on postLiquidation, debt or price under dust, no collateral",
+   "evidence": "cbMetrics.ts:62-64"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 377,
+   "claim": "runAdvisor keeps getCurrentStrategyMonth/isStrategyComplete on logUtils' clock + NdpStatus/NdpInfo/g",
+   "evidence": "runAdvisor.ts:5,11-29"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 382,
+   "claim": "advisorPricePath.test pins the engine gone (invariant 3)",
+   "evidence": "advisorPricePath.test.ts:43,53"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 383,
+   "claim": "runAdvisor.ts has 11 importers",
+   "evidence": "grep non-test importers → 11"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 384,
+   "claim": "STRIKE_CURE_LTV 0.65; STRIKE_RETRIEVE_MAX_LTV 0.40",
+   "evidence": "strikeCredit.ts:7,11"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 386,
+   "claim": "engine (cyclingSim) imports neither; the view passes them",
+   "evidence": "cyclingSim.ts imports; supportPolicyInputs.ts:6"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 387,
+   "claim": "STRIKE_MAX_DRAW_LTV 0.50; strikeAvailableCredit min(line, coll×50%)−drawn",
+   "evidence": "strikeCredit.ts:3,29-42"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 387,
+   "claim": "computeStrikeLtv shared via safetyView and emitBalanceReading",
+   "evidence": "safetyView.ts:199; dayLogSlice.ts:118"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 387,
+   "claim": "BLOC_OPERATING_CEILING 0.15 passed by MonthlyPlaybook/PlaybookItems",
+   "evidence": "strikeCredit.ts:22; PlaybookItems.tsx:50"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 388,
+   "claim": "emergencyModel CB_LADDER 69/72/75/81, liq CB_LLTV; classifyStage fields",
+   "evidence": "emergencyModel.ts:19,37-65"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 388,
+   "claim": "STRIKE_MARGIN_CALL_LTV 0.70 imported from here by faces/engine inputs/playbook",
+   "evidence": "emergencyModel.ts:16; importers grep"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 388,
+   "claim": "wall3Sale · wall4External; EmergencyState = {cbDebt, cbCollateralBtc, price}",
+   "evidence": "emergencyModel.ts:26-30,71,78"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 388,
+   "claim": "imports CB_LLTV + ltvOf; no cycle/power-law",
+   "evidence": "emergencyModel.ts:9,12"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 388,
+   "claim": "zero-collateral CB debt → ∞/'liquidated'; EmergencyConsole via fmtLtvPct",
+   "evidence": "emergencyModel.ts:46,51; EmergencyConsole.tsx:159"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 388,
+   "claim": "zero-collateral: distancePct = 1, liqPrice/bandPrices = 0",
+   "evidence": "emergencyModel.ts:32-34,48"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 391,
+   "claim": "deriveSafetyView fields + accruedBalance/cbLiqPrice/cbLiqFrac",
+   "evidence": "safetyView.ts:229-231"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 395,
+   "claim": "no-CB defaults 0/0/CB_LLTV",
+   "evidence": "safetyView.ts:205-209"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 396,
+   "claim": "selectSafetyViewInputs(s: StoreState); type-only StoreState import",
+   "evidence": "safetyView.ts:7,239"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 399,
+   "claim": "reuses cbMetrics helpers, computeStrikeLtv, CB_LLTV",
+   "evidence": "safetyView.ts:1-3"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 401,
+   "claim": "CREDIT_WARN_USED 0.75 / CREDIT_ACT_USED 0.90",
+   "evidence": "safetyView.ts:42-43"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 402,
+   "claim": "owner ignores creditLevel; credit-excluded verdict",
+   "evidence": "SafetyDashboard.tsx:80,111-115"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 404,
+   "claim": "SafetyDashboard/ViewerHomeView subscribe via useShallow",
+   "evidence": "SafetyDashboard.tsx:79; ViewerHomeView.tsx:107"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 407,
+   "claim": "cbLimitAtSupport via planCbLimitOf(s); supportToday input",
+   "evidence": "safetyView.ts:60-63,254"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 409,
+   "claim": "cbAtSupportOf: debt ÷ (coll × S0), over by ceilingHeadroomUsd past dust, watch/safe, null cases",
+   "evidence": "safetyView.ts:82-89"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 412,
+   "claim": "cbAtSupportLine(r, money) wording; no price when support null",
+   "evidence": "safetyView.ts:127-133"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 415,
+   "claim": "CB_AT_SUPPORT_WATCH; ownerSafetyVerdict worse of today and at-support",
+   "evidence": "safetyView.ts:101,109-119"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 417,
+   "claim": "deriveViewerOverall folds at-support level",
+   "evidence": "safetyView.ts:265"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 418,
+   "claim": "ViewerSafeSafety cbLtvAtSupport/cbAtSupportLevel; thresholds.cbLimitAtSupport optional",
+   "evidence": "safetyView.ts:299-300,309"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 419,
+   "claim": "scaleSafetyView; computeViewerSafety returns cbAtSupport",
+   "evidence": "safetyView.ts:321,368-405"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 421,
+   "claim": "new imports ceilingHeadroomUsd, planCbLimitOf, fmtUSD/fmtUSDCents/fmtLtvPct/shownUsd",
+   "evidence": "safetyView.ts:4-6"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 423,
+   "claim": "scenarioDiff imports only safetyView (pinned in ATS)",
+   "evidence": "scenarioDiff.ts:1-7; safetyAtSupport.test.ts:127-129"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 425,
+   "claim": "ownerAtSupportLine + CB_MOVE_BRINGS_WITHIN",
+   "evidence": "safetyView.ts:95-98"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 428,
+   "claim": "safetyAtSupport.test ATS/MOVE/VERDICT/VIEWER",
+   "evidence": "safetyAtSupport.test.ts:40,212,272,304"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 429,
+   "claim": "PinnedScenario {label, pinnedAt, btcPrice, inputs}",
+   "evidence": "scenarioDiff.ts:23-28"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 430,
+   "claim": "ScenarioOverlay six levers 1:1",
+   "evidence": "scenarioDiff.ts:35-42"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 433,
+   "claim": "applyOverlay; present-but-undefined never clobbers",
+   "evidence": "scenarioDiff.ts:45-52"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 434,
+   "claim": "diffScenarios → DimensionDiff fields, crashLtv/cbLiqFrac pairs, overallFrom/To",
+   "evidence": "scenarioDiff.ts:54-71,85-127"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 438,
+   "claim": "worsenedCount 0–3, CB only when base hasCbLoan",
+   "evidence": "scenarioDiff.ts:114-117"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 440,
+   "claim": "tested in scenarioDiff.test.ts",
+   "evidence": "ls"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 442,
+   "claim": "deriveCurrentPosition(monthlyLog, currentStrikeCollateral, baseBlocBalance)",
+   "evidence": "logUtils.ts:24-28"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 443,
+   "claim": "deriveStrikeCollateral reading-anchored, (date,ts), strict-after moves",
+   "evidence": "logUtils.ts:298-314"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 446,
+   "claim": "upsertEntry exists; logUtils no cross-sim runtime imports",
+   "evidence": "logUtils.ts:1-2,72"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 446,
+   "claim": "strategyMonthIndex unclamped; bucketEventToMonth clamp 1–12",
+   "evidence": "logUtils.ts:90-102"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 448,
+   "claim": "getCurrentStrategyMonth/isStrategyComplete delegate here",
+   "evidence": "runAdvisor.ts:11-18"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 448,
+   "claim": "rollupMonth → {entry, collateralDelta}",
+   "evidence": "logUtils.ts:117-122"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 449,
+   "claim": "deriveCbCollateral latest by ts across both kinds, fallback cache",
+   "evidence": "logUtils.ts:271-280"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 451,
+   "claim": "latestStrikeDepositISO latest logged strike deposit, any age, or null",
+   "evidence": "logUtils.ts:478-492"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 455,
+   "claim": "trusted snapshot carries strikeLastDepositISO",
+   "evidence": "payloads.ts:119"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 456,
+   "claim": "computeExpenseReanchor(monthlyLog, expenses, dismissedAt, beforeMonth=∞)",
+   "evidence": "logUtils.ts:57-62"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 458,
+   "claim": "only months before beforeMonth with expenses > 0 count; THIS MONTH passes currentMonth",
+   "evidence": "logUtils.ts:63; SimpleModeView.tsx:95-96"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 460,
+   "claim": "RecordsState = entries+deletions+dayLog+dayLogDeletions, mergeRecords",
+   "evidence": "mergeRecords.ts:3-9,26"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 461,
+   "claim": "entries newest updatedAt/loggedAt wins, tombstones, 90-day GC",
+   "evidence": "mergeRecords.ts:11-13,46-66"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 462,
+   "claim": "dayLog union-by-id, higher ts wins, tie→local; strict > tombstone; sort ts,id",
+   "evidence": "mergeRecords.ts:70-101"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 465,
+   "claim": "listed simulation tests exist (smartBloc…strikeCredit)",
+   "evidence": "ls simulation/__tests__"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 473,
+   "claim": "useBtcPrice: Coinbase API; gated by btcPriceMode; isStale 5-min; 30s self-tick",
+   "evidence": "useBtcPrice.ts:5,26,38,62"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 473,
+   "claim": "setBtcPrice stamps btcPriceUpdatedAt; DevPanel reads it",
+   "evidence": "planInputsSlice.ts:46; DevPanel.tsx"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 473,
+   "claim": "mounted at AppShell root",
+   "evidence": "AppShell.tsx:232"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 474,
+   "claim": "usePageVisibility visibilitychange+focus+pageshow+20s interval",
+   "evidence": "usePageVisibility.ts:12-16"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 475,
+   "claim": "useBtcHistory /api/btc-candles, 60s refresh, parseCandles, RANGE_CFG, never stored",
+   "evidence": "useBtcHistory.ts:16,22,28,77"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 475,
+   "claim": "withTimeLimit 15 s; abort on range change/unmount",
+   "evidence": "useBtcHistory.ts:68,76,99"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 475,
+   "claim": "cache via useSyncExternalStore; asOf when old; error only with nothing to draw",
+   "evidence": "useBtcHistory.ts:49,105-106"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 476,
+   "claim": "useCountTo COUNT_MS 400, countFrame, reduced motion, rAF, ref",
+   "evidence": "useCountTo.ts:2,5,11,25-40"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 476,
+   "claim": "tested in useCountTo.test.ts (COUNT)",
+   "evidence": "useCountTo.test.ts:11"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 477,
+   "claim": "useSimulation (Smart BLOC) / useLivingSimulation (Living)",
+   "evidence": "useSimulation.ts:3; useLivingSimulation.ts:4-7"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 479,
+   "claim": "usePowerLawData withTimeLimit 15 s, 'Blockchain.com timed out', unmount aborts",
+   "evidence": "usePowerLawData.ts:41,52,58"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 480,
+   "claim": "useMorphoRate /api/morpho-rate, 5-min refresh, parseMorphoRate ×100, never stored",
+   "evidence": "useMorphoRate.ts:10,16-21,78; no useStore"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 481,
+   "claim": "useRelayStatus own NRelay1 probes, idleTimeout:false",
+   "evidence": "useRelayStatus.ts:2,38"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 484,
+   "claim": "liveSync uses a separate nostr-tools SimplePool",
+   "evidence": "liveSync.ts:7"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 486,
+   "claim": "readyStateToStatus 1/0/other mapping; retry/reconnect → connecting",
+   "evidence": "useRelayStatus.ts:11-15,48-49"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 487,
+   "claim": "cleanup removes listeners AND closes",
+   "evidence": "useRelayStatus.ts:53-63"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 489,
+   "claim": "effect keyed on urls.join(',')",
+   "evidence": "useRelayStatus.ts:30"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 492,
+   "claim": "usePlanLoading from lib/nostr/firstPull via useSyncExternalStore (server snapshot too)",
+   "evidence": "usePlanLoading.ts:4-8"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 494,
+   "claim": "tested in firstPull.test.ts (GATE)",
+   "evidence": "firstPull.test.ts GATE hits"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 495,
+   "claim": "usePlanLoad exports usePlanMissing/usePlanPull/planNotLoadedWhy/usePlanNotLoadedWhy/startNewPlanHere",
+   "evidence": "usePlanLoad.ts:11-73"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 501,
+   "claim": "read by AppShell, PlanNotLoadedNotice, EventSheet, DailyModeView, NoPlanNotice",
+   "evidence": "grep importers"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 504,
+   "claim": "useSyncBlocked via useSyncExternalStore; CHANNEL_LABEL + TOO_LARGE_COPY",
+   "evidence": "useSyncBlocked.ts:7-16"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 506,
+   "claim": "read by AppShell and SyncTooLargeNotice",
+   "evidence": "grep importers"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 508,
+   "claim": "usePointerDrag over lib/gestureModel; Pointer Events",
+   "evidence": "usePointerDrag.ts:9,13"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 510,
+   "claim": "capture deferred to arm",
+   "evidence": "usePointerDrag.ts:119"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 514,
+   "claim": "move/up/cancel listeners on window, passive",
+   "evidence": "usePointerDrag.ts:160-162"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 522,
+   "claim": "rAF-batches onMove",
+   "evidence": "usePointerDrag.ts:135"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 524,
+   "claim": "onArm/onDisarm at boundary; onEnd(dx,dy,v,committed)",
+   "evidence": "usePointerDrag.ts:123-145"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 525,
+   "claim": "second pointerId mid-drag cancels; enabled:false inert",
+   "evidence": "usePointerDrag.ts:80-89"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 530,
+   "claim": "useLongPress ms=500, slop=8, returns handlers/holding/shouldSuppressClick/cancel; haptics.tick",
+   "evidence": "useLongPress.ts:29-30,58"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 533,
+   "claim": "Calendar day cells use it; onSwipeStart cancels",
+   "evidence": "Calendar.tsx:9,155"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 536,
+   "claim": "useReducedMotion matchMedia + change listener; false when missing",
+   "evidence": "useReducedMotion.ts:3-23"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 542,
+   "claim": "useMediaQuery same pattern; control dock '(min-width: 1024px)'",
+   "evidence": "useMediaQuery.ts:6-11; ControlDock.tsx:49"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 545,
+   "claim": "Milestones MS_TABLE / MS_TABLE_OWNERSHIP from 768 px",
+   "evidence": "cyclingFaceView.ts:757,760"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 547,
+   "claim": "useChartZoom(full, scales, reach=full, min=MIN_SPAN_TIME_LOG) → listed fields",
+   "evidence": "useChartZoom.ts:117-118,438-442"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 552,
+   "claim": "every normalizePins call passes reach (chartZoomWiring pins)",
+   "evidence": "useChartZoom.ts:132,157,283,321,362; chartZoomWiring.test.ts:239"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 558,
+   "claim": "touchmove the one non-passive listener; others passive",
+   "evidence": "useChartZoom.ts:409-414"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 560,
+   "claim": "pressMode = nextMode (Z15)",
+   "evidence": "useChartZoom.ts:170"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 568,
+   "claim": "useStore composition only, 44 lines, 9 slice creators",
+   "evidence": "wc -l 44; useStore.ts:32-40"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 570,
+   "claim": "import-compat re-exports listed",
+   "evidence": "useStore.ts:23-27"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 573,
+   "claim": "store reaches engine via dynamic import only",
+   "evidence": "bootstrap.ts:164; syncSlice.ts:110,117"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 576,
+   "claim": "store/types: StoreState, ViewerSlot, Tier/Scenario/ActiveTab/LtvType, StoreSet/StoreGet; type-only i",
+   "evidence": "types.ts:4-34,462-463"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 580,
+   "claim": "bootstrap: storeEncEnabled, WK_*/GATE_* keys + seeds, gateHydratedIdentity, defaultMiningInputs, kic",
+   "evidence": "bootstrap.ts:12-164"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 585,
+   "claim": "dailyRouting helpers listed exist",
+   "evidence": "dailyRouting.ts:14-159"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 587,
+   "claim": "no 'useStore' substring in dailyRouting/slices",
+   "evidence": "grep -c → 0"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 588,
+   "claim": "called from dayLog + monthlyLog slices",
+   "evidence": "importers: dayLogSlice, advisorJournalSlice"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 589,
+   "claim": "buyDollarsOnlyEdit / monthEntryCurrent / rerollMonth({dollarsOnly})",
+   "evidence": "dailyRouting.ts:83,94,111"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 594,
+   "claim": "persistConfig: partializeState + migrateState + persistOptions",
+   "evidence": "persistConfig.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 596,
+   "claim": "persistConfig imports bootstrap + leaves; not useStore",
+   "evidence": "persistConfig.ts:4-17"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 598,
+   "claim": "9 slice files, createXSlice(set,get); mining takes _get",
+   "evidence": "ls slices; miningSlice.ts:10"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 602,
+   "claim": "syncSlice: hydratePrefs/applyViewerSettings/applyPlanBackup/remotePlanFoundResolved latch",
+   "evidence": "syncSlice.ts:2,22,30"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 604,
+   "claim": "viewerSettingsApply.test.ts exists; slices.test pins disjoint+union",
+   "evidence": "slices.test.ts:38,49"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 607,
+   "claim": "ui += planNoteDismissed + planBreakerCache; viewer += viewerStrikeDepositISO, reset by clearViewerDa",
+   "evidence": "uiSlice.ts:8,25-26; viewerSlice.ts:32,96; viewerSync.ts:187"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 611,
+   "claim": "buildSettingsPayload 46 keys incl. planGoalNetBtc",
+   "evidence": "payloads.ts:13-71 (46 s.* keys)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 613,
+   "claim": "buildViewerSnapshotPayload(s, tier)",
+   "evidence": "payloads.ts:76"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 614,
+   "claim": "type-only StoreState import; useStore doesn't import payloads",
+   "evidence": "payloads.ts:1; useStore.ts:6-18"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 616,
+   "claim": "consumed by syncEngine, exportPlan, ViewerPreview",
+   "evidence": "grep importers"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 617,
+   "claim": "C-trusted adds top-level strikeLastDepositISO",
+   "evidence": "payloads.ts:119"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 619,
+   "claim": "C-safe runs deriveSafetyView with supportToday; thresholds.cbLimitAtSupport; buildSafeSafety",
+   "evidence": "payloads.ts:83,94,96"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 626,
+   "claim": "demoSeed buildDemoSeedState(today) exported; VITE_DEMO-gated side effect",
+   "evidence": "demoSeed.ts:42,155"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 629,
+   "claim": "seeds onboarded=1, removes GATE/writer/enc keys",
+   "evidence": "demoSeed.ts:157-165"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 630,
+   "claim": "DEMO_SEED_STORE_VERSION = 21 = persist version",
+   "evidence": "demoSeed.ts:23; storeVersion.ts:10"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 631,
+   "claim": "advisorStartDate today−7mo; 7 manual months; monthBucketReconcileDone:true",
+   "evidence": "demoSeed.ts:40,59,150"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 632,
+   "claim": "CB LTV ~72%",
+   "evidence": "demoSeed.ts:100 (0.717)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 637,
+   "claim": "main.tsx imports demoSeed first",
+   "evidence": "main.tsx:9"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 639,
+   "claim": "planEvents runtime import only store/settingsFields (zero-import leaf)",
+   "evidence": "coverage.ts:7; settingsFields.ts no imports"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 642,
+   "claim": "PlanEvent {id, ts, device, kind:'set', field, value}; PlanState = Pick<StoreState, PlanField>",
+   "evidence": "planEvents/types.ts:21-31"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 648,
+   "claim": "foldPlanEvents sort (ts,id), latest-per-field",
+   "evidence": "fold.ts:16-20"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 649,
+   "claim": "unionPlanEvents keep-first",
+   "evidence": "fold.ts:29-33"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 653,
+   "claim": "compactPlanEvents: latest forever, <90d and next > BURST_WINDOW_MS 10 s",
+   "evidence": "compact.ts:7,13,40-54"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 657,
+   "claim": "trim oldest first to PLAN_LOG_BUDGET_BYTES 32,768 (+11 wrapper); never a latest",
+   "evidence": "compact.ts:20-21,58-72"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 662,
+   "claim": "tested in planLogSize.test.ts (FOLD-SAFE, CONVERGE)",
+   "evidence": "planLogSize.test.ts: 20 hits"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 663,
+   "claim": "nextPlanEventTs = max(now, lastTs+1); makePlanEventId format; zero runtime imports",
+   "evidence": "genesis.ts:4-15"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 669,
+   "claim": "tested in planEvents.test.ts",
+   "evidence": "ls"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 670,
+   "claim": "planLogGaps(events, live, seed) JSON compare",
+   "evidence": "coverage.ts:11-18"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 672,
+   "claim": "DevPanel reads it against useStore.getInitialState(); zustand 5.0.13",
+   "evidence": "DevPanel.tsx:482; node_modules/zustand 5.0.13"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 675,
+   "claim": "tested in coverage.test.ts",
+   "evidence": "ls"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 676,
+   "claim": "backupGate PURE, zero imports; isBackupGateSatisfied rule",
+   "evidence": "backupGate.ts:4,21"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 682,
+   "claim": "11 sync-layer guard sites",
+   "evidence": "syncEngine ×6, liveSync, syncNow, sync.ts, useNostrSync ×2"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 683,
+   "claim": "planPolicy PURE zero imports (PLAN FIELDS pins)",
+   "evidence": "planPolicy.test.ts:60-65"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 685,
+   "claim": "PLAN_POLICY_DEFAULTS/RANGES/FIELD/KEYS/SEED, clampPlanPolicy, planPolicyOf",
+   "evidence": "planPolicy.ts:22-90"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 687,
+   "claim": "six store keys policyCbStopAtSupportPct…policyCashReserveMonths",
+   "evidence": "planPolicy.ts:42-49"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 690,
+   "claim": "clampPlanPolicy: finite into range, else default",
+   "evidence": "planPolicy.ts:63-66"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 694,
+   "claim": "PLAN_CB_DEFENSE_PCT 70; PLAN_CB_LTV_CAP_PCT reads it",
+   "evidence": "planPolicy.ts:70; planClamp.ts:12"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 695,
+   "claim": "planCbLimitOf(s) clamp then min with defense line",
+   "evidence": "planPolicy.ts:76-78"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 698,
+   "claim": "safetyAtSupport.test pins planCbLimitOf = cbStopEffPct/100",
+   "evidence": "safetyAtSupport.test.ts:119"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 699,
+   "claim": "planGoal PURE zero imports",
+   "evidence": "planGoal.ts (no import)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 700,
+   "claim": "PLAN_GOAL_FIELD 'planGoalNetBtc'; PLAN_GOAL_MAX_BTC 21M",
+   "evidence": "planGoal.ts:11,14"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 701,
+   "claim": "planGoalOf finite above zero, to the satoshi, at most 21M",
+   "evidence": "planGoal.ts:23-27"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 703,
+   "claim": "parseGoalInput empty → null; amount → it",
+   "evidence": "planGoal.ts:33-41"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 706,
+   "claim": "recoveryGrid imports wordlist, validateWords, RECOVERY_WORD_COUNT",
+   "evidence": "recoveryGrid.ts:8-10"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 708,
+   "claim": "distributePaste fill/[]/slice; suggestWords max 4; phraseStatus; isWord",
+   "evidence": "recoveryGrid.ts:22-57"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 714,
+   "claim": "tested in recoveryGrid.test.ts",
+   "evidence": "ls"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 715,
+   "claim": "pickQuizIndices loop-free distinct; rand injectable",
+   "evidence": "recoveryQuiz.ts:19-23"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 718,
+   "claim": "checkQuizAnswers trim+lowercase positional; checkNsecTail last-6 case-sensitive",
+   "evidence": "recoveryQuiz.ts:29-44"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 720,
+   "claim": "checkBackupPassphrase trims both; empty never passes",
+   "evidence": "recoveryQuiz.ts:58-61"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 727,
+   "claim": "tested in recoveryQuiz.test.ts",
+   "evidence": "ls"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 728,
+   "claim": "chartZoom zero imports (chartZoomWiring pins)",
+   "evidence": "chartZoomWiring.test.ts:152"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 731,
+   "claim": "Domain mutable [lo,hi] tuple",
+   "evidence": "chartZoom.ts:15"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 732,
+   "claim": "toUnit/fromUnit/pxToX/pxToY/clampToRect/inRect",
+   "evidence": "chartZoom.ts:39-66"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 733,
+   "claim": "classifyBox MIN_DRAG_PX 8, BAND_PX 20; boxRect/boxToPins",
+   "evidence": "chartZoom.ts:73-101"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 734,
+   "claim": "lockAxis null under 8px; x if sideways else y",
+   "evidence": "chartZoom.ts:120-124"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 735,
+   "claim": "ZoomMode + nextMode rule",
+   "evidence": "chartZoom.ts:129-139"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 737,
+   "claim": "scaleDomain/stepPins ZOOM_STEP 2/panPins/pinchPins PINCH_AXIS_MIN_PX 40",
+   "evidence": "chartZoom.ts:144-179"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 738,
+   "claim": "normalizePins(p, full, sc, min, reach = full)",
+   "evidence": "chartZoom.ts:237"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 742,
+   "claim": "effectiveView/isZoomed/leavesHome",
+   "evidence": "chartZoom.ts:244-256"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 743,
+   "claim": "timeTicks 1 mo…8 y ladder; tickDensity; fmtTimeTick",
+   "evidence": "chartZoom.ts:282-317"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 744,
+   "claim": "logTicks; priceTickFormatter; isDoubleTap; zoomBackNote(pointerType, outward)",
+   "evidence": "chartZoom.ts:373-443"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 747,
+   "claim": "MIN_SPAN_TIME_LOG = {90 days, ln 1.1}",
+   "evidence": "chartZoom.ts:29"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 748,
+   "claim": "tested in chartZoom.test.ts (⭐26 present)",
+   "evidence": "chartZoom.test.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 749,
+   "claim": "btcCandlesCache own key 'bloc-btc-candles' {v:1, ranges}",
+   "evidence": "btcCandlesCache.ts:17,137"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 752,
+   "claim": "history time = min(at, newest close)",
+   "evidence": "btcCandlesCache.ts:54-56"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 754,
+   "claim": "drawable unless future/malformed; isOld past HISTORY_FRESH_MS 5 min",
+   "evidence": "btcCandlesCache.ts:21,59-66"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 756,
+   "claim": "asOfLabel 'as of 2:05 PM' / 'as of Oct 18, 2:05 PM' via toLocalISO",
+   "evidence": "btcCandlesCache.ts:74-79"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 757,
+   "claim": "msUntilOld; writeHistory never replaces a newer one",
+   "evidence": "btcCandlesCache.ts:69,131-136"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 758,
+   "claim": "imports no store, not usePowerLawData",
+   "evidence": "btcCandlesCache.ts:14-15"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 759,
+   "claim": "kept on 'Remove local key' (wipeLocalPlanData inventory)",
+   "evidence": "wipeLocalPlanData.ts:27-30"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 761,
+   "claim": "btcCandlesCache.test tags OLD…MONEY",
+   "evidence": "btcCandlesCache.test.ts:36-211"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 765,
+   "claim": "format.ts fmtUSD, fmtMining, DUST_USD / shownUsd 0.50",
+   "evidence": "format.ts:3,47-48,64"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 766,
+   "claim": "supportPolicyView re-exports DUST_USD/shownUsd; cbSeizurePrice reads shownUsd",
+   "evidence": "supportPolicyView.ts:148; cbMetrics.ts:3"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 767,
+   "claim": "a source guard pins ONE definition",
+   "evidence": "supportPolicyView.test.ts:1020"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 768,
+   "claim": "fmtTooltipUsd; powerLawWiring pins both tooltips",
+   "evidence": "format.ts:31-41; powerLawWiring.test.ts:93-96"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 770,
+   "claim": "fmtUSD whole dollars; tooltip rules ($1+, 2 sig digits, under $0.01, —)",
+   "evidence": "format.ts:3-4,31-41"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 773,
+   "claim": "fmtUSDCents through one cached Intl.NumberFormat, no sign",
+   "evidence": "format.ts:8,16"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 779,
+   "claim": "toCents Number.EPSILON; non-finite → 0",
+   "evidence": "format.ts:23"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 783,
+   "claim": "timeLimit HISTORY_TIMEOUT_MS 15_000; withTimeLimit(ms, run, outer?)",
+   "evidence": "timeLimit.ts:10,16"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 785,
+   "claim": "aborts after ms or on outer; timer cleared",
+   "evidence": "timeLimit.ts:17-27"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 786,
+   "claim": "usePowerLawData and useBtcHistory use it",
+   "evidence": "usePowerLawData.ts:3; useBtcHistory.ts:3"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 787,
+   "claim": "zero imports; tested STALL",
+   "evidence": "timeLimit.ts no imports; timeLimit.test.ts:21"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 792,
+   "claim": "AppShell ALL_TABS_META, DndContext, data-active-tab",
+   "evidence": "grep AppShell.tsx"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 794,
+   "claim": "simpleView/setSimpleView passed to DailyModeView/SimpleModeView; ViewToggle inside views",
+   "evidence": "AppShell.tsx:343-345; DailyModeView.tsx:242; SimpleModeView.tsx:145"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 797,
+   "claim": "renderOwnerJournal / renderSimpleUnder",
+   "evidence": "AppShell.tsx:350 + grep"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 800,
+   "claim": "Branch H and I wrapped in EdgeBackGesture",
+   "evidence": "AppShell.tsx:394,413"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 804,
+   "claim": "settingsBackRef via registerBack; settingsEdgeBack",
+   "evidence": "grep AppShell.tsx"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 809,
+   "claim": "almanacFace → <AlmanacView initialFace>",
+   "evidence": "AppShell.tsx:419,486"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 810,
+   "claim": "goPlanPaths opens the Decision face",
+   "evidence": "AppShell.tsx:303"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 814,
+   "claim": "goAlmanac sets no face, no argument",
+   "evidence": "AppShell.tsx:302"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 816,
+   "claim": "planPathsInFullMode null when Almanac hidden",
+   "evidence": "AppShell.tsx:308"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 818,
+   "claim": "AdvisorMain gets onOpenLedger and onOpenPlanPaths",
+   "evidence": "AppShell.tsx:480"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 819,
+   "claim": "liqsim tab 'Emergency'/'Emerg'; withEmergencyLabel/cbPaymentStrategy gone; mounts CbDefenseTool",
+   "evidence": "AppShell.tsx:74,485; grep 0 hits"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 821,
+   "claim": "CoinbaseLoanMain gets onOpenConsole + onOpenPlanPaths",
+   "evidence": "AppShell.tsx:479"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 822,
+   "claim": "bounce effect off hidden tabs and coinbase/liqsim without hasCbLoan",
+   "evidence": "AppShell.tsx:260,268,290"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 825,
+   "claim": "signedInApp && planLoading.up && !DEV → PlanLoadingGate",
+   "evidence": "AppShell.tsx:380-384"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 828,
+   "claim": "offers 'Open the app' after 15 s; markAppOnScreen",
+   "evidence": "firstPull.ts:18,55; PlanLoadingGate.tsx:6; AppShell markAppOnScreen"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 832,
+   "claim": "ViewToggle rendered in both views; 3-value union, Daily/Monthly only",
+   "evidence": "ViewToggle.tsx:6,25,37"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 836,
+   "claim": ".viewToggle* rules in ViewToggle.module.css",
+   "evidence": "ViewToggle.module.css:3-16"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 837,
+   "claim": "HeaderNavCluster 5 buttons; props active + 5 handlers",
+   "evidence": "HeaderNavCluster.tsx:16-22; 5 <button"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 842,
+   "claim": "rendered in DailyModeView + SimpleModeView; ownerNav in ViewerHomeView",
+   "evidence": "DailyModeView.tsx:225; SimpleModeView.tsx:132; AppShell.tsx:332"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 845,
+   "claim": "34×34 .iconBtn + .iconBtnActive --btc",
+   "evidence": "HeaderNavCluster.module.css:8-27"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 846,
+   "claim": "DemoBanner sticky top:0; one AppShell line, first child",
+   "evidence": "DemoBanner.module.css:5-6; AppShell.tsx:354"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 849,
+   "claim": "banner copy + VITE_PUBLIC_SITE_URL || '/'",
+   "evidence": "DemoBanner.tsx:9,11"
+  }
+ ]
+}

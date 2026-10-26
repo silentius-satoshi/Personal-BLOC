@@ -1,0 +1,972 @@
+[
+  {
+    "id": "HJ-01",
+    "target": "HJ",
+    "file": "src/components/Daily/calendarModel.ts",
+    "rule": ".claude/rules/journal.md — A draw/paydown with no `target` is STRIKE",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Daily/__tests__/calendarModel.test.ts",
+      "test": "buildDayActivity / buildMonthRollup / groupEventsByDay (P4c-1b) buildDayActivity filters by date, sums streams, moves, isEmpty",
+      "message": "AssertionError: expected { draw: +0, paydown: +0, …(5) } to deeply equal { draw: 1000, paydown: +0, …(5) }\n    at /tmp/hardening-1/hunt-HJ/src/components/Daily/__tests__/calendarModel.test.ts:120:25\n    at file:///tmp/hardening-1/hunt-HJ/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HJ/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HJ/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HJ/node_modules/@vitest/"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 1.7,
+        "tests": 29,
+        "files": 1
+      }
+    },
+    "secs": 2.2,
+    "md5Before": "f3f1097ffd3ec4527f31c8c841ba505c",
+    "md5Mutated": "26a62fc2f8bc9a89b270780465ee0685",
+    "md5After": "f3f1097ffd3ec4527f31c8c841ba505c",
+    "restored": true
+  },
+  {
+    "id": "HJ-02",
+    "target": "HJ",
+    "file": "src/store/dailyRouting.ts",
+    "rule": ".claude/rules/journal.md — A Coinbase borrow/paydown is journal-only at EVERY dayLog reader",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.7,
+        "tests": 60,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.1,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 40.6,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.5
+      }
+    },
+    "secs": 122.1,
+    "md5Before": "c250ce846f8ce407bd197ef6275f35dd",
+    "md5Mutated": "df4a8609cd7af651427a7cc4821b3e95",
+    "md5After": "c250ce846f8ce407bd197ef6275f35dd",
+    "restored": true
+  },
+  {
+    "id": "HJ-03",
+    "target": "HJ",
+    "file": "src/store/dailyRouting.ts",
+    "rule": ".claude/rules/journal.md — A buy's dollars are the owner's",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2,
+        "tests": 21,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 46.1,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32.1,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 27.8
+      }
+    },
+    "secs": 108.1,
+    "md5Before": "c250ce846f8ce407bd197ef6275f35dd",
+    "md5Mutated": "3ae102cb6dcd0b37c5872675a1435d2e",
+    "md5After": "c250ce846f8ce407bd197ef6275f35dd",
+    "restored": true
+  },
+  {
+    "id": "HJ-04",
+    "target": "HJ",
+    "file": "src/simulation/logUtils.ts",
+    "rule": ".claude/rules/journal.md — Strike collateral (v20 Collateral-Truth)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.2,
+        "tests": 17,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 57.3,
+        "tests": 1083,
+        "files": 87
+      },
+      "T3": {
+        "ok": true,
+        "secs": 30.3,
+        "tests": 630,
+        "files": 31
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 28.1
+      }
+    },
+    "secs": 117,
+    "md5Before": "af10eb4d037cce84073054a134bd0ca8",
+    "md5Mutated": "41752e3bb4edad22d4d92f03cb08208e",
+    "md5After": "af10eb4d037cce84073054a134bd0ca8",
+    "restored": true
+  },
+  {
+    "id": "HJ-05",
+    "target": "HJ",
+    "file": "src/simulation/logUtils.ts",
+    "rule": ".claude/rules/journal.md — Strike collateral (v20 Collateral-Truth)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 81.4,
+        "tests": 17,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 62.6,
+        "tests": 1083,
+        "files": 87
+      },
+      "T3": {
+        "ok": true,
+        "secs": 33.1,
+        "tests": 630,
+        "files": 31
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.9
+      }
+    },
+    "secs": 208.1,
+    "md5Before": "af10eb4d037cce84073054a134bd0ca8",
+    "md5Mutated": "98152df67310a307bb605f923483d952",
+    "md5After": "af10eb4d037cce84073054a134bd0ca8",
+    "restored": true
+  },
+  {
+    "id": "HJ-06",
+    "target": "HJ",
+    "file": "src/simulation/logUtils.ts",
+    "rule": "docs/claude/journal.md § Coinbase borrow & paydown events (journal-only; store unchanged, NO bump)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.3,
+        "tests": 15,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 64,
+        "tests": 1083,
+        "files": 87
+      },
+      "T3": {
+        "ok": true,
+        "secs": 29.6,
+        "tests": 630,
+        "files": 31
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 34.5
+      }
+    },
+    "secs": 129.5,
+    "md5Before": "af10eb4d037cce84073054a134bd0ca8",
+    "md5Mutated": "9cdff3d1095eae874c6495390ca9683f",
+    "md5After": "af10eb4d037cce84073054a134bd0ca8",
+    "restored": true
+  },
+  {
+    "id": "HJ-07",
+    "target": "HJ",
+    "file": "src/simulation/logUtils.ts",
+    "rule": ".claude/rules/journal.md — `deriveCurrentPosition`",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 4.5,
+        "tests": 17,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 61.2,
+        "tests": 1083,
+        "files": 87
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34,
+        "tests": 630,
+        "files": 31
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.8
+      }
+    },
+    "secs": 131.6,
+    "md5Before": "af10eb4d037cce84073054a134bd0ca8",
+    "md5Mutated": "6ff944364dcf9ac13169e77507909827",
+    "md5After": "af10eb4d037cce84073054a134bd0ca8",
+    "restored": true
+  },
+  {
+    "id": "HJ-08",
+    "target": "HJ",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v11 migration",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.9,
+        "tests": 69,
+        "files": 4
+      },
+      "T2": {
+        "ok": true,
+        "secs": 46.3,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32.8,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 28.9
+      }
+    },
+    "secs": 111,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "2ff42c29599262ef807c2131f273de69",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HJ-09",
+    "target": "HJ",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v11 migration",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 3.5,
+        "tests": 69,
+        "files": 4
+      },
+      "T2": {
+        "ok": true,
+        "secs": 51.6,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.5,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.9
+      }
+    },
+    "secs": 122.6,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "02469d805fb8c710cd7b1afa105691e4",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HJ-10",
+    "target": "HJ",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v19 migration",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 3.3,
+        "tests": 69,
+        "files": 4
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.9
+      }
+    },
+    "secs": 115.3,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "f238b812929bfe9856d2fabfffb8a4d4",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HJ-11",
+    "target": "HJ",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v19 migration",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 7.2,
+        "tests": 69,
+        "files": 4
+      },
+      "T2": {
+        "ok": true,
+        "secs": 48.6,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 29.8,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.4
+      }
+    },
+    "secs": 118.1,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "54fd0979b65d6f9f54be6e67d29e8076",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HJ-12",
+    "target": "HJ",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v19 migration",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.9,
+        "tests": 69,
+        "files": 4
+      },
+      "T2": {
+        "ok": true,
+        "secs": 44.2,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.9,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.3
+      }
+    },
+    "secs": 110.5,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "b60618d9c9ae5ea3d52be918dbcf79e0",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HJ-13",
+    "target": "HJ",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v20 migration",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 21.1,
+        "tests": 69,
+        "files": 4
+      },
+      "T2": {
+        "ok": true,
+        "secs": 48.2,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 33.6,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.3
+      }
+    },
+    "secs": 132.5,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "3cf20dfea4c3a58117339c2bf05bf0a8",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HJ-14",
+    "target": "HJ",
+    "file": "src/store/dailyRouting.ts",
+    "rule": "docs/claude/journal.md § Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.3,
+        "tests": 60,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.3,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 29.1,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.1
+      }
+    },
+    "secs": 110.9,
+    "md5Before": "c250ce846f8ce407bd197ef6275f35dd",
+    "md5Mutated": "9866731a01b59566488f51a7c72c7b3a",
+    "md5After": "c250ce846f8ce407bd197ef6275f35dd",
+    "restored": true
+  },
+  {
+    "id": "HJ-15",
+    "target": "HJ",
+    "file": "src/store/slices/advisorJournalSlice.ts",
+    "rule": "docs/claude/journal.md § Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.6,
+        "tests": 60,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 46.8,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 33.1,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.3
+      }
+    },
+    "secs": 114.9,
+    "md5Before": "3c4a8caea32edae3dae0248c2b6a54ef",
+    "md5Mutated": "cd165f92249b3a8cfffd1083e8134ee3",
+    "md5After": "3c4a8caea32edae3dae0248c2b6a54ef",
+    "restored": true
+  },
+  {
+    "id": "HJ-16",
+    "target": "HJ",
+    "file": "src/store/slices/advisorJournalSlice.ts",
+    "rule": "docs/claude/journal.md § Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 78.9,
+        "tests": 60,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 45.3,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 30.7,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.8
+      }
+    },
+    "secs": 185.7,
+    "md5Before": "3c4a8caea32edae3dae0248c2b6a54ef",
+    "md5Mutated": "830fd074ad7ec29f32dbb2248a112b3b",
+    "md5After": "3c4a8caea32edae3dae0248c2b6a54ef",
+    "restored": true
+  },
+  {
+    "id": "HJ-17",
+    "target": "HJ",
+    "file": "src/store/dailyRouting.ts",
+    "rule": "docs/claude/daily-mode.md § Daily Mode (P2a — store wiring; store v18→19)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.5,
+        "tests": 53,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 49,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 38,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.7
+      }
+    },
+    "secs": 121.4,
+    "md5Before": "c250ce846f8ce407bd197ef6275f35dd",
+    "md5Mutated": "14c2db3a30d680d887291172ceb2091f",
+    "md5After": "c250ce846f8ce407bd197ef6275f35dd",
+    "restored": true
+  },
+  {
+    "id": "HJ-18",
+    "target": "HJ",
+    "file": "src/store/slices/advisorJournalSlice.ts",
+    "rule": "docs/claude/daily-mode.md § Daily Mode (P4c-3b — reconcile → Review → confirm flow; store stays v19, NO store changes)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 3.1,
+        "tests": 73,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 50,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32.1,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.1
+      }
+    },
+    "secs": 117.5,
+    "md5Before": "3c4a8caea32edae3dae0248c2b6a54ef",
+    "md5Mutated": "253200586f9ee98a248796d9b175e2e1",
+    "md5After": "3c4a8caea32edae3dae0248c2b6a54ef",
+    "restored": true
+  },
+  {
+    "id": "HJ-19",
+    "target": "HJ",
+    "file": "src/simulation/logUtils.ts",
+    "rule": "docs/claude/journal.md § Logging Consolidation §5b — Readings-Unification (the journal drives the live safety anchors; store stays v19)",
+    "status": "KILLED",
+    "tier": "T2",
+    "killedBy": {
+      "file": "src/store/__tests__/buyDollarsStore.test.ts",
+      "test": "5d — a dollars-only edit keeps a signed month signed (BL13) SIGNOFF lagging entry — the balances stay: on the full path too, a dollars-only edit never re-anchors the balances",
+      "message": "AssertionError: expected {} to deeply equal { Object (advisorActualBlocBalance, advisorActualBlocBalanceAsOf, ...) }\n    at signedMonthWithTypedBalances (/tmp/hardening-1/hunt-HJ/src/store/__tests__/buyDollarsStore.test.ts:91:56)\n    at /tmp/hardening-1/hunt-HJ/src/store/__tests__/buyDollarsStore.test.ts:199:15\n    at file:///tmp/hardening-1/hunt-HJ/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HJ/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HJ/node_modules/@vitest/runner/dist/chunk-artifact.js:23"
+    },
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 25.4,
+        "tests": 28,
+        "files": 2
+      },
+      "T2": {
+        "ok": false,
+        "secs": 38.8,
+        "tests": 258,
+        "files": 87
+      }
+    },
+    "secs": 64.3,
+    "md5Before": "af10eb4d037cce84073054a134bd0ca8",
+    "md5Mutated": "9d5ab41a27753432587d665492782b12",
+    "md5After": "af10eb4d037cce84073054a134bd0ca8",
+    "restored": true
+  },
+  {
+    "id": "HJ-20",
+    "target": "HJ",
+    "file": "src/store/dailyRouting.ts",
+    "rule": "docs/claude/journal.md § Logging Consolidation §5b — Readings-Unification (the journal drives the live safety anchors; store stays v19)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.3,
+        "tests": 66,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 48.8,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32.2,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.5
+      }
+    },
+    "secs": 114.9,
+    "md5Before": "c250ce846f8ce407bd197ef6275f35dd",
+    "md5Mutated": "ad4382a2f7fb0fe30a4d43767de5818d",
+    "md5After": "c250ce846f8ce407bd197ef6275f35dd",
+    "restored": true
+  },
+  {
+    "id": "HJ-21",
+    "target": "HJ",
+    "file": "src/components/Daily/calendarModel.ts",
+    "rule": "docs/claude/journal.md § Logging Consolidation — One Ledger, One Sign-off, a Pure Playbook (§1–§4 + §2b; store stays v19, NO bump)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.6,
+        "tests": 29,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 4.7,
+        "tests": 29,
+        "files": 1
+      },
+      "T3": {
+        "ok": true,
+        "secs": 36.7,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.1
+      }
+    },
+    "secs": 75.2,
+    "md5Before": "f3f1097ffd3ec4527f31c8c841ba505c",
+    "md5Mutated": "b8fcf28d32671040395a5027e61a2435",
+    "md5After": "f3f1097ffd3ec4527f31c8c841ba505c",
+    "restored": true
+  },
+  {
+    "id": "HJ-22",
+    "target": "HJ",
+    "file": "src/components/Daily/calendarModel.ts",
+    "rule": "docs/claude/daily-mode.md § Daily Mode (P4c-1a — Week|Month calendar + pure calendarModel; store stays v19)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.6,
+        "tests": 29,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 4.9,
+        "tests": 29,
+        "files": 1
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.2,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.2
+      }
+    },
+    "secs": 72.9,
+    "md5Before": "f3f1097ffd3ec4527f31c8c841ba505c",
+    "md5Mutated": "6d74655cfc2bafa82915e34610efc0d4",
+    "md5After": "f3f1097ffd3ec4527f31c8c841ba505c",
+    "restored": true
+  },
+  {
+    "id": "HJ-23",
+    "target": "HJ",
+    "file": "src/lib/ledgerCsv.ts",
+    "rule": "docs/claude/almanac.md § M-L1 — Ledger face (seventh Almanac face) + CSV export (store unchanged, NO bump)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.7,
+        "tests": 20,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 22.7,
+        "tests": 333,
+        "files": 15
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32.6,
+        "tests": 743,
+        "files": 43
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.4
+      }
+    },
+    "secs": 87.5,
+    "md5Before": "5878f356d7c81f1c035191f878123732",
+    "md5Mutated": "fab1078f4a17ca1822f4152696720a4f",
+    "md5After": "5878f356d7c81f1c035191f878123732",
+    "restored": true
+  },
+  {
+    "id": "HJ-24",
+    "target": "HJ",
+    "file": "src/lib/ledgerCsv.ts",
+    "rule": "docs/claude/almanac.md § M-L1 — Ledger face (seventh Almanac face) + CSV export (store unchanged, NO bump)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 89.3,
+        "tests": 20,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 20.5,
+        "tests": 333,
+        "files": 15
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.1,
+        "tests": 743,
+        "files": 43
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.8
+      }
+    },
+    "secs": 175.9,
+    "md5Before": "5878f356d7c81f1c035191f878123732",
+    "md5Mutated": "a9b23ad3e4ca53b0f134ada73c23dc8b",
+    "md5After": "5878f356d7c81f1c035191f878123732",
+    "restored": true
+  },
+  {
+    "id": "HJ-25",
+    "target": "HJ",
+    "file": "src/simulation/logUtils.ts",
+    "rule": "boundary: THIS MONTH's expenses prompt fires at drift > 5% (computeExpenseReanchor; docs/claude/file-structure.md logUtils entry)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.5,
+        "tests": 17,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 58.2,
+        "tests": 1083,
+        "files": 87
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31,
+        "tests": 630,
+        "files": 31
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.8
+      }
+    },
+    "secs": 120.6,
+    "md5Before": "af10eb4d037cce84073054a134bd0ca8",
+    "md5Mutated": "02433d9290035a59baa96318d21db3dc",
+    "md5After": "af10eb4d037cce84073054a134bd0ca8",
+    "restored": true
+  },
+  {
+    "id": "HJ-26",
+    "target": "HJ",
+    "file": "src/simulation/logUtils.ts",
+    "rule": "docs/claude/engines.md § `coldStorageBtc` — a REAL balance, not the projection",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.9,
+        "tests": 15,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 58.1,
+        "tests": 1083,
+        "files": 87
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.1,
+        "tests": 630,
+        "files": 31
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.7
+      }
+    },
+    "secs": 122,
+    "md5Before": "af10eb4d037cce84073054a134bd0ca8",
+    "md5Mutated": "335464b555f1efc464a99f941ed3234c",
+    "md5After": "af10eb4d037cce84073054a134bd0ca8",
+    "restored": true
+  }
+]

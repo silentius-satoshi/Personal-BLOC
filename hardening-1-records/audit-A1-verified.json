@@ -1,0 +1,203 @@
+{
+ "area": "A1",
+ "findings": [
+  {
+   "id": "A1-1",
+   "severity": "Critical",
+   "file": "src/simulation/cyclingSim.ts",
+   "line": 1774,
+   "title": "The never-draw baseline never liquidates: its Coinbase loan compounds through any crash with no 86% test, and its coins are pooled across venues. So the verdict (faces, Decision tile) and the futures' 'Beats never borrowing' compare the plan with a never-draw world that Morpho would have seized.",
+   "evidence": "Probe src/__probe__/A1-seqA.test.ts in /tmp/hardening-1/audit-A1b (deleted after the run). Command: `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/A1-seqA.test.ts --maxWorkers=1`. Inputs (synthetic): Strike 1 BTC, $30,000 line, $0 drawn; Coinbase 1 BTC owing $50,000; cold 0.5 BTC; income $8,000, bills $6,000; Strike APR 12, CB APR 6; cbLtvCapPct 70, defendCbLtv true; policy 45/50, zones 2.0/3.0, 12-month buffer, no cash, support flat at $40,000. Path: $100k, 90k, 70k, 55k, $50k at m4, then linear to $150k at m24. OUTPUT: in mode 'hold' (the engine's own never-draw strategy) cbLtv by month is [0.5, 0.5462, 0.6866, 0.8488, 0.9051], so liqMonth = 4, seizedBtc 1.0649, last.equity $298,303 and btcHeld 1.9887. The same run's baselineEquity is $401,677 with baselineBtc 3.0536, i.e. no seizure. The plan (policyApplied true, liqMonth null) has allIn $371,745 against baselineAllIn $401,677, and verdictVsNeverDraw gives {kind:'loses', wins:false, equityDelta:-29931}. Against the hold run's allIn of $298,303 the plan is +$73,442. Futures probe A1-seqC (priceFutures, 300 futures, seed 1, 120 months, start 2027-01-01, anchor $94,000, Coinbase 1 BTC owing $60,000, never-draw run as mode 'hold' with no sweep): the never-draw world is seized in 10 of 300 futures. In those futures the pooled baseline overstates it by about $1.8M (e.g. baselineAllIn $6,367,555 vs $4,566,397 seizable). The readout's beatsNeverDraw is 283, against 284 versus the seizable world (one verdict flips). CODE: cyclingSim.ts:1774 pools strike + cb + cold into baseBtc; :1779 compounds baseCbDebt every month; lines 1778-1812 run no LTV or seizure test; :1814 baselineEquity = baseBtc × last price − debts. The header at cyclingSim.ts:24-25 says that for `hold` 'the strategy IS the baseline', and engines.md:740 says 'a run that never acts still IS the never-draw world'. Both are false once Morpho seizes.",
+   "whyItMatters": "The never-draw verdict (head, tile tone, 'never-draw: ±$X') and the futures' share are the plan's headline money comparison. On a crash that recovers — the case the support policy exists for — the plan's survival is scored as a loss of $29,931 when it is a gain of $73,442, because the comparator keeps coins Morpho took. The same overstated baseline feeds monteCarlo.ts:80 (beatsNeverDraw) and cyclingFaceView.ts:866.",
+   "fixSketch": "Give the baseline the Coinbase leg's own seizure (debt against Coinbase collateral plus its pledged buys, the engine's month-end / on-the-way-down test), or compute it as a sweep-free mode 'hold' run and read that run's all-in equity.",
+   "sources": [
+    "A1s-1",
+    "A1i-3"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A1a (batched probe, deleted): the A1s-1 inputs reproduce exactly: plan policyApplied, liqMonth null, baselineEquity 401,677, baselineBtc 3.054, verdict 'loses' equityDelta -29,931; the same position run as mode 'hold' liquidates (cbLtv 0.50, 0.60, 0.75, 0.93, liqMonth 3). Code: cyclingSim.ts:1774 pools all three venues into baseBtc, :1779 compounds baseCbDebt, :1778-1812 has no LTV or seizure test; no doc records the omission as a decision (engines.md:738-740 claims a run that never acts IS the never-draw world). Merged A1i-3 (same defect, rated Medium there); kept Critical: the verdict's equityDelta and the futures' beats-never-borrowing count are money figures, and the hold run proves the never-draw world is seized. Path-limited (needs the baseline's own Coinbase loan to cross its liquidation price). Fix is an engine change behind the G1 golden: owner call.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A1-2",
+   "severity": "Medium",
+   "file": "src/components/Almanac/decisionView.ts",
+   "line": 153,
+   "title": "A crash month whose fallback top-up restores Coinbase still prints 'The defense falls $X short — Coinbase stays over its defense line', and THIS MONTH / Daily show a red 'Coinbase defense falls short'. defenseShortfallUsd is the debt shift's shortfall, measured before the top-up covered it.",
+   "evidence": "Probe src/__probe__/A1-seqB.test.ts (deleted). Command: `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/A1-seqB.test.ts --maxWorkers=1`. Inputs: Strike 2 BTC, $3,000 line, $0 drawn; Coinbase 2 BTC owing $62,000; cold 1 BTC; $8k in, $6k out; policy 45/50/2/3/12; support $100k; price $100k then $40k (k 0.4, under the 0.523 depth, so shift first). OUTPUT for row 1: defenseDrawnUsd 3000, topUpFromColdBtc 0.06821, cbLtvPreDefense 0.7599, month-end cbLtv 0.7000; sim.firstUnheldMonth null and topUpExhaustedMonth null, so the line held. rowActions(row1) gives [..., 'Move 0.068 ₿ from cold storage into Coinbase.', 'Draw $3,000 on Strike and pay Coinbase down with it.', 'The defense falls $1,910 short — Coinbase stays over its defense line.']. planMonthActions(sim, plan, 1) includes 'Coinbase defense falls short | | $1,910.00 | bad'. CODE PATH: cyclingSim.ts:1467 sets defenseShortfallUsd = d.shortfallUsd (the shift's only). :1533-1565 the fallback top-up covers it (t.shortfallBtc 0) and leaves the field unchanged. decisionView.ts:152-153 prints the field and asserts 'stays over'. planMonthView.ts:99 shows it with tone 'bad'. The faces read firstUnheldMonth instead (cyclingFaceView.ts:148-154).",
+   "whyItMatters": "On the Decision schedule, its print-out and 'Why this plan?', and in THIS MONTH / Daily's rows, a defense that held reads as one that failed, in red, beside a console that says it held. That is a crash-day safety misstatement.",
+   "fixSketch": "Print the short only when the month ends over the line (row.cbLtv > cap, the firstUnheldMonth rule); when collateral covered it, drop the line or say the top-up covers the rest.",
+   "sources": [
+    "A1s-2"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A1a (batched probe, deleted): row 1: defenseDrawnUsd 3,000, topUpFromColdBtc 0.0687, month-end cbLtv 0.700, firstUnheldMonth null, topUpExhaustedMonth null, yet defenseShortfallUsd 1,924 and rowActions prints 'The defense falls $1,924 short — Coinbase stays over its defense line.' Code: cyclingSim.ts:1467 sets the shortfall from the shift alone; the fallback top-up at :1533-1565 covers it and never clears the field; decisionView.ts:152-153 and planMonthView.ts:99 (tone 'bad') print it. Severity kept Medium: the misstatement errs alarming, not reassuring.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A1-3",
+   "severity": "Medium",
+   "file": "src/components/Tools/crashPlaybookView.ts",
+   "line": 70,
+   "title": "isCrashDay open-codes the LTV as `value > 0 && debt / value >= trigger`, so a Coinbase loan with debt and no collateral (LTV ∞) is never a crash day: the Emergency Console acts while THIS MONTH, Daily and the CB Loan tab show no crash day.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-crashInf: live figures price 40,000, support 50,000, cbDebt 10,000, cbCollateralBtc 0, strikeColl 2, strikeBal 0, line 20,000, cold 0.5, target 65, plan limit 45. Output: isCrashDay({hasCbLoan:true, cbDebt:10000, cbCollateralBtc:0, price:40000, triggerPct:75}) = false, the same at 1e-8 ₿ collateral = true; waitingCard = null; crashPlaybook order 'topUpFirst', steps [coldToCoinbase 0.38461 ₿]; playbookCard: pastLiquidation 'At this price Coinbase is at ∞ — past its 86% liquidation line…', step 'Move 0.38461 ₿ (~$15,384) from cold storage into Coinbase.', outcome 'Coinbase is back at your 65% target.'; placementPlan state 'cbPastLiquidation'. Path: crashPlaybookView.ts:70-71 (`value > 0 && …`) → usePlanCardInputs.ts:62 cbTriggered false → :72 playbookLine null (no crash line on THIS MONTH / the Advisor tab); DailyModeView.tsx:144-148 crashDay false → planStatus instead, whose m=1 cbPastLiquidation branch (planMonthView.ts:234-238) says 'The policy moves nothing today.'; CoinbaseLoanMain.tsx:85/106 no crash banner. The console itself runs on hasCbLoan alone (CbDefenseTool.tsx:13). A 200,000-input random sweep of crashPlaybook found 19,917 inputs where the console acts at/over the trigger while isCrashDay is false — every one with cbCollateralBtc 0. ltv.test.ts's copy guard greps only the `<= 0 ? Number.POSITIVE_INFINITY` shape, so this copy escapes it.",
+   "whyItMatters": "The unbacked loan is the worst position the app can describe (ltv.ts's own docblock: a copy that reports it as safe is the bug it exists to stop). On it the console says 'move 0.38 ₿ into Coinbase now' while THIS MONTH says 'The policy moves nothing today' with no crash line — the two crash-day answers disagree exactly where the gate matters most.",
+   "fixSketch": "isCrashDay: `ltvOf(f.cbDebt, f.cbCollateralBtc, f.price) >= f.triggerPct / 100` (∞ ≥ trigger), with a GATE test at zero collateral.",
+   "sources": [
+    "A1i-2"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A1a (batched probe, deleted): isCrashDay({cbDebt 10,000, cbCollateralBtc 0, price 40,000, trigger 75}) = false; at 1e-8 ₿ = true. Code: crashPlaybookView.ts:70-71 `value > 0 && debt/value >= trigger` (file:line is 66-72). Reachable: EventSheet.tsx:415 writes `cbCollateral ?? 0` on a CB-bearing reading. Open-codes an LTV the ltv.ts rule says is infinite.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A1-4",
+   "severity": "Medium",
+   "file": "src/simulation/cyclingSim.ts",
+   "line": 1576,
+   "title": "Gate G2 ('cold is never retrieved at or above support for a position that opens inside both ceilings') fails when spare income cannot repay capitalised interest, and the policy card then explains the retrieval with the false clause 'the position opened over its limits'.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-g2c1, C1 plan defaults (cbStop 45, skStop 50, accumulateBelow 2.0, payDownAbove 3.0, buffer 12, cash 0; cbLtvCapPct 70, strikeLtvCapPct 60, defendCbLtv, cycle 1), support flat 50,000; price 75,000 (k 1.5) for m0-39 then 50,500 (k 1.01); strikeColl 1, strikeBal 20,000, line 30,000; cbColl 1, cbDebt 22,000; cold 0.5; income 4,000 < expenses 6,000; APR 13 / 6. Output: applied true; opening INSIDE both ceilings (row0 cbCeilingHeadroomUsd +500, strikeCeilingHeadroomUsd +5,000); m39 strikeBalance 29,870 (skRoom -4,870), cbRoom -4,695, restore 0, unfunded 2,000/month; first retrieval m41 k=1.01 zone 'accumulate' strikeTopUpBtc 0.0073 at strikeLtv 0.600; result.coldRetrievedAboveSupportBtc = 0.01821 (must be 0 by G2). policyDetails(policyReading(r,42,6000)) prints '0.0182 ₿ came out of cold while price was above support — the position opened over its limits.' Path: the restore (cyclingSim.ts:1214 `surplus = max(0, inc - expenses)` → :1249 skPay = min(surplus, excess)) can only repay from spare income, so with none, Strike's 13% interest capitalises past its ceiling at support; at k≈1 the Strike cap's cold → Strike top-up (cyclingSim.ts:1576-1584, target 60% at TODAY's price) fires, and :1692-1695 counts it into coldRetrievedAboveSupportBtc; supportPolicyView.ts:482-483 (coldAlarm) and :563 then assert the opening was over its limits. A random sweep (20,000 synthetic policy runs, 6,210 opening inside both ceilings) found the same breach once (no-surplus, at-goal run: 0.00059 ₿ at k=1.0056).",
+   "whyItMatters": "G2 is a rule-row promise (engine.md: 'Cold is never retrieved at or above support for a position that opens inside both ceilings') and the card's COLD_PROMISE/coldAlarm pair tells the owner either that cold is never touched above support or that their position opened over its limits; in a deficit budget (income below bills — the app's 'living on bitcoin' case) both are false: the position opened inside and the plan itself walked it over. Every G2 test and the report grids use income above bills, so nothing pins this.",
+   "fixSketch": "Owner call: either scope G2 and the alarm to 'opened over, or went over, its limits' (count when a leg is over its ceiling at support at the retrieval month, not only at the opening), or let the restore/pay-down treat capitalised interest so a leg can't drift over its ceiling unpaid.",
+   "sources": [
+    "A1i-1"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced at base (numbers not re-run): the Strike-cap top-up (cyclingSim.ts:1576-1586) fires on Strike's LTV at today's price whenever capitalised interest takes Strike over its cap, and :1692-1695 counts every cold retrieval at k >= 1 into coldRetrievedAboveSupportBtc regardless of how the position got there; supportPolicyView.ts:482-483 then prints the fixed cause 'the position opened over its limits', and :563 shows it. With no surplus the restore (:1214/:1249) cannot repay, so a position opened inside both ceilings can drift over them. The sentence names a false cause; G2 as written in engine.md is broken on deficit paths.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A1-5",
+   "severity": "Medium",
+   "file": "src/components/Almanac/decisionView.ts",
+   "line": 115,
+   "title": "Every month after a Coinbase seizure the schedule tells the owner to 'Buy $X of bitcoin and pledge it to Coinbase'. The loan is gone, the plan never borrows again, and the run never sweeps those coins to cold.",
+   "evidence": "Probe src/__probe__/A1-seqD.test.ts (deleted). Command: `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/A1-seqD.test.ts --maxWorkers=1`. Inputs: Coinbase 1 BTC owing $60,000 at $100k; Strike 1 BTC, $3,000 line; $8k in, $6k out; policy 45/50/2/3/12; support $50k; price $100k, then $65k at m1, then linear to $130k at m12. OUTPUT: liqMonth 1, seizedOnTheWayDown true. Rows 1-12: cbDebt 0, cbCollateralBtc rising from 0.1331 to 0.3602, coldBtc 0, sweptToColdBtc 0, postLiquidation true. Schedule month 1 is ['Coinbase liquidates the loan on the way down, at $70,116.', 'Buy $2,000 of bitcoin (≈ 0.031 ₿) and pledge it to Coinbase.']. Months 2-12 each repeat the same 'pledge it to Coinbase' buy. CODE PATH: cyclingSim.ts:1276-1277 adds buys to cbColl after a seizure. :1675 gates the policy sweep on liqMonth === null, so only the goal stand-down passes. decisionView.ts:115 prints fixed text with no liquidation branch. planStatus already says 'Coinbase has been liquidated — borrowing has ended' (planMonthView.ts:248).",
+   "whyItMatters": "The schedule, its print-out and 'Why this plan?' (which reads planSchedule's words) tell the owner to keep pledging coins to a seized position. The run parks them there for the rest of the horizon rather than in cold, so cold figures after a seizure understate. It also breaks the N8 rule that no words promise a loan after a liquidation.",
+   "fixSketch": "After liqMonth, word the buy without 'pledge it to Coinbase'. Separately, as a Heavy follow-up, let step 9 sweep a debt-free Coinbase pool to cold after a seizure, which cannot re-lever anything.",
+   "sources": [
+    "A1s-4"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced at base: decisionView.ts:110-117 prints 'and pledge it to Coinbase.' with no liquidation branch; cyclingSim.ts:1276-1277 adds every buy to cbColl, and :1673-1674 gates the sweep on liqMonth === null (only the goal stand-down passes), so post-seizure buys stay in a debt-free Coinbase pool; planMonthView.ts:248 already says borrowing has ended. Lane Light for the words; the sweep-after-seizure follow-up is Heavy.",
+   "lane": "Light"
+  },
+  {
+   "id": "A1-6",
+   "severity": "Medium",
+   "file": "src/components/Almanac/supportPolicyView.ts",
+   "line": 512,
+   "title": "After a Coinbase seizure the unpaid-bills line blames 'the credit line and the limits at support'. In fact the plan stops borrowing only because Coinbase was liquidated, and the Strike line still has room.",
+   "evidence": "Probe src/__probe__/A1-seqE.test.ts (deleted). Command: `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/A1-seqE.test.ts --maxWorkers=1`. Inputs: Strike 1 BTC, $30,000 line, $0 drawn; Coinbase 1 BTC owing $60,000; $4k in, $6k out; policy 45/50/2/3/12, no cash; support $50k; price $100k, then $65k at m1 (seized on the way down), then linear to $90k at m12. OUTPUT: liqMonth 1 (onTheWayDown true), firstUnfundedMonth 1, firstCeilingThrottleMonth null, creditExhaustedMonth null. Rows 1-3: zone 'accumulate', strikeDrawn 0, unfundedUsd 2000, Strike line room $30,000, Strike room at support $25,000. policyUnpaidNote(policyReading(sim, 6, 6000)) returns 'From month 1, $24,000 of bills went unpaid — the credit line and the limits at support couldn't cover them. Set a cash reserve to cover them.' CODE PATH: cyclingSim.ts:1157-1158 allows a draw only while liqMonth === null. supportPolicyView.ts:512 picks UNPAID_CAUSE[zone], which for 'accumulate' is line 502's sentence, without asking liqMonth. neverDrawsOf (same file) does handle the liquidation.",
+   "whyItMatters": "The sentence names a false cause, shown in the policy card's details and each face's constraints slot. It points the owner at a bigger line or a cash reserve and never says the real reason: borrowing ended at the seizure.",
+   "fixSketch": "When the first unpaid month is at or after liqMonth (way down) or after it (month-end), name the liquidation: 'Coinbase was liquidated in month L — the plan borrows nothing more'.",
+   "sources": [
+    "A1s-3"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced at base: supportPolicyView.ts:498-503 UNPAID_CAUSE.accumulate = \"the credit line and the limits at support couldn't cover them\"; policyUnpaidNote (:508-515) never reads liqMonth; cyclingSim.ts:1157-1158 blocks every draw once liqMonth !== null. After a seizure in the accumulate zone the named cause is false.",
+   "lane": "Light"
+  },
+  {
+   "id": "A1-7",
+   "severity": "Medium",
+   "file": "src/components/Almanac/decisionView.ts",
+   "line": 539,
+   "title": "THE MOVE's batch line rounds a sub-threshold move up to the threshold and says '0.010 ₿ is under the 0.01 ₿ threshold' for any total in [0.0095, 0.01).",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-moveCard: placementPlan({ creditLine 40,000, strikeBalance 0, strikeCollateralBtc keep+0.0097, cbDebt 60,000, cbCollateralBtc 2, coldBtc 0.5, price 100,000, support 100,000, skStop 0.5, cbStop 0.6, cbDefenseLtv 0.7, bufferUsd 72,000, accumulateBelow 1.5, payDownAbove 2.0 }) → moved 0.0097, worthMoving false, strikeLeg 'moves'; moveCard batch line: 'Nothing worth moving yet — 0.010 ₿ is under the 0.01 ₿ threshold; next month's re-plan picks it up.' Path: decisionView.ts:539-541 prints fmtBtc3(movedBtc) where fmtBtc3 = n.toFixed(3) (:71), which rounds half-up; the schedule's '(small — can wait)' markers (:120-121, :126-127, :172-173, `< MOVE_THRESHOLD_BTC`) print the same rounded figure ('Release 0.010 ₿ … (small — can wait)').",
+   "whyItMatters": "A figure that disagrees with its word: the card tells the owner a move of 0.010 ₿ is under a 0.01 ₿ threshold, which reads as a bug in the threshold rather than a rounding.",
+   "fixSketch": "Floor the figure on the sub-threshold lines (Math.floor(x*1000)/1000, the console's flooring precedent) or print it to 4 dp when it rounds onto the threshold.",
+   "sources": [
+    "A1i-4"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A1a (batched probe, deleted): (0.0097).toFixed(3) = '0.010'. Code: decisionView.ts:71 fmtBtc3 = toFixed(3) rounds half-up; :538-541 prints it beside MOVE_THRESHOLD_BTC 0.01 when !worthMoving. Line is 538-541. Medium per §6 (a figure that disagrees with its word).",
+   "lane": "Light"
+  },
+  {
+   "id": "A1-8",
+   "severity": "Minor",
+   "file": "src/components/Tools/crashPlaybookView.ts",
+   "line": 198,
+   "title": "fmtStepBtc's FLOOR_GUARD (1e-7 of the last printed place = 1e-12 ₿) is larger than STRIKE_RELEASE_EPS's cushion when Strike's keep is under 0.001 ₿, so a binding Strike release is rounded UP to an amount that leaves Strike at 50% — the line Strike refuses.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-floorGuard: playbookInputFromLive({ price 100,000, support 125,000, cbDebt 170,000, cbCollateralBtc 2, strikeBalance 25, strikeCollateralBtc 0.1005, creditLine 20,000, coldBtc 0, target 65, plan limit 45 }) → order topUpFirst, release 0.0999999999995 ₿ (binding: required 0.615), fmtStepBtc → '0.10000'; card step 'Release 0.10000 ₿ (~$10,000) of Strike collateral into Coinbase.'; moving the printed 0.10000 leaves 0.0005 ₿ against $25 = 50.0% (float 0.49999999999999956; with $10 on 0.1002 ₿: 0.5000000000000203). At $100 on 0.102 ₿ it floors correctly to '0.09999'. Path: cbDefense.ts:272 releases down to maxAfterLtv × (1 − 1e-9), a cushion of keep × 1e-9 ₿; crashPlaybookView.ts:198/204 `Math.floor(btc * 1e5 + 1e-7)` forgives up to 1e-12 ₿, so for keep ≤ 0.001 ₿ the cushion is inside the guard.",
+   "whyItMatters": "engine.md's rule 'Every crash-day step amount is floored to its printed precision' exists so the console never names a release Strike refuses; with a sliver of a Strike balance (≤ ~$50 per $100k of price) it does.",
+   "fixSketch": "Scale the guard to the cushion (e.g. guard relative to btc × 1e-12, or floor to 5 dp after subtracting the release EPS) and add a ⭐ at a $25 Strike balance.",
+   "sources": [
+    "A1i-5"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced by arithmetic at base: crashPlaybookView.ts:198-205 FLOOR_GUARD 1e-7 on btc×1e5 forgives 1e-12 ₿; cbDefense.ts:272 releases to maxAfterLtv×(1−1e-9), a cushion of about keep×1e-9 ₿, which is under 1e-12 ₿ once keep < 0.001 ₿ — so the floor can round a binding release up past the cushion. Only with a sliver of Strike debt; not re-run.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A1-9",
+   "severity": "Minor",
+   "file": "src/simulation/placement.ts",
+   "line": 234,
+   "title": "THE MOVE and the engine's step 5 apply different 'under 50% after' tests (≤ 50% × (1 − 1e-9) through strikeReleasableBtc vs `< strikeMaxDrawLtv` open-coded in the migration), so at a 50% tie THE MOVE says the release is blocked while the run's month 1 makes it.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-moveCard: placementPlan({ creditLine 30,000, strikeBalance 30,000, strikeCollateralBtc 2, cbDebt 0, cbCollateralBtc 0, coldBtc 0, price 60,000.00003 (k 1.2000000006), support 50,000, skStop 0.6, cbStop 0.45, cbDefenseLtv 0.7, bufferUsd 0, accumulateBelow 1.0, payDownAbove 1.1 }) → keep 1.0, excess 1.0, releasable 0.9999999995, strikeLeg 'ltv'; moveCard state line 'Releasing all of it would leave Strike at 50% LTV or more — pay it down first.' (after-LTV would be 0.49999999975). runCyclingSim on the same position, flat path [P, P], zero rates/income, strikeStopAtSupportPct 60, strikeLtvCapPct 60: row 1 strikeToCbBtc 1, strikeCollateralBtc 1, strikeLtv 0.49999999975. Path: placement.ts:227-234 (excess ≤ strikeReleasableBtc, cbDefense.ts:272 with STRIKE_RELEASE_EPS) vs cyclingSim.ts:1325-1326 (`ltvOf(strikeBal, strikeColl - move, price) < strikeMaxDrawLtv`).",
+   "whyItMatters": "engine.md: 'THE MOVE is never a second placement rule' — here the card and the run disagree on the same move, and the card's sentence is false of the position. The band is ~1e-9 relative wide, so it is reached only at an exact tie.",
+   "fixSketch": "Have step 5 test the move through strikeReleasableBtc (move ≤ releasableNow) so both read one release rule; pin it at the tie.",
+   "sources": [
+    "A1i-6"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced at base: placement.ts:228-234 tests excess <= strikeReleasableBtc (maxAfterLtv×(1−1e-9), cbDefense.ts:272) while cyclingSim.ts:1325-1326 tests ltvOf(after) < strikeMaxDrawLtv — two rules for one release, differing in a ~1e-9 relative band. Reached only at an exact tie; not re-run.",
+   "lane": "Heavy"
+  },
+  {
+   "id": "A1-10",
+   "severity": "Minor",
+   "file": "src/components/Almanac/CyclingFace.tsx",
+   "line": 770,
+   "title": "With the policy off, a refinance capped exactly at the defense line leaves a float overage that the debt shift books as a defense, so a face can print 'LTV stop defense: $0 of Coinbase debt shifted to Strike across 1 month' and flag ⇄ on a month that shifted $7e-12.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-dustGrid (policy off): flat price 30,000 × 13 months; strikeColl 1, strikeBal 0, line 100,000; cbColl 1, cbDebt 20,000; income 8,000, expenses 6,000; APR 13/6; cycle 1; cbLtvCapPct 70; defendCbLtv true → defenseCount 1, totalDefenseDrawnUsd 7.28e-12, firstDefenseMonth 7. Repo fixture: runCyclingSim({ ...SP_REPRO, pricePath: pathP2(12) }) → defenseCount 9 of which month 58 drew 5.82e-11 (a refinance month). A 20,000-run random policy-off sweep: 7,360 rows with 0 < defenseDrawnUsd < 0.005, and 188 runs whose ONLY defense was dust. Path: cyclingSim.ts:1464 drops the dust only when `topUpFirstRan` (policy-only), so :1468-1473 count it (defended true, defenseCount++, firstDefenseMonth); CyclingFace.tsx:767-771 and OwnershipFace.tsx:743-747 print fmtK(total) = '$0' 'across N months', and the ⇄ marker reads r.defended (CyclingFace.tsx:502, OwnershipFace.tsx:512).",
+   "whyItMatters": "The policy-off what-if reports a defense that never happened ('$0 … across 1 month, starting month 7 … The 70% stop held') and inflates real counts; the SHIFT_DUST_USD docblock names exactly this symptom but fixes it only under the policy.",
+   "fixSketch": "Gate the policy-off note and the ⇄ flag on shownUsd (or drop a sub-half-cent shift in both arms — an engine change behind the G1 golden).",
+   "sources": [
+    "A1i-7"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced at base: cyclingSim.ts:1464 drops a sub-half-cent shift only when topUpFirstRan (policy only), so policy-off dust reaches :1468-1473 (defenseCount, firstDefenseMonth); CyclingFace.tsx:767-771 prints fmtK(total) with the count. Dust sizes are from the auditor's sweep, not re-run. Lane Light for gating the note/⇄ on shownUsd; the engine-side drop is Heavy.",
+   "lane": "Light"
+  },
+  {
+   "id": "A1-11",
+   "severity": "Minor",
+   "file": "src/components/Almanac/decisionView.ts",
+   "line": 79,
+   "title": "In a shift-first crash month the schedule (and THIS MONTH's rows) lists the cold → Coinbase top-up before the debt shift. The engine and the Emergency Console do the reverse.",
+   "evidence": "Same probe B2 (k 0.4, below the 0.523 depth). crashPlaybook on the month's state gives order 'shiftFirst', steps [shiftToStrike $3,000, coldToCoinbase 0.1182]. The engine shifts at cyclingSim.ts:1439-1476, then runs the fallback top-up at :1533. rowActions prints 'Move 0.068 ₿ from cold storage into Coinbase.' before 'Draw $3,000 on Strike and pay Coinbase down with it.', and planMonthActions does the same ('Cold storage → Coinbase' before 'Pay Coinbase from Strike'). ACTION_FIELDS (decisionView.ts:136-145) fixes coldToCoinbase ahead of debtShift, while its comment at :79 says 'in the engine's own month order'. A row merges both top-up sites into topUpFromColdBtc, so the order is lost.",
+   "whyItMatters": "On a crash day the order is the point of the playbook: top up first above the depth, shift first below it. In every shift-first month the schedule's order contradicts the console's.",
+   "fixSketch": "Order a crash month's kinds by the playbook's order for that row (shift first when k < depth, k ≥ 1, or doomed), or say that the month's top-ups are merged.",
+   "sources": [
+    "A1s-5"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-run at base c7f709e in /tmp/hardening-1/audit-A1a (batched probe, deleted): the A1s-2 row (k 0.4, shift-first) lists 'Move 0.069 ₿ from cold storage into Coinbase.' before 'Draw $3,000 on Strike…'; ACTION_FIELDS (decisionView.ts:136-145) fixes coldToCoinbase ahead of debtShift while :79 claims the engine's month order, and the engine shifts (:1439-1476) before the fallback top-up (:1533).",
+   "lane": "Light"
+  },
+  {
+   "id": "A1-12",
+   "severity": "Minor",
+   "file": "src/components/Almanac/decisionView.ts",
+   "line": 299,
+   "title": "coinbaseLoanLine says nothing when the plan opens a Coinbase loan through pledged buys and a refinance, because it looks only for a Strike → Coinbase release.",
+   "evidence": "Probe B1 (deleted). Inputs: no Coinbase loan (cbCollateralBtc 0, cbDebt 0); Strike 1 BTC, $40,000 line, $0 drawn; flat $100k; support $50k (k 2.0); policy 45/50/2/3/12. Placement: state 'ready', strikeLeg 'nothing' (keep 1.6 BTC > 1 BTC). Run: m1 buys $2,000, cbColl 0.02; m2 draws $441, refinances $446, cbDebt $455; strikeToCbBtc 0 in every row. coinbaseLoanLine(sim, plan, false) returns null. The month-1 schedule says 'Buy $2,000 of bitcoin (≈ 0.020 ₿) and pledge it to Coinbase.' The docblock (decisionView.ts:289-290) says 'say when, rather than letting a schedule of Coinbase moves appear out of nowhere'. The gate at :299-300 reads only strikeToCbBtc. decisionView.test.ts:267 pins null on rows with strikeToCbBtc zeroed and refinancedUsd still set.",
+   "whyItMatters": "The guard doesn't guard. An owner with no Coinbase loan sees Coinbase pledges and a Coinbase borrow in month 2, and no line says the plan opens a loan.",
+   "fixSketch": "Key the line on the first row with Coinbase collateral or a refinance (cbCollateralBtc > 0 or refinancedUsd > 0) and name the earlier one.",
+   "sources": [
+    "A1s-6"
+   ],
+   "verdict": "CONFIRMED",
+   "verifierEvidence": "Re-traced at base: coinbaseLoanLine (decisionView.ts:293-303) returns null unless a row has strikeToCbBtc or the move is today; a loan opened by pledged buys plus a refinance never sets strikeToCbBtc, so the line stays silent while the schedule pledges to Coinbase. Medium-ish by §6 ('a guard that doesn't guard') but the auditor's Minor kept: only for owners with no Coinbase loan, and the schedule itself names the moves.",
+   "lane": "Light"
+  }
+ ],
+ "counts": {
+  "confirmed": 12,
+  "refuted": 0,
+  "unverified": 0
+ }
+}

@@ -1,0 +1,726 @@
+[
+  {
+    "id": "HY-01",
+    "target": "HY",
+    "file": "src/lib/nostr/sync.ts",
+    "rule": ".claude/rules/sync.md — `fetchAndSync` return shape",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/lib/nostr/__tests__/sync.test.ts",
+      "test": "fetchAndSync 4e: a settings:v1 event that still arrives changes nothing — on an empty-log device and on a migrated one",
+      "message": "Error: expected { ok: true, planFound: false } to match object { ok: true, planFound: true }\n    at _Assertion.__VITEST_RESOLVES__ (file:///tmp/hardening-1/hunt-HY/node_modules/@vitest/expect/dist/index.js:1710:17)\n    at _Assertion.propertyGetter (file:///tmp/hardening-1/hunt-HY/node_modules/chai/index.js:1570:27)\n    at Reflect.get (<anonymous>)\n    at Object.proxyGetter [as get] (file:///tmp/hardening-1/hunt-HY/node_modules/chai/index.js:1659:22)\n    at /tmp/hardening-1/hunt-HY/src/lib/nostr/__tests__/sync.test.ts:123:65\n    at processTicksAndRejections (node:internal/process/task_queues:10"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 115.4,
+        "tests": 36,
+        "files": 3
+      }
+    },
+    "secs": 116,
+    "md5Before": "b0ef9bc2d5882629346252e2c26c79b3",
+    "md5Mutated": "52958584075ad7f275eaa6e9b5112871",
+    "md5After": "b0ef9bc2d5882629346252e2c26c79b3",
+    "restored": true
+  },
+  {
+    "id": "HY-02",
+    "target": "HY",
+    "file": "src/lib/planEvents/compact.ts",
+    "rule": ".claude/rules/sync.md — The plan log stays inside one publishable event",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 7.7,
+        "tests": 33,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 46.9,
+        "tests": 605,
+        "files": 68
+      },
+      "T3": {
+        "ok": true,
+        "secs": 37.3,
+        "tests": 774,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 147.8
+      }
+    },
+    "secs": 239.8,
+    "md5Before": "3e9457bb298f5238ca392350a5d739b7",
+    "md5Mutated": "bfbcdf109ecd3dbdfed32f11d70ae29b",
+    "md5After": "3e9457bb298f5238ca392350a5d739b7",
+    "restored": true
+  },
+  {
+    "id": "HY-03",
+    "target": "HY",
+    "file": "src/lib/nostr/syncEngine.ts",
+    "rule": ".claude/rules/sync.md — The plan log stays inside one publishable event",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.9,
+        "tests": 49,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 49.3,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 29.8,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.8
+      }
+    },
+    "secs": 114,
+    "md5Before": "a2932cfd2e75cbc69424a4de243f9194",
+    "md5Mutated": "3c8a072cdfdf560c804192ebf02efb24",
+    "md5After": "a2932cfd2e75cbc69424a4de243f9194",
+    "restored": true
+  },
+  {
+    "id": "HY-04",
+    "target": "HY",
+    "file": "src/lib/nostr/publish.ts",
+    "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 5.4,
+        "tests": 21,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47,
+        "tests": 568,
+        "files": 64
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32.4,
+        "tests": 774,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.8
+      }
+    },
+    "secs": 116.8,
+    "md5Before": "7c2b2ade64d088d0eefc4623ed01d5a7",
+    "md5Mutated": "651df444d3e0ba037a8da0758b50fed1",
+    "md5After": "7c2b2ade64d088d0eefc4623ed01d5a7",
+    "restored": true
+  },
+  {
+    "id": "HY-05",
+    "target": "HY",
+    "file": "src/lib/nostr/syncEngine.ts",
+    "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step (the `minCreatedAt` floor; past the step records:v1 carries the stub)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.5,
+        "tests": 17,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 46.2,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.4,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 34
+      }
+    },
+    "secs": 117.2,
+    "md5Before": "a2932cfd2e75cbc69424a4de243f9194",
+    "md5Mutated": "3cdcf2ee8ea94b04a1617827f6ddca51",
+    "md5After": "a2932cfd2e75cbc69424a4de243f9194",
+    "restored": true
+  },
+  {
+    "id": "HY-06",
+    "target": "HY",
+    "file": "src/lib/nostr/syncGuard.ts",
+    "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step (boundary: refuses PAST 40,960 B)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 3.2,
+        "tests": 20,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 50.6,
+        "tests": 569,
+        "files": 65
+      },
+      "T3": {
+        "ok": true,
+        "secs": 29.8,
+        "tests": 774,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.3
+      }
+    },
+    "secs": 115.1,
+    "md5Before": "f0b0419da63204e7e5fdfdf3c983d7ef",
+    "md5Mutated": "49eaa5c982b4daa60fd22fd79a0000df",
+    "md5After": "f0b0419da63204e7e5fdfdf3c983d7ef",
+    "restored": true
+  },
+  {
+    "id": "HY-07",
+    "target": "HY",
+    "file": "src/lib/nostr/syncEngine.ts",
+    "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step (\"never raise Reconnect for it\")",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 3.2,
+        "tests": 24,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 46.1,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 29.1,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.5
+      }
+    },
+    "secs": 110,
+    "md5Before": "a2932cfd2e75cbc69424a4de243f9194",
+    "md5Mutated": "a2fa72fb05e1c45f111197c4a74b65ab",
+    "md5After": "a2932cfd2e75cbc69424a4de243f9194",
+    "restored": true
+  },
+  {
+    "id": "HY-08",
+    "target": "HY",
+    "file": "src/store/payloads.ts",
+    "rule": ".claude/rules/sync.md — Trusted-snapshot key set",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/store/__tests__/viewerSnapshot.test.ts",
+      "test": "viewer snapshot builders C-trusted settings has EXACTLY the expected key set — no synced field leaks in unnoticed",
+      "message": "AssertionError: expected [ 'advisorActualBlocBalance', …(41) ] to deeply equal [ 'advisorActualBlocBalance', …(40) ]\n    at /tmp/hardening-1/hunt-HY/src/store/__tests__/viewerSnapshot.test.ts:104:74\n    at file:///tmp/hardening-1/hunt-HY/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HY/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HY/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HY/node_modules/@vitest/"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 3.7,
+        "tests": 16,
+        "files": 1
+      }
+    },
+    "secs": 3.8,
+    "md5Before": "22a6d7563de8789c905725027c6b6b73",
+    "md5Mutated": "4f45373d7fb023998feadac221d13446",
+    "md5After": "22a6d7563de8789c905725027c6b6b73",
+    "restored": true
+  },
+  {
+    "id": "HY-09",
+    "target": "HY",
+    "file": "src/store/slices/advisorJournalSlice.ts",
+    "rule": ".claude/rules/sync.md — `publishRecords` cadence",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 3.1,
+        "tests": 72,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.5,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 28.7,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.1
+      }
+    },
+    "secs": 108.5,
+    "md5Before": "3c4a8caea32edae3dae0248c2b6a54ef",
+    "md5Mutated": "70b7a71cd2dba7fc8b0b72b9475194f3",
+    "md5After": "3c4a8caea32edae3dae0248c2b6a54ef",
+    "restored": true
+  },
+  {
+    "id": "HY-10",
+    "target": "HY",
+    "file": "src/lib/nostr/sync.ts",
+    "rule": ".claude/rules/sync.md — Records merge",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.8,
+        "tests": 36,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 30.4,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 28.6
+      }
+    },
+    "secs": 109.1,
+    "md5Before": "b0ef9bc2d5882629346252e2c26c79b3",
+    "md5Mutated": "eec717444efc46f5b5c9226548b4b0c5",
+    "md5After": "b0ef9bc2d5882629346252e2c26c79b3",
+    "restored": true
+  },
+  {
+    "id": "HY-11",
+    "target": "HY",
+    "file": "src/lib/nostr/sync.ts",
+    "rule": ".claude/rules/sync.md — The plan is event-sourced; only the prefs are LWW",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 11.2,
+        "tests": 34,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.1,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 44.1,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.2
+      }
+    },
+    "secs": 133.6,
+    "md5Before": "b0ef9bc2d5882629346252e2c26c79b3",
+    "md5Mutated": "b72e2027d81ab38dddd9ef57b855b975",
+    "md5After": "b0ef9bc2d5882629346252e2c26c79b3",
+    "restored": true
+  },
+  {
+    "id": "HY-12",
+    "target": "HY",
+    "file": "src/lib/nostr/sync.ts",
+    "rule": ".claude/rules/sync.md — `settings:v1` is retired (4e) (\"Never re-add a skip-guard ... in sync.ts's plan branch\")",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/lib/nostr/__tests__/sync.test.ts",
+      "test": "fetchAndSync 4e: an empty roster and a default relay list reach applyPlanFold unfiltered (no skip-guard on the pull)",
+      "message": "AssertionError: ROSTER pull: expected \"vi.fn()\" to be called with arguments: [ { viewers: [], …(2) } ]\n\nReceived:\n\n  1st vi.fn() call:\n\n@@ -4,8 +4,7 @@\n      \"nostrRelays\": [\n        \"wss://relay.damus.io\",\n        \"wss://relay.primal.net\",\n        \"wss://nos.lol\",\n      ],\n-     \"viewers\": [],\n    },\n  ]\n\n\nNumber of calls: 1\n\n    at Proxy.<anonymous> (file:///tmp/hardening-1/hunt-HY/node_modules/@vitest/expect/dist/index.js:1487:10)\n    at Proxy.<anonymous> (file:///tmp/hardening-1/hunt-HY/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///tmp/hardening-1/h"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 1.9,
+        "tests": 34,
+        "files": 2
+      }
+    },
+    "secs": 2.1,
+    "md5Before": "b0ef9bc2d5882629346252e2c26c79b3",
+    "md5Mutated": "c1b90f531e663d3a71be82cc0c6b7492",
+    "md5After": "b0ef9bc2d5882629346252e2c26c79b3",
+    "restored": true
+  },
+  {
+    "id": "HY-13",
+    "target": "HY",
+    "file": "src/hooks/useNostrSync.ts",
+    "rule": ".claude/rules/sync.md — The dirty-gated retry never starts an unlock (\"the hook's isAuthenticated, in the effect's deps\")",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.5,
+        "tests": 12,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 5.1,
+        "tests": 12,
+        "files": 2
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.6,
+        "tests": 883,
+        "files": 48
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.7
+      }
+    },
+    "secs": 75.1,
+    "md5Before": "109a0036203699fbefd44e0d6d44da06",
+    "md5Mutated": "7b5a3a980d84f2da3b910d343721ff54",
+    "md5After": "109a0036203699fbefd44e0d6d44da06",
+    "restored": true
+  },
+  {
+    "id": "HY-14",
+    "target": "HY",
+    "file": "src/lib/nostr/syncNow.ts",
+    "rule": ".claude/rules/sync.md — Nostr reliability fix (\"Foreground/launch NIP-46 signer rebuild (restoreSigner, throttled ~20s inside syncNow)\")",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 3.1,
+        "tests": 30,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 46.4,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.7,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.5
+      }
+    },
+    "secs": 112.9,
+    "md5Before": "6d05c114669523fed4458c8267d7a748",
+    "md5Mutated": "427b979b5e612d4886032edb00d3c516",
+    "md5After": "6d05c114669523fed4458c8267d7a748",
+    "restored": true
+  },
+  {
+    "id": "HY-15",
+    "target": "HY",
+    "file": "src/lib/nostr/sync.ts",
+    "rule": ".claude/rules/general.md — No plan-dependent write before the plan loads",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.6,
+        "tests": 51,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.3,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.7,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.9
+      }
+    },
+    "secs": 114.6,
+    "md5Before": "b0ef9bc2d5882629346252e2c26c79b3",
+    "md5Mutated": "8b89dacbd221f1246613ae780532bc14",
+    "md5After": "b0ef9bc2d5882629346252e2c26c79b3",
+    "restored": true
+  },
+  {
+    "id": "HY-16",
+    "target": "HY",
+    "file": "src/store/slices/dayLogSlice.ts",
+    "rule": ".claude/rules/general.md — `cbLiquidationPrice` (0 = not set)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 3.8,
+        "tests": 60,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.6,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.5,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.2
+      }
+    },
+    "secs": 118.3,
+    "md5Before": "0d4c28eea73012d5ccc67e4d94b6a259",
+    "md5Mutated": "6a9d3a0387b84615ccba9effc41d60a4",
+    "md5After": "0d4c28eea73012d5ccc67e4d94b6a259",
+    "restored": true
+  },
+  {
+    "id": "HY-17",
+    "target": "HY",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v7 migration (\"adds cbPaymentStrategy/TriggerPct/TargetPct with defaults\")",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.5,
+        "tests": 64,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.1,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 29.3,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.3
+      }
+    },
+    "secs": 110.3,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "4d3f26c3de224528396e079ee02a0ad4",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HY-18",
+    "target": "HY",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v8 migration",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 5.3,
+        "tests": 64,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 44.9,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31
+      }
+    },
+    "secs": 113.3,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "e890b086184f4abaa676f6988da336b3",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HY-19",
+    "target": "HY",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v10 migration",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.7,
+        "tests": 64,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 33.7,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.5
+      }
+    },
+    "secs": 115.9,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "4ed0fec0eec32bb1a826b52d31bba2bf",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HY-20",
+    "target": "HY",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v13 migration",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.7,
+        "tests": 64,
+        "files": 3
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.4,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 30.7,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.3
+      }
+    },
+    "secs": 110.3,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "ab88c6d5de67ab809ea084635793b0a2",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  }
+]

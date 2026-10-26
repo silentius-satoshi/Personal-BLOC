@@ -1,0 +1,222 @@
+{
+  "target": "HK",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "survivors": [
+    {
+      "id": "HK-01",
+      "class": "GAP",
+      "rule": ".claude/rules/identity.md — The words string (callers own zeroing entropy and sk)",
+      "file": "src/lib/nostr/keyVault.ts",
+      "line": 222,
+      "why": "Base zeroes the decrypted 16-byte entropy in a finally; the mutant leaves it in memory. Observable by capturing the ArrayBuffer crypto.subtle.decrypt returns (unwrapSecretKey views it without copying).",
+      "input": "wrapSecretKey(new Uint8Array(16).fill(5),'pin','1234',undefined,'nip06-entropy'), then unwrapSecretKey(ct,meta,'1234') with vi.spyOn(crypto.subtle,'decrypt') capturing its returned ArrayBuffer",
+      "baseOutput": "{skLen:32, entropyAfter:[0 x16]}",
+      "mutantOutput": "{skLen:32, entropyAfter:[5 x16]}",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/keyVaultHardening.test.ts",
+        "title": "The words string: unwrapSecretKey zeroes the decrypted nip06 entropy after deriving the sk",
+        "assertion": "expect(Array.from(new Uint8Array(captured))).toEqual(new Array(16).fill(0)); expect(sk.length).toBe(32)"
+      }
+    },
+    {
+      "id": "HK-02",
+      "class": "GAP",
+      "rule": ".claude/rules/identity.md — `WrapMeta.payloadKind` (a wrapped key can never become unreadable) | docs/claude/nostr.md § keyVault.ts",
+      "file": "src/lib/nostr/keyVault.ts",
+      "line": 46,
+      "why": "Changing PBKDF2 iterations changes the AES key every existing PIN-wrapped credential was made with; no test pins a stored ciphertext vector or the iteration count.",
+      "input": "wrapSecretKey(new Uint8Array(32).fill(7),'pin','1234',undefined,'sk') with crypto.subtle.deriveBits/deriveKey spied for the iterations param",
+      "baseOutput": "iterations [600000]",
+      "mutantOutput": "iterations [310000]",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/keyVaultHardening.test.ts",
+        "title": "`WrapMeta.payloadKind`: a PIN-wrapped key made by an earlier build still unwraps (stored vector)",
+        "assertion": "A stored fixture {ciphertext, meta:{scheme:'pin', iv, salt}} wrapped once at the base from new Uint8Array(32).fill(7) with PIN '1234' (generated at test-writing time and pasted in): expect(Array.from(await unwrapSecretKey(ciphertext, meta, '1234'))).toEqual(new Array(32).fill(7)) — plus, as a cheap second guard, the spied PBKDF2 iterations toEqual([600000])"
+      }
+    },
+    {
+      "id": "HK-03",
+      "class": "GAP",
+      "rule": ".claude/rules/identity.md — A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` | docs/claude/nostr.md § cryptoClient.ts (INTERNAL-COPY CONTRACT)",
+      "file": "src/lib/crypto/cryptoClient.ts",
+      "line": 157,
+      "why": "With a Worker present the mutant transfers the caller's own buffer, neutering it to 0 bytes; tests only ran the no-Worker fallback.",
+      "input": "globalThis.Worker = a fake whose postMessage does structuredClone(msg,{transfer}) and answers {id,ok:true,result:'ncryptsec1fake'}; resetCryptoClientForTests(); sk=new Uint8Array(32).fill(7); await cryptoClient.nip49Encrypt(sk,'pass')",
+      "baseOutput": "{out:'ncryptsec1fake', callerLen:32, callerFirst:7}",
+      "mutantOutput": "{out:'ncryptsec1fake', callerLen:0}",
+      "proposedTest": {
+        "file": "src/lib/crypto/__tests__/cryptoClientHardening.test.ts",
+        "title": "A held key buffer is zeroed on success/teardown: the worker path never neuters the caller's sk",
+        "assertion": "expect(sk.length).toBe(32); expect(Array.from(sk)).toEqual(new Array(32).fill(7))"
+      }
+    },
+    {
+      "id": "HK-04",
+      "class": "GAP",
+      "rule": ".claude/rules/identity.md — Malformed payload ≠ wrong passphrase",
+      "file": "src/lib/crypto/cryptoClient.ts",
+      "line": 105,
+      "why": "handleMessage on the worker path drops the classified kind; only the fallback and the pure classifier were tested.",
+      "input": "same fake Worker answering nip49decrypt with {id,ok:false,error:'malformed'}; await cryptoClient.nip49Decrypt('ncryptsec1truncated','pass')",
+      "baseOutput": "CryptoError kind 'malformed'",
+      "mutantOutput": "CryptoError kind 'passphrase'",
+      "proposedTest": {
+        "file": "src/lib/crypto/__tests__/cryptoClientHardening.test.ts",
+        "title": "Malformed payload ≠ wrong passphrase: a worker ok:false keeps its classified kind",
+        "assertion": "await expect(cryptoClient.nip49Decrypt('ncryptsec1truncated','pass')).rejects.toMatchObject({ kind: 'malformed' })"
+      }
+    },
+    {
+      "id": "HK-06",
+      "class": "GAP",
+      "rule": ".claude/rules/identity.md — A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` (always pass a `.slice()`)",
+      "file": "src/lib/nostr/establishOwner.ts",
+      "line": 47,
+      "why": "NSecSigner stores the reference (node_modules/@nostrify/nostrify/dist/NSecSigner.js:5-6); without the slice establishLocalOwner's payload.fill(0) zeroes the live signer's key.",
+      "input": "real NSecSigner and keyVault, syncNow mocked; establishLocalOwner(new Uint8Array(32).fill(7),'pin',{},{pin:'1234'}); then useStore.getState().nostrSigner.signEvent({kind:1,created_at:1000,tags:[],content:'x'})",
+      "baseOutput": "{pubOk:true, valid:true}",
+      "mutantOutput": "throws 'invalid scalar: out of range'",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/establishOwnerHardening.test.ts",
+        "title": "A held key buffer is zeroed on success/teardown: the signer establishLocalOwner stores still signs after the payload is zeroed",
+        "assertion": "const e = await signer.signEvent(ev); expect(e.pubkey).toBe(getPublicKey(new Uint8Array(32).fill(7))); expect(verifyEvent(e)).toBe(true)"
+      }
+    },
+    {
+      "id": "HK-07",
+      "class": "GAP",
+      "rule": ".claude/rules/identity.md — A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` (restoreSigner's copy)",
+      "file": "src/lib/nostr/session.ts",
+      "line": 74,
+      "why": "restoreSigner zeroes sk after building the signer; without the slice the signer holds the zeroed buffer (pubkey check passes first).",
+      "input": "store: writerKeyWrapped/meta from wrapSecretKey(new Uint8Array(32).fill(7),'pin','1234'), nostrPubkey=its pubkey, method 'local'; signer=await restoreSigner({},'1234'); signer.signEvent(ev)",
+      "baseOutput": "{pubOk:true, valid:true}",
+      "mutantOutput": "non-null signer whose signEvent throws 'invalid scalar: out of range'",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/sessionHardening.test.ts",
+        "title": "A held key buffer is zeroed on success/teardown: a restored local signer still signs",
+        "assertion": "const e = await signer!.signEvent(ev); expect(e.pubkey).toBe(pub); expect(verifyEvent(e)).toBe(true)"
+      }
+    },
+    {
+      "id": "HK-08",
+      "class": "GAP",
+      "rule": ".claude/rules/identity.md — ⚠ The `restoreSigner` single-flight guard is PIN-AWARE — do not simplify it back",
+      "file": "src/lib/nostr/session.ts",
+      "line": 132,
+      "why": "Without the ownership check the doomed pinless restore settling clears the slot the pinned restore owns; a later pinless caller starts a doomed worker instead of joining.",
+      "input": "same PIN-wrapped key in the store; A=restoreSigner({}) (pinless, doomed); B=restoreSigner({},'1234'); await A; C=restoreSigner({}); await C, B",
+      "baseOutput": "{aNull:true, cIsB:true, cNull:false, bNull:false}",
+      "mutantOutput": "{aNull:true, cIsB:false, cNull:true, bNull:false}",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/sessionHardening.test.ts",
+        "title": "The restoreSigner single-flight guard is PIN-AWARE: a pinless caller after the doomed one settles joins the pinned restore",
+        "assertion": "expect(C).toBe(B); expect(await C).not.toBeNull()"
+      }
+    },
+    {
+      "id": "HK-09",
+      "class": "GAP",
+      "rule": ".claude/rules/identity.md — The encrypted branch's payload MUST be `.slice()`d",
+      "file": "src/components/Auth/NostrAuthGate.tsx",
+      "line": 244,
+      "why": "Judged by reading (a render-only path; no render harness): handleLocal's finally does payload?.fill(0) (line ~277), so without the copy a failed establish zeroes decryptState.sk in place and the retry wraps 32 zero bytes. The row's cited bufferAliasing.test simulates the mechanism and never reads NostrAuthGate.",
+      "input": "source of src/components/Auth/NostrAuthGate.tsx",
+      "baseOutput": "encrypted branch assigns `payload = decryptState.sk.slice();`",
+      "mutantOutput": "`payload = decryptState.sk;` (alias of React state, zeroed by the finally)",
+      "proposedTest": {
+        "file": "src/components/Auth/__tests__/NostrAuthGateHardening.test.ts",
+        "title": "The encrypted branch's payload MUST be `.slice()`d: handleLocal copies decryptState.sk",
+        "assertion": "const src = readFileSync('src/components/Auth/NostrAuthGate.tsx','utf8'); expect(src).toMatch(/payload\\s*=\\s*decryptState\\.sk\\.slice\\(\\)/); expect(src).not.toMatch(/payload\\s*=\\s*decryptState\\.sk\\s*;/)"
+      }
+    },
+    {
+      "id": "HK-10",
+      "class": "GAP",
+      "rule": ".claude/rules/identity.md — Import `payloadKind` is THREE-WAY asymmetric (words → 'nip06-entropy')",
+      "file": "src/components/Auth/NostrAuthGate.tsx",
+      "line": 249,
+      "why": "Judged by reading (render-only): the words branch must set payloadKind = 'nip06-entropy' before establishLocalOwner; otherwise 16 bytes of entropy are wrapped as 'sk' and persisted, then getPublicKey throws on a 16-byte key.",
+      "input": "source of src/components/Auth/NostrAuthGate.tsx (words branch of handleLocal)",
+      "baseOutput": "`payload = entropyFromWords(input.value); payloadKind = 'nip06-entropy';`",
+      "mutantOutput": "`payload = entropyFromWords(input.value);` (payloadKind stays 'sk')",
+      "proposedTest": {
+        "file": "src/components/Auth/__tests__/NostrAuthGateHardening.test.ts",
+        "title": "Import `payloadKind` is THREE-WAY asymmetric: the words branch wraps 'nip06-entropy'",
+        "assertion": "expect(src).toMatch(/payload\\s*=\\s*entropyFromWords\\(input\\.value\\);\\s*payloadKind\\s*=\\s*'nip06-entropy'/)"
+      }
+    },
+    {
+      "id": "HK-11",
+      "class": "GAP",
+      "rule": ".claude/rules/general.md — Never claim plan-data encryption-at-rest before Phase 5",
+      "file": "src/components/Auth/NostrAuthGate.tsx",
+      "line": 694,
+      "why": "Judged by reading (copy in a render): the mutant claims the plan is encrypted on the device; plan data is plaintext at rest while storeEncEnabled is off by default. No test reads the sentence.",
+      "input": "source of src/components/Auth/NostrAuthGate.tsx (import notice)",
+      "baseOutput": "\"The app keeps your key protected on this device, but that's not a backup\"",
+      "mutantOutput": "\"The app keeps your key and your plan encrypted on this device, but that's not a backup\"",
+      "proposedTest": {
+        "file": "src/components/Auth/__tests__/NostrAuthGateHardening.test.ts",
+        "title": "Never claim plan-data encryption-at-rest before Phase 5: the import notice claims only the key is protected",
+        "assertion": "expect(src).toContain('keeps your key protected on this device'); expect(src).not.toMatch(/plan\\s+encrypted|encrypted data/i)"
+      }
+    },
+    {
+      "id": "HK-12",
+      "class": "GAP",
+      "rule": ".claude/rules/store.md — Zustand v15 migration (back-filled once from the legacy in-blob location)",
+      "file": "src/store/bootstrap.ts",
+      "line": 39,
+      "why": "The back-fill must write the standalone wrapped key; the mutant writes only the meta, so the next persist write (partialize-excluded) drops the only copy.",
+      "input": "localStorage holds only personal-bloc-store = {state:{writerKeyWrapped:'WRAPPED', writerKeyWrapMeta:{iv:'I',scheme:'pin',salt:'S'}}}; vi.resetModules(); await import('../bootstrap')",
+      "baseOutput": "seed 'WRAPPED', personal-bloc-writer-key-wrapped 'WRAPPED', meta written",
+      "mutantOutput": "seed 'WRAPPED', personal-bloc-writer-key-wrapped null, meta written",
+      "proposedTest": {
+        "file": "src/store/__tests__/bootstrapHardening.test.ts",
+        "title": "Zustand v15 migration: the one-time back-fill writes both standalone credential keys",
+        "assertion": "expect(localStorage.getItem(WK_WRAPPED_KEY)).toBe('WRAPPED'); expect(JSON.parse(localStorage.getItem(WK_META_KEY)!)).toEqual({iv:'I',scheme:'pin',salt:'S'})"
+      }
+    },
+    {
+      "id": "HK-13",
+      "class": "GAP",
+      "rule": ".claude/rules/store.md — Zustand v17 migration (viewerMode default `?? false`, additive shallow-merge)",
+      "file": "src/store/persistConfig.ts",
+      "line": 151,
+      "why": "migrateState must carry viewerMode through; the mutant resets every viewer device to owner mode on the next bump.",
+      "input": "migrateState({viewerMode:true, viewerSecretKey:'aa'.repeat(32), viewerWriterPubkey:'bb'.repeat(32)})",
+      "baseOutput": "viewerMode true",
+      "mutantOutput": "viewerMode false",
+      "proposedTest": {
+        "file": "src/store/__tests__/persistConfigHardening.test.ts",
+        "title": "Zustand v17 migration: migrateState keeps viewerMode true",
+        "assertion": "expect(migrateState({ viewerMode: true }).viewerMode).toBe(true); expect(migrateState({}).viewerMode).toBe(false)"
+      }
+    },
+    {
+      "id": "HK-14",
+      "class": "GAP",
+      "rule": ".claude/rules/store.md — Zustand v18 migration (LEAVES any existing plaintext `viewerSecretKey` in place)",
+      "file": "src/store/persistConfig.ts",
+      "line": 155,
+      "why": "The row says migrate leaves the plaintext viewer key; the mutant drops it, losing an unwrapped viewer's only key.",
+      "input": "migrateState({viewerMode:true, viewerSecretKey:'aa'.repeat(32), viewerWriterPubkey:'bb'.repeat(32)})",
+      "baseOutput": "viewerSecretKey 'aa'.repeat(32)",
+      "mutantOutput": "viewerSecretKey null",
+      "proposedTest": {
+        "file": "src/store/__tests__/persistConfigHardening.test.ts",
+        "title": "Zustand v18 migration: migrateState LEAVES a plaintext viewerSecretKey in place",
+        "assertion": "expect(migrateState({ viewerSecretKey: 'aa'.repeat(32) }).viewerSecretKey).toBe('aa'.repeat(32))"
+      }
+    }
+  ],
+  "skipped": [
+    "HK-15",
+    "HK-16",
+    "HK-17",
+    "HK-18",
+    "HK-19",
+    "HK-20"
+  ]
+}

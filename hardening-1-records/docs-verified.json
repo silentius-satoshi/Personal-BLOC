@@ -1,0 +1,455 @@
+{
+ "scope": "almanac.md 1–2500; file-structure.md 1–1506",
+ "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+ "stale": [
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 381,
+   "claim": "the liquidated branch must survive being appended to the call (three unit cases pin it)",
+   "evidence": "The M10 describe in cyclingFaceView.test.ts:760-787 has FOUR cases (763 called+survived, 769 called+liquidated, 775 yielded+liquidated, 782 yielded+survived). Shallow history (boundary commit 61ff6e7) can't say whether the doc counted three of them on purpose — verifier please judge. | VERIFIER: CONFIRMED. Re-checked at base: the M10 describe (cyclingFaceView.test.ts:760-787) holds four cases, two of them the liquidated branch; the count moved, the sentence holds. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "(three unit cases pin it)",
+    "after": "(four unit cases pin it)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 397,
+   "claim": "cyclingSim.test.ts (26)",
+   "evidence": "grep -cE '^\\s*(it|test)\\(' src/simulation/__tests__/cyclingSim.test.ts → 100 (no .each/.skip). 'Suite 968 → 1004' on line 398 is a dated snapshot (HISTORY). | VERIFIER: CONFIRMED. Re-checked at base: grep -cE '^\\s*(it|test)\\(' gives 100 (cyclingSim.test.ts) and 18 (powerLaw.test.ts), no .each. The count sits beside the dated 'Suite 968 → 1004', which stays as history. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "cyclingSim.test.ts` (26)",
+    "after": "cyclingSim.test.ts` (100)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 397,
+   "claim": "powerLaw.test.ts (10, all RELATIONAL against a fixed UTC date)",
+   "evidence": "grep -cE '^\\s*(it|test)\\(' src/simulation/__tests__/powerLaw.test.ts → 18; START fixed at powerLaw.test.ts:16. | VERIFIER: CONFIRMED. Re-checked at base: grep -cE '^\\s*(it|test)\\(' gives 100 (cyclingSim.test.ts) and 18 (powerLaw.test.ts), no .each. The count sits beside the dated 'Suite 968 → 1004', which stays as history. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "`powerLaw.test.ts` (10, all",
+    "after": "`powerLaw.test.ts` (18, all"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 412,
+   "claim": "btcGained(row, base, rowPriceOverride?) → {gross, net}",
+   "evidence": "The field is now `yours`, not `net`: BtcGain {gross, yours} (cyclingFaceView.ts:427-432,441-446); every caller reads .yours (CyclingFace.tsx:548-550). The sentence still holds: gross is price-independent and the override re-prices the row side only. | VERIFIER: CONFIRMED. Re-checked at base: cyclingFaceView.ts:427-445, BtcGain {gross, yours}; yours = deriveOwnership(...).yoursBtc on both sides, the override re-prices the row side only. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "`{gross, net}`",
+    "after": "`{gross, yours}`"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 457,
+   "claim": "FACES now covers all three engine faces (Cycling, Ownership, UnifiedFace.tsx)",
+   "evidence": "resetMirror.test.ts:20: const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx', 'DecisionFace.tsx'] — four. | VERIFIER: CONFIRMED. Re-checked at base: resetMirror.test.ts:20 FACES lists four files, DecisionFace.tsx included. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "covers **all three** engine faces (Cycling, Ownership, **UnifiedFace.tsx**)",
+    "after": "covers **all four** engine faces (Cycling, Ownership, **UnifiedFace.tsx**, **DecisionFace.tsx**)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 470,
+   "claim": "useStressLens ... (both faces)",
+   "evidence": "useStressLens( is called by four faces: CyclingFace, OwnershipFace, UnifiedFace, DecisionFace (grep -rln 'useStressLens(' src/components). | VERIFIER: CONFIRMED. Re-checked at base: git grep -l 'useStressLens(' gives CyclingFace, OwnershipFace, UnifiedFace and DecisionFace. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": ", both faces)",
+    "after": ", all four engine faces)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 500,
+   "claim": "Its expected-callers list now names THREE faces (Cycling, Ownership, UnifiedFace)",
+   "evidence": "stressAnchor.test.ts:104-115: 'all four engine faces (Cycling, Ownership, Strategy, Decision)' — the list adds DecisionFace.tsx. | VERIFIER: CONFIRMED. Re-checked at base: stressAnchor.test.ts:104-115 expects four files, DecisionFace.tsx included. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "names THREE faces (Cycling, Ownership, UnifiedFace)",
+    "after": "names FOUR faces (Cycling, Ownership, UnifiedFace, DecisionFace)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 528,
+   "claim": "cyclingFaceView.test.ts (19)",
+   "evidence": "grep -cE '^\\s*(it|test)\\(' src/components/Almanac/__tests__/cyclingFaceView.test.ts → 136. 'Suite 1004 → 1023' (line 532) is a dated snapshot. | VERIFIER: CONFIRMED. Re-checked at base: 136 cases in cyclingFaceView.test.ts, no .each. 'Suite 1004 → 1023' stays as history. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "`src/components/Almanac/__tests__/cyclingFaceView.test.ts` (19)",
+    "after": "`src/components/Almanac/__tests__/cyclingFaceView.test.ts` (136)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 585,
+   "claim": "Wired (real-cold spec v1): all three engine faces pass getCurrentColdBtc()",
+   "evidence": "Four engine faces pass it: CyclingFace.tsx:213, OwnershipFace.tsx:236, UnifiedFace.tsx:205, DecisionFace.tsx:321 (plus usePlanMonth.ts:46). | VERIFIER: CONFIRMED. Re-checked at base: openingColdBtc: st.getCurrentColdBtc() at CyclingFace:213, OwnershipFace:236, UnifiedFace:205, DecisionFace:321. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "all three engine faces pass",
+    "after": "all four engine faces pass"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 605,
+   "claim": "the Cycling cold split adds a `− ₿X retrieved for the top-up` row",
+   "evidence": "The row's copy is now '− X ₿ used to defend the loans' (cyclingFaceView.ts:487 '\"used to defend the loans\", not \"retrieved for the top-up\"'; :500). The row still exists so the origins reconcile (cyclingFaceView.ts:483-484). | VERIFIER: CONFIRMED. Re-checked at base: cyclingFaceView.ts:487 and the test at :335-343 give '− 0.250 ₿ used to defend the loans'. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "`− ₿X retrieved for the top-up`",
+    "after": "`− X ₿ used to defend the loans`"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 2162,
+   "claim": "the crash row's console link appears only when `hasCbLoan && ltvTriggered`",
+   "evidence": "DecisionFace.tsx:827-829 the link renders on {consoleRuns && …}; consoleRuns = s.hasCbLoan (DecisionFace.tsx:337); ltvTriggered no longer exists in the face (grep → none) | VERIFIER: CONFIRMED. Re-checked at base: DecisionFace.tsx:830 {consoleRuns && …}, consoleRuns = s.hasCbLoan (:337); no ltvTriggered left in the face. The same sentence already explains consoleRuns. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "`hasCbLoan && ltvTriggered`",
+    "after": "`consoleRuns`"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 2265,
+   "claim": "resetMirror's cold regex is /\\bopeningColdBtc: (?:[^,\\n]*? : )?s\\.openingColdBtc\\b/",
+   "evidence": "resetMirror.test.ts:74 regex is now /\\b(?:openingColdBtc|coldBtc): (?:[^,\\n]*? : )?s\\.openingColdBtc\\b/ (widened again in Run 2, :71-72) | VERIFIER: CONFIRMED. Re-checked at base: resetMirror.test.ts:74 has the widened regex, the bare form or a ternary whose ELSE branch is s.openingColdBtc, as the sentence says. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "`/\\bopeningColdBtc: (?:[^,\\n]*? : )?s\\.openingColdBtc\\b/`",
+    "after": "`/\\b(?:openingColdBtc|coldBtc): (?:[^,\\n]*? : )?s\\.openingColdBtc\\b/`"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 2445,
+   "claim": "AlmanacConsentSheet: createPortal scrim/sheet mirroring EventSheet",
+   "evidence": "AlmanacConsentSheet.tsx:1,21 wraps the shared DraggableSheet (P1), as EventSheet.tsx:2,495 does | VERIFIER: CONFIRMED. Re-checked at base: AlmanacConsentSheet.tsx:1,21 renders the shared DraggableSheet, with no createPortal. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "(createPortal scrim/sheet mirroring",
+    "after": "(the shared `DraggableSheet`, as"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 99,
+   "claim": "placement.ts — PURE LEAF: supportPolicy + cbDefense + cbMetrics + strikeCredit + runCoinbaseLoan + emergencyModel + ltv (the import list)",
+   "evidence": "src/simulation/placement.ts:14 `import { goalOf, netCoinsBtc, atGoalOf, goalStandsDown } from './goal';` — the list omits ./goal (BL32); everything else holds (grep ^import placement.ts:1-14). The doc's own line 79 names goal.ts's goalOf. | VERIFIER: CONFIRMED. Re-checked at base: placement.ts imports ./goal (goalOf, netCoinsBtc, atGoalOf, goalStandsDown) beside the listed modules. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "+ emergencyModel + ltv.",
+    "after": "+ emergencyModel + ltv + goal."
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 150,
+   "claim": "cyclingSim.ts — §2 wall side B: imports ONLY … + the zero-import ltvOf (./ltv) + the leaf ./supportPolicy …",
+   "evidence": "src/simulation/cyclingSim.ts:7 `import { netCoinsBtc, atGoalOf, goalOf, goalStandsDown } from './goal';` — the 'imports ONLY' list omits the zero-import ./goal (doc line 264 itself says 'cyclingSim imports it'). The wall claim (nothing from powerLaw/cycleModel/store) holds: cyclingSim.ts:1-12. | VERIFIER: CONFIRMED. Re-checked at base: cyclingSim.ts imports from ./runCoinbaseLoan, ./cbDefense, ./ltv, ./goal and ./supportPolicy only; the wall holds. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "the zero-import ltvOf (./ltv) +",
+    "after": "the zero-import ltvOf (./ltv) + the zero-import ./goal +"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 149,
+   "claim": "cyclingSim imports from runCoinbaseLoan 'CB_LLTV/CB_LIF/cbBorrowFee/cbLiquidationPrice + the fee-bracket constants'",
+   "evidence": "src/simulation/cyclingSim.ts:1 imports `CB_LLTV, CB_LIF, cbBorrowFee, cbMaxDrawForHeadroom, cbLiquidationPrice` — no CB_FEE_TIER* constant (grep CB_FEE_TIER cyclingSim.ts → none; `git log -S CB_FEE_TIER1_PCT -- src/simulation/cyclingSim.ts` → no commit ever). The fifth import is the bracket inverse cbMaxDrawForHeadroom. | VERIFIER: CONFIRMED. Re-checked at base: cyclingSim.ts:1-5 imports cbMaxDrawForHeadroom (no CB_FEE_TIER* constant) and ten names from the cbDefense leaf; the wall holds. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "fee-bracket constants (runCoinbaseLoan, a leaf)",
+    "after": "fee-bracket inverse cbMaxDrawForHeadroom (runCoinbaseLoan, a leaf)"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 149,
+   "claim": "cyclingSim imports 'defendCbLtv/topUpToCbLtv (cbDefense)' (as part of 'imports ONLY')",
+   "evidence": "src/simulation/cyclingSim.ts:2-5 imports defendCbLtv, topUpToCbLtv, topUpStrikeLtv, cbSurvivalCollateralBtc, cbDoomedThisMonth, TOPUP_MARGIN_BUFFER, CB_SURVIVAL_BUFFER, strikeReleasableBtc, ceilingLiquidationMultiple, SHIFT_DUST_USD from ./cbDefense (a leaf importing only ./ltv, cbDefense.ts:27) — the named pair is a subset; the wall still holds. | VERIFIER: CONFIRMED. Re-checked at base: cyclingSim.ts:1-5 imports cbMaxDrawForHeadroom (no CB_FEE_TIER* constant) and ten names from the cbDefense leaf; the wall holds. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "defendCbLtv/topUpToCbLtv (cbDefense)",
+    "after": "defendCbLtv/topUpToCbLtv and the other defense leaves (cbDefense)"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 214,
+   "claim": "openingColdBtc is WIRED from the three engine faces (real-cold spec v1): each passes getCurrentColdBtc()",
+   "evidence": "Four faces pass it: DecisionFace.tsx:321, UnifiedFace.tsx:205, OwnershipFace.tsx:236, CyclingFace.tsx:213 (`openingColdBtc: st.getCurrentColdBtc()`); coldWiring.test.ts:21 `FACES = ['CyclingFace.tsx','OwnershipFace.tsx','UnifiedFace.tsx','DecisionFace.tsx']` (its own docblock line 6 also still says 'three'; rules/engine.md says 'The three engine faces' too — a rule row, finding only). usePlanMonth.ts:46 passes it as well. | VERIFIER: CONFIRMED. Re-checked at base: four faces pass getCurrentColdBtc() (see almanac.md:585). 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "WIRED from the three engine faces",
+    "after": "WIRED from the four engine faces"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 491,
+   "claim": "useRelayStatus probes only the urls passed in (SettingsMain gates on settingsPage==='network' ? nostrRelays : EMPTY_RELAYS)",
+   "evidence": "src/components/Settings/SettingsMain.tsx:258 `useRelayStatus(settingsPage === 'network' && !backupGated ? nostrRelays : EMPTY_RELAYS)` — the quoted gate gained `&& !backupGated` (no probe sockets behind the interstitial); the claim (no sockets unless viewing) still holds. | VERIFIER: CONFIRMED. Re-checked at base: SettingsMain.tsx:258 is useRelayStatus(settingsPage === 'network' && !backupGated ? nostrRelays : EMPTY_RELAYS). 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "settingsPage==='network' ? nostrRelays",
+    "after": "settingsPage==='network' && !backupGated ? nostrRelays"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 636,
+   "claim": "demoSeed.ts — Imports ONLY utils/format + type-only shapes",
+   "evidence": "src/lib/demo/demoSeed.ts:15-18 — imports toLocalISO (utils/format), CURRENT_STORE_VERSION (../storeVersion, zero-import), CB_APR_SEED_PCT (../../simulation/runCoinbaseLoan, imports only ./ltv) + type-only shapes. The never-pull-useStore claim holds (no store import). | VERIFIER: CONFIRMED. Re-checked at base: demoSeed.ts has four imports, utils/format (toLocalISO), ../storeVersion, ../../simulation/runCoinbaseLoan (CB_APR_SEED_PCT) and a type import. No store import. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "Imports ONLY utils/format + type-only shapes",
+    "after": "Imports ONLY utils/format, lib/storeVersion, simulation/runCoinbaseLoan + type-only shapes"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 989,
+   "claim": "futures.worker is 'a precache entry (8 since)' — the precache held 8 entries once the futures worker landed",
+   "evidence": "git show 0228baf (the line's origin) wrote 'the precache, which is **8 entries** since the futures worker (7 before)'. The base build at c7f709e: /tmp/hardening-1/base-gate/build.log:64 'precache  14 entries (2174.56 KiB)' (summary.txt head=c7f709e…); build.log:38 dist/assets/futures.worker-BGr-Pw6U.js — the worker is still a precache entry, the count moved | VERIFIER: CONFIRMED. Re-checked at base: /tmp/hardening-1/base-gate/build.log:64 'precache  14 entries'; :38 futures.worker-*.js is emitted. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "(8 since)",
+    "after": "(14 at c7f709e)"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1327,
+   "claim": "PassphraseInput adopted at ALL 16 RENDERED masked fields",
+   "evidence": "grep -rn '<PassphraseInput' src (non-test) by file: NostrAuthGate 5, RecoveryKeyCeremony 3, ViewerLoginFlow 3, ViewerUnlockGate 2, OwnerKeySetup 2, RevealRecoveryKey 1, SharingPage 1, LocalUnlockGate 1 = 18; LocalUnlockGate is rendered (AppShell.tsx:43 import). The 'all rendered masked fields' part holds (type=\"password\" only in the two unrendered gates) | VERIFIER: CONFIRMED. Re-checked at base: git grep -c '<PassphraseInput' gives 18 across 8 files (NostrAuthGate 5, LocalUnlockGate 1). LocalUnlockGate is rendered (AppShell.tsx:373); type=\"password\" appears only in AppUnlockGate and StoreMigrationGate. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "ALL 16 RENDERED",
+    "after": "ALL 18 RENDERED"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1328,
+   "claim": "NostrAuthGate's masked fields: remediation encrypt · ncryptsec unlock · PIN · Confirm PIN (4)",
+   "evidence": "NostrAuthGate.tsx has 5 PassphraseInputs: :608 remediation encrypt (bare-nsec-pass), :663 the saved-key PIN unlock (unlockPinMode, '#6: a wrapped key already lives on this device'), :790 ncryptsec unlock, :844 PIN, :846 Confirm PIN — the saved-key unlock PIN is not listed | VERIFIER: CONFIRMED. Re-checked at base: NostrAuthGate has 5 PassphraseInputs. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "NostrAuthGate (remediation encrypt · ncryptsec unlock · PIN · Confirm PIN)",
+    "after": "NostrAuthGate (remediation encrypt · saved-key PIN unlock · ncryptsec unlock · PIN · Confirm PIN)"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1331,
+   "claim": "the list of hosts ends at SharingPage (PIN) — LocalUnlockGate not named",
+   "evidence": "LocalUnlockGate.tsx:75-81 <PassphraseInput className={styles.input} inputMode=\"numeric\" placeholder=\"PIN\"> — rendered (AppShell.tsx:43), not in the doc's list | VERIFIER: CONFIRMED. Re-checked at base: LocalUnlockGate.tsx renders a PIN PassphraseInput and is mounted at AppShell.tsx:373. 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "SharingPage (PIN).",
+    "after": "SharingPage (PIN), LocalUnlockGate (PIN)."
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1336,
+   "claim": "'One default beats 16 chances to forget one' — the count of masked fields",
+   "evidence": "same count as L1327: 18 <PassphraseInput> sites rendered (grep by file above) | VERIFIER: CONFIRMED. Re-checked at base: 18 sites (see line 1327). 'before' occurs exactly once on the base line; the edit changes the pointer only.",
+   "correction": {
+    "before": "beats 16 chances",
+    "after": "beats 18 chances"
+   }
+  }
+ ],
+ "false": [
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 92,
+   "claim": "Simple mode: an inline FA book-solid SVG icon button (15px Daily / 16px Monthly, matching each view's existing grid icon) in both appbars (DailyModeView + SimpleModeView)",
+   "evidence": "Both views now render the shared HeaderNavCluster (DailyModeView.tsx:226-232, SimpleModeView.tsx:132-139); its single Almanac button is a 15px SVG (HeaderNavCluster.tsx:83-84, width=\"15\" height=\"15\" viewBox=\"0 0 640 640\") in both — no per-view 15/16px sizes. The onOpenAlmanac → setActiveTab('almanac') wiring still holds (AppShell.tsx:302,343,345). Phase-log paragraph (P4) may be read as history; flagged because it reads present-tense. | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "An agent wiring a nav icon would look for two per-view inline icons that no longer exist; HeaderNavCluster.tsx:84 is the one 15px Almanac icon both views share. This is a P4 phase-log paragraph written in the present tense.",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 391,
+   "claim": "the Almanac's only *background* network call remains the consented useChainTip",
+   "evidence": "Other Almanac faces poll on their own: the Power Law face calls useBtcPrice (PowerLawFace.tsx:2,55), which fetches the spot price every 10 s (useBtcPrice.ts:7,32,58); so do the Mining face's panel (MiningInputsPanel.tsx:3) and the Sats face's panel (ConverterSidebar.tsx:2), and the Decision face fetches history through usePowerLawData (DecisionFace.tsx:18; usePowerLawData.ts:42). It holds only if read as the clock/engine faces' own surface. useMorphoRate.ts:59 repeats the same claim in its docblock. | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "It tells a reader the Almanac makes no polling call except the consented chain tip. In fact PowerLawFace.tsx:55 (useBtcPrice, 10 s) and DecisionFace.tsx:376 (usePowerLawData) fetch on mount, so a privacy or network review built on this sentence would miss them. useMorphoRate.ts:59 repeats the claim.",
+   "lane": "Light (docs)",
+   "severity": "Medium"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 404,
+   "claim": "cyclingFaceView.ts has a TYPE-only import of CyclingRow (from the engine)",
+   "evidence": "cyclingFaceView.ts:1-3 imports VALUES from the engine (allInEquity, baselineAllInEquity, neverDrawTie) beside the types, plus value imports from ownership, runCoinbaseLoan, cbMetrics, strikeCredit, emergencyModel and supportPolicyView (lines 4-13); its own docblock (lines 15-24) lists them. React-free and store-free still hold. | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "cyclingFaceView.ts:1-13 imports values from the engine and six other modules, so a reader reasoning about its import wall from the doc would be wrong.",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1333,
+   "claim": "Call tones: `capWarn` / `capTone` / Ownership's cap note map `sold` → red, `cured` → amber.",
+   "evidence": "capTone (UnifiedFace.tsx:352-353: sold→styles.stateBad, cured→styles.stateWarn) and Ownership's cap note (OwnershipFace.tsx:729: sold→var(--red), else var(--amber)) hold. Cycling's capWarn does not: CyclingFace.tsx:376-377 `const capWarn = capReading.state === 'called' || ... || capReading.state === 'sold' || capReading.state === 'cured';` is a boolean, and CyclingFace.tsx:1188 renders `{capWarn && <div>{strikeCapNote(capReading)}</div>}` with no colour, inside .constraints (CyclingFace.module.css:387-395, color: var(--text-muted) on an amber box), so a sold call shows the same as a cured one, not red. Unchanged since 852ea4a (Run 2b), per `git log -S` — the doc has been loose since it was written; either the doc or Cycling's constraints box is wrong. | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "CyclingFace.tsx:376-377 has capWarn as a boolean, and :1188 renders a sold call in the same muted constraints box as a cured one. Either the doc or Cycling's sold-call tone is wrong (unchanged since 852ea4a), which is a safety-tone question for the owner.",
+   "lane": "Light (docs) or Heavy (Cycling face tone) — owner's call",
+   "severity": "Medium"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 2456,
+   "claim": "owner-only block; viewers use the badge",
+   "evidence": "ViewerSettings.tsx:105-125 — viewers now have their own DEVICE \"Live block height\" switch (sets consent + enables), not only the badge | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "ViewerSettings.tsx:105-125 now gives viewers their own DEVICE 'Live block height' switch. A reader would think viewers can only use the badge.",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 388,
+   "claim": "emergencyModel ⚠ NAMED FOLLOW-UP (not fixed here): runAdvisor (4 copies) + AdvisorMain (1 …) still open-code `x > 0 ? a/b : 0`",
+   "evidence": "`grep -n '> 0 ?' src/simulation/runAdvisor.ts src/components/Advisor/AdvisorMain.tsx` → no hits; runAdvisor.ts:1-40 holds only getCurrentStrategyMonth/isStrategyComplete/getNdpStatus (the engine left in 5e). The doc's own ltv.ts entry (lines 361-364) says 'The NAMED FOLLOW-UP is closed … runAdvisor's four in 5e (D5-A)'. Contradicted by the code and by the same doc; the zero-collateral half of the sentence still holds (emergencyModel.ts:32-34,48). | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "The doc lists a follow-up as still open, but `> 0 ?` no longer appears in runAdvisor.ts or AdvisorMain.tsx, and the doc's own ltv.ts entry says it is closed. A reader could redo finished work.",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 473,
+   "claim": "useBtcPrice.ts — Coinbase API, 60s interval",
+   "evidence": "src/hooks/useBtcPrice.ts:7 `const POLL_MS = 10_000; // display refresh cadence` and :57 `setInterval(() => void fetchPrice(), POLL_MS)` — it polls every 10 s; 60 s is STORE_SYNC_MS (:8), the store's maximum staleness. | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "useBtcPrice.ts:7,38-47 polls every 10 s and pushes to the store only on a 0.1% move or after 60 s. A reader reasoning about request volume or store churn from the doc would be off by 6×.",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 473,
+   "claim": "useBtcPrice syncs store on every fetch (gated by btcPriceMode)",
+   "evidence": "src/hooks/useBtcPrice.ts:38-47 — in 'live' mode it calls setBtcPrice only when the price moved ≥ STORE_SYNC_THRESHOLD 0.1% (:9) or STORE_SYNC_MS 60 s elapsed (:8) since the last push; not on every fetch. The btcPriceMode gate (:38) holds. | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "useBtcPrice.ts:7,38-47 polls every 10 s and pushes to the store only on a 0.1% move or after 60 s. A reader reasoning about request volume or store churn from the doc would be off by 6×.",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 528,
+   "claim": "usePointerDrag.ts — NO consumer yet (P0 is foundation-only; P1+ wire it)",
+   "evidence": "`grep -rln usePointerDrag src` (non-test) → src/components/ui/SwipeStrip.tsx, ui/DraggableSheet.tsx, ui/EdgeBackGesture.tsx, Daily/MonthEventsModal.tsx (plus useChartZoom.ts / gestureModel.ts in comments). The doc's own useChartZoom entry (line 557) and AppShell entry (EdgeBackGesture) describe consumers. | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "usePointerDrag has four consumers (SwipeStrip, DraggableSheet, EdgeBackGesture, MonthEventsModal). 'No consumer' invites deleting or reshaping a live hook.",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 541,
+   "claim": "useReducedMotion.ts — NO consumer yet (P1+)",
+   "evidence": "`grep -rln useReducedMotion src` (non-test) → ui/SwipeStrip.tsx, ui/DraggableSheet.tsx, ui/EdgeBackGesture.tsx, hooks/useCountTo.ts:2 (doc line 476 itself says useCountTo uses it), hooks/useMediaQuery.ts (comment). | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "useReducedMotion has consumers (SwipeStrip, DraggableSheet, EdgeBackGesture, useCountTo). 'No consumer' invites deleting a live hook.",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 704,
+   "claim": "parseGoalInput(raw): empty → null (clears), an amount above zero → it, anything else → undefined (changes nothing)",
+   "evidence": "src/lib/planGoal.ts:39 `if (v === 0) return null;` — a typed 0 clears the goal (null), not undefined; pinned by src/lib/__tests__/planGoal.test.ts:26 `expect(parseGoalInput('0'), 'zero → no goal').toBeNull()`. The sentence's 'anything else → undefined' is incomplete (likely the doc, not the code, is what drifted). | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "planGoal.ts:39 returns null for a typed 0 (pinned by planGoal.test.ts:26), so 0 clears the goal; it is not 'anything else → undefined'. The code's own docblock (:31-32) has the same gap.",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1434,
+   "claim": "(AlmanacView mounts the adjacent faces during a gesture, null at rest — no heavy hooks on a peek) — present tense",
+   "evidence": "AlmanacView.tsx renders no SwipeStrip: grep -n 'SwipeStrip\\|renderPane' AlmanacView.tsx → only :46 '…the horizontal swipe pager (SwipeStrip) was REMOVED'; the only SwipeStrip callers are Calendar.tsx:151 and MonthlyLogOverlay.tsx:426, neither using the live arg. The same entry says so at L1415 and L1428-1429, so this parenthetical contradicts the code and its own row (a doc lag, not a code regression) | VERIFIER: CONFIRMED at c7f709e.",
+   "whyItMatters": "AlmanacView renders no SwipeStrip (AlmanacView.tsx:46 says it was removed). The parenthetical contradicts the code and its own entry (L1415, L1428).",
+   "lane": "Light (docs)",
+   "severity": "Minor"
+  }
+ ],
+ "reclassified": [],
+ "refuted": [],
+ "sample": {
+  "almanac.md": {
+   "checked": 20,
+   "wrong": 0,
+   "n": 987,
+   "k": 49,
+   "indices": [
+    0,
+    49,
+    98,
+    147,
+    196,
+    245,
+    294,
+    343,
+    392,
+    441,
+    490,
+    539,
+    588,
+    637,
+    686,
+    735,
+    784,
+    833,
+    882,
+    931
+   ]
+  },
+  "file-structure.md": {
+   "checked": 20,
+   "wrong": 0,
+   "n": 758,
+   "k": 37,
+   "indices": [
+    0,
+    37,
+    74,
+    111,
+    148,
+    185,
+    222,
+    259,
+    296,
+    333,
+    370,
+    407,
+    444,
+    481,
+    518,
+    555,
+    592,
+    629,
+    666,
+    703
+   ]
+  }
+ },
+ "countsPerDoc": {
+  "almanac.md": {
+   "TRUE": 987,
+   "STALE": 13,
+   "FALSE": 5,
+   "HISTORY": 79,
+   "UNCHECKABLE": 77,
+   "staleConfirmed": 13,
+   "falseConfirmed": 5,
+   "reclassified": 0,
+   "refuted": 0
+  },
+  "file-structure.md": {
+   "TRUE": 759,
+   "STALE": 12,
+   "FALSE": 7,
+   "HISTORY": 30,
+   "UNCHECKABLE": 21,
+   "staleConfirmed": 12,
+   "falseConfirmed": 7,
+   "reclassified": 0,
+   "refuted": 0
+  }
+ },
+ "notes": [
+  "file-structure.md:473 holds two FALSE records (the 60 s interval and 'on every fetch'). Both stay FALSE rather than STALE: correcting the 60 s figure alone would leave a wrong sync sentence.",
+  "almanac.md:397 and :528: test counts in dated 'Tests:' lines. Confirmed STALE (the count moved); the adjacent 'Suite N → M' snapshots stay as HISTORY.",
+  "almanac.md:92 and file-structure.md:1434 are present-tense sentences inside phase-log paragraphs. Kept FALSE at Minor; the reviewer may treat them as history."
+ ]
+}

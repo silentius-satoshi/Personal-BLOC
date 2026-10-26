@@ -1,0 +1,1306 @@
+[
+  {
+    "id": "HE-01",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — Every support-policy stress figure is support(t), never `price × (1 − buffer)`",
+    "status": "KILLED",
+    "tier": "T2",
+    "killedBy": {
+      "file": "src/components/Almanac/__tests__/planMonthView.test.ts",
+      "test": "⭐ STATUS — §4.5 / D6: one line per month, the switch month's fact, time and catch-up ⭐ STATUS — this month reads TODAY's over-the-limit fact (the move's, at S₀), with the time and the catch-up as facts",
+      "message": "AssertionError: expected 'Spare income repays it before the pla…' to be 'Spare income repays it before the pla…' // Object.is equality\n    at /tmp/hardening-1/hunt-HE/src/components/Almanac/__tests__/planMonthView.test.ts:173:21\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1"
+    },
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 5.5,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": false,
+        "secs": 21.5,
+        "tests": 758,
+        "files": 36
+      }
+    },
+    "secs": 27.6,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "77cc724eeb17a703065f3f14f9e54c89",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-02",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — Every support-policy stress figure is support(t), never `price × (1 − buffer)`",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 5.8,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 48.3,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 8,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 26.7
+      }
+    },
+    "secs": 89,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "b0c1537726ed22739735e62474fb32e3",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-03",
+    "target": "HE",
+    "file": "src/simulation/placement.ts",
+    "rule": ".claude/rules/engine.md — Every support-policy stress figure is support(t), never `price × (1 − buffer)`",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 3,
+        "tests": 68,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 16.5,
+        "tests": 326,
+        "files": 12
+      },
+      "T3": {
+        "ok": true,
+        "secs": 27.9,
+        "tests": 799,
+        "files": 44
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 28.9
+      }
+    },
+    "secs": 76.4,
+    "md5Before": "6f5c1e6707e899ddefb6347151f592b3",
+    "md5Mutated": "f5e02de4b851f17906bfa52f1133d9d0",
+    "md5After": "6f5c1e6707e899ddefb6347151f592b3",
+    "restored": true
+  },
+  {
+    "id": "HE-04",
+    "target": "HE",
+    "file": "src/lib/planPolicy.ts",
+    "rule": ".claude/rules/engine.md — The support policy's settings are the owner's SAVED plan",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.3,
+        "tests": 14,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 72,
+        "tests": 1651,
+        "files": 91
+      },
+      "T3": {
+        "ok": true,
+        "secs": 5.6,
+        "tests": 324,
+        "files": 25
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 25.8
+      }
+    },
+    "secs": 105.8,
+    "md5Before": "38dc88d7fa32366c02a0e307bceb5ee2",
+    "md5Mutated": "c2d33a2bd893d0a4ef06bb3b2ef08591",
+    "md5After": "38dc88d7fa32366c02a0e307bceb5ee2",
+    "restored": true
+  },
+  {
+    "id": "HE-05",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — Under the support policy, Morpho's seizure on the way down comes FIRST in the month, right after the interest",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/seizeOnTheWayDown.test.ts",
+      "test": "⭐ Policy v2 — Morpho seizes on the way down (seizeOnTheWayDown) ⭐ B5 — firstOpenPastLltvMonth: the rule's month under the policy; with it off, the first month the loan opens past 86% (Run B)",
+      "message": "AssertionError: 6 openPast violations: expected [ …(5) ] to deeply equal []\n    at expectNone (/tmp/hardening-1/hunt-HE/src/simulation/__tests__/seizeOnTheWayDown.test.ts:253:99)\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/seizeOnTheWayDown.test.ts:380:5\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 283.4,
+        "tests": 145,
+        "files": 2
+      }
+    },
+    "secs": 283.6,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "28ecdb2b25fdb1f8593ec439e1ddd763",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-06",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — Cold is never retrieved at or above support for a position that opens inside both ceilings",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 6.4,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 45.9,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 9,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.9
+      }
+    },
+    "secs": 93.4,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "56e4a2831ccbdb1245a75326418ea2ab",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-07",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — A stop at support can never exceed its leg's defense line (engine clamp)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 5.7,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 48.7,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 8.2,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.8
+      }
+    },
+    "secs": 93.6,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "0f9d3cfc140ac36cad3b25e5a6ef7b1a",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-08",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — `incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`, … are test-only",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+      "test": "⭐ cold rules — D ADOPTED (default on under the policy), C retired, Strike first after a liquidation ⭐ D is the default under the policy — absent ≡ on; the policy-off arm ignores it",
+      "message": "AssertionError: expected true to be false // Object.is equality\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/cyclingSimPolicy.test.ts:1231:8\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at "
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 69.6,
+        "tests": 145,
+        "files": 2
+      }
+    },
+    "secs": 69.9,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "1d7d7f7d3c2fa90e48a618b84ad62fa0",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-09",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+      "test": "⭐ the crash playbook — release rules, top up first above the depth, Strike first after a liquidation ⭐ release rule 3 — nothing leaves Strike within 60 days of a deposit (the hold)",
+      "message": "AssertionError: expected 0 to be greater than 0\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/cyclingSimPolicy.test.ts:1492:42\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///tmp/har"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 66.1,
+        "tests": 134,
+        "files": 1
+      }
+    },
+    "secs": 66.3,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "1346972834d376a8c9ef559736b6f308",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-10",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 6.4,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 60.8,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 10.7,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 33.4
+      }
+    },
+    "secs": 111.6,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "14d43d9214b413d5094afbdd8f4ee908",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-11",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": "docs/claude/almanac.md § Support-anchored policy (step 5: \"only at ≤ 40% before and < 50% after\") | boundary: strictly under 50%",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 7.2,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 48.2,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 9.7,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.5
+      }
+    },
+    "secs": 97.6,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "55239325f174249bef4510f07252f44e",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-12",
+    "target": "HE",
+    "file": "src/simulation/crashPlaybook.ts",
+    "rule": ".claude/rules/engine.md — `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.6,
+        "tests": 13,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 9.5,
+        "tests": 203,
+        "files": 3
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.6,
+        "tests": 698,
+        "files": 47
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 33
+      }
+    },
+    "secs": 75.8,
+    "md5Before": "a73a2638cbeae2e2dcae4e78a7f7b138",
+    "md5Mutated": "6ee5d9bb7324a5dc6a0455ac14b54614",
+    "md5After": "a73a2638cbeae2e2dcae4e78a7f7b138",
+    "restored": true
+  },
+  {
+    "id": "HE-13",
+    "target": "HE",
+    "file": "src/simulation/crashPlaybook.ts",
+    "rule": ".claude/rules/engine.md — `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.7,
+        "tests": 13,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 10.5,
+        "tests": 203,
+        "files": 3
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32,
+        "tests": 698,
+        "files": 47
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.3
+      }
+    },
+    "secs": 75.6,
+    "md5Before": "a73a2638cbeae2e2dcae4e78a7f7b138",
+    "md5Mutated": "7da3f85a19f801b9b4f54b83109ed3a6",
+    "md5After": "a73a2638cbeae2e2dcae4e78a7f7b138",
+    "restored": true
+  },
+  {
+    "id": "HE-14",
+    "target": "HE",
+    "file": "src/simulation/placement.ts",
+    "rule": ".claude/rules/engine.md — The keeps have ONE definition each",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/placement.test.ts",
+      "test": "⭐ I1 — the Strike keep is `strikeKeepCollateralBtc`, with no buffer and no second stop ⭐ equals the leaf across a sweep of lines, balances and stops",
+      "message": "AssertionError: 0/5000/0.3: expected 0.1 to be close to 0.16666666666666666, received difference is 0.06666666666666665, but expected 5e-13\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/placement.test.ts:56:14\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 2,
+        "tests": 68,
+        "files": 1
+      }
+    },
+    "secs": 2.1,
+    "md5Before": "6f5c1e6707e899ddefb6347151f592b3",
+    "md5Mutated": "6761404cf72d6ee4dcd8cf9a84efa968",
+    "md5After": "6f5c1e6707e899ddefb6347151f592b3",
+    "restored": true
+  },
+  {
+    "id": "HE-15",
+    "target": "HE",
+    "file": "src/components/Tools/crashPlaybookView.ts",
+    "rule": ".claude/rules/engine.md — The console's doom warning keys off the after-state (≥ 86%), never `result.doomed`",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Tools/__tests__/crashPlaybookView.test.ts",
+      "test": "playbookCard — one fixture per shape ⭐ doomed at the open, saved by the debt shift — held, never the doom warning",
+      "message": "AssertionError: expected { badge: 'Shift first', …(7) } to deeply equal { badge: 'Shift first', …(7) }\n    at /tmp/hardening-1/hunt-HE/src/components/Tools/__tests__/crashPlaybookView.test.ts:303:18\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 2.2,
+        "tests": 56,
+        "files": 1
+      }
+    },
+    "secs": 2.3,
+    "md5Before": "93ca4a697a040def8df5574b30906350",
+    "md5Mutated": "c303f6c9b123a583ec1320c7a752f690",
+    "md5After": "93ca4a697a040def8df5574b30906350",
+    "restored": true
+  },
+  {
+    "id": "HE-16",
+    "target": "HE",
+    "file": "src/components/Tools/crashPlaybookView.ts",
+    "rule": ".claude/rules/engine.md — Every crash-day step amount is floored to its printed precision",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 19.5,
+        "tests": 56,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 21.1,
+        "tests": 298,
+        "files": 12
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35,
+        "tests": 743,
+        "files": 43
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.6
+      }
+    },
+    "secs": 108.2,
+    "md5Before": "93ca4a697a040def8df5574b30906350",
+    "md5Mutated": "6256c828a406a4567733e3373ebf6de5",
+    "md5After": "93ca4a697a040def8df5574b30906350",
+    "restored": true
+  },
+  {
+    "id": "HE-17",
+    "target": "HE",
+    "file": "src/components/Daily/DailyModeView.tsx",
+    "rule": ".claude/rules/engine.md — `runAdvisor` is gone (5e, D5-A …)",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Tools/__tests__/monthlyPlaybookWiring.test.ts",
+      "test": "the projection's Coinbase paydown — gone with the Outlook (Run 3) ⭐ no screen that shows the plan says \"CB paydown\" or \"pay down CB\" — comments included",
+      "message": "AssertionError: NO CB PAYDOWN in src/components/Daily/DailyModeView.tsx: expected 'import { useEffect, useMemo, useState…' not to match /CB paydown/i\n    at /tmp/hardening-1/hunt-HE/src/components/Tools/__tests__/monthlyPlaybookWiring.test.ts:27:48\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (fil"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 80.1,
+        "tests": 3,
+        "files": 1
+      }
+    },
+    "secs": 80.4,
+    "md5Before": "722091ed885693881e758cb775fc0190",
+    "md5Mutated": "5eb824ca7047536d25f7b1b6c2984d54",
+    "md5After": "722091ed885693881e758cb775fc0190",
+    "restored": true
+  },
+  {
+    "id": "HE-18",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — The verdict compares all-in equity on both sides (unpaid bills and reserve cash counted)",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+      "test": "allInEquity / baselineAllInEquity — the verdict's basis (spec v1.4 #21) cure cash is subtracted too — money from outside the loop is never a gain",
+      "message": "AssertionError: expected +0 to be close to 4170.877564649207, received difference is 4170.877564649207, but expected 5e-10\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/cyclingSimPolicy.test.ts:1061:44\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_mo"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 4.3,
+        "tests": 234,
+        "files": 2
+      }
+    },
+    "secs": 4.5,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "dd9b4223e689bfec81a3a7135da5d3f1",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-19",
+    "target": "HE",
+    "file": "src/components/Almanac/supportPolicyView.ts",
+    "rule": ".claude/rules/engine.md — The stop clamp has one definition, `effectivePolicyStops`",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Almanac/__tests__/supportPolicyView.test.ts",
+      "test": "effectivePolicySettings — the clamp, the push, and the stops the run USES cbClamped / skClamped are true exactly when the engine clamps — and the effective stop is the smaller one",
+      "message": "AssertionError: sk 50/45: expected false to be true // Object.is equality\n    at /tmp/hardening-1/hunt-HE/src/components/Almanac/__tests__/supportPolicyView.test.ts:174:48\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact."
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 1.9,
+        "tests": 99,
+        "files": 1
+      }
+    },
+    "secs": 2.1,
+    "md5Before": "c4aaa21ae1f4366bec61bee5d7ff4322",
+    "md5Mutated": "cd516587e0c320bbc0b1f5976695782f",
+    "md5After": "c4aaa21ae1f4366bec61bee5d7ff4322",
+    "restored": true
+  },
+  {
+    "id": "HE-20",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — The Strike cap never outranks Coinbase survival (⚠ the guard runs ONLY in a month the CB top-up runs)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 6.4,
+        "tests": 234,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 50.3,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 8.1,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.6
+      }
+    },
+    "secs": 95.7,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "0f62fbc7cff11d705f3695bbec23d796",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-21",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": "boundary: the survival guard's Math.max(0, …) clamp — .claude/rules/engine.md — The Strike cap never outranks Coinbase survival",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/cyclingSim.test.ts",
+      "test": "runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase survival guard ⭐ A2 · fixture C — the survival guard: Strike gives way so Coinbase lives",
+      "message": "AssertionError: expected 0.22059597745440268 to be close to 0.198025, received difference is 0.022570977454402674, but expected 5e-7\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/cyclingSim.test.ts:1151:49\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/nod"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 6.3,
+        "tests": 234,
+        "files": 2
+      }
+    },
+    "secs": 6.5,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "3907a4ab42f0d2f3dd9ef9124deac902",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-22",
+    "target": "HE",
+    "file": "src/simulation/powerLaw.ts",
+    "rule": ".claude/rules/engine.md — Power Law A constants",
+    "status": "KILLED",
+    "tier": "T2",
+    "killedBy": {
+      "file": "src/simulation/__tests__/cyclingSim.test.ts",
+      "test": "runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase survival guard ⭐ 8 · off ⇒ byte-identical — absent / 0 / −5 / NaN / ∞ — and pinned to the pre-feature engine",
+      "message": "AssertionError: expected 3.9196198052508273 to be close to 3.9194251711551873, received difference is 0.00019463409564002276, but expected 5e-10\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/cyclingSim.test.ts:1042:33\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1"
+    },
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.4,
+        "tests": 18,
+        "files": 1
+      },
+      "T2": {
+        "ok": false,
+        "secs": 4.6,
+        "tests": 101,
+        "files": 92
+      }
+    },
+    "secs": 6.1,
+    "md5Before": "07dbe460137e7a905b94ca62a1b8277a",
+    "md5Mutated": "ef8fb2598b8ded4cabe6b898a0cc9b9a",
+    "md5After": "07dbe460137e7a905b94ca62a1b8277a",
+    "restored": true
+  },
+  {
+    "id": "HE-23",
+    "target": "HE",
+    "file": "src/simulation/runBlocYearOne.ts",
+    "rule": ".claude/rules/engine.md — Phase 4 priority",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.2,
+        "tests": 1,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 3.9,
+        "tests": 1,
+        "files": 1
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.5,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.1
+      }
+    },
+    "secs": 70.8,
+    "md5Before": "19e435124804fdfdd618af665b04ea4d",
+    "md5Mutated": "624063cfa14ed385f59219226cb775da",
+    "md5After": "19e435124804fdfdd618af665b04ea4d",
+    "restored": true
+  },
+  {
+    "id": "HE-24",
+    "target": "HE",
+    "file": "src/simulation/runBlocYearOne.ts",
+    "rule": ".claude/rules/engine.md — BLOC draw order",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/aprAnchors.test.ts",
+      "test": "APR unit convention anchors runBlocYearOne: apr is decimal (0.13 → divided /12 internally)",
+      "message": "AssertionError: expected +0 to be close to 108.33, received difference is 108.33, but expected 0.005\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/aprAnchors.test.ts:14:44\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chun"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 1.3,
+        "tests": 1,
+        "files": 1
+      }
+    },
+    "secs": 1.4,
+    "md5Before": "19e435124804fdfdd618af665b04ea4d",
+    "md5Mutated": "362c9fbccad698f431fa0dd589d2aeec",
+    "md5After": "19e435124804fdfdd618af665b04ea4d",
+    "restored": true
+  },
+  {
+    "id": "HE-25",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/general.md — An exact (deep-equal) golden may depend only on `+ − × ÷`",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/cyclingSim.test.ts",
+      "test": "runCyclingSim — liquidation is terminal, and honest ⭐ seizes at CB_LIF and reports the survivor",
+      "message": "AssertionError: expected 55 to be 57 // Object.is equality\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/cyclingSim.test.ts:448:24\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:///tmp"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 77.3,
+        "tests": 234,
+        "files": 2
+      }
+    },
+    "secs": 77.5,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "628bcb68240553632418e0fe39456c80",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-26",
+    "target": "HE",
+    "file": "src/simulation/supportPolicy.ts",
+    "rule": "docs/claude/almanac.md § Support-anchored policy (step 8: \"at/over the partial liquidation LTV (85%) the sale is immediate\") | boundary: ≥ 85%",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.2,
+        "tests": 34,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 69.9,
+        "tests": 1749,
+        "files": 96
+      },
+      "T3": {
+        "ok": true,
+        "secs": 4.7,
+        "tests": 296,
+        "files": 23
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 24.9
+      }
+    },
+    "secs": 100.8,
+    "md5Before": "ab0ad265d6679f63baf46c1f601a20c6",
+    "md5Mutated": "08748a8dfda4271adbf973a1c8d6580c",
+    "md5After": "ab0ad265d6679f63baf46c1f601a20c6",
+    "restored": true
+  },
+  {
+    "id": "HE-27",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": "docs/claude/almanac.md § Support-anchored policy (\"Pay down to ZERO … the 0.005 residual sweep — never correct it to 1e-9\")",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 5.4,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 39.4,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 7.2,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 24.6
+      }
+    },
+    "secs": 76.8,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "6a51b6e3bfbf18b349c69eae65027b15",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-28",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": "docs/claude/almanac.md § Support-anchored policy (step 5: \"never inside the 60-day hold that follows ANY cold → Strike move (strikeHoldUntil = m + 2)\") — the cure's copy",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 5.5,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 39.7,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 7.7,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 26.2
+      }
+    },
+    "secs": 79.3,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "ccdcb37ee3344c0ba589e03828b5b29e",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-29",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": "docs/claude/file-structure.md § cyclingSim.ts (\"Terminal for the WHOLE Coinbase loop\") · almanac.md § Support-anchored policy step 9",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 5.5,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 40.3,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 7.3,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 25
+      }
+    },
+    "secs": 78.3,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "316ed3b1e7a4f77f9c74808de0268df4",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-30",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": "boundary: the band's top, k ∈ [depth, 1) — .claude/rules/engine.md — `crashPlaybook` is the one crash-day answer",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 5.4,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 41.3,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 7.3,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 26.5
+      }
+    },
+    "secs": 80.6,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "cb34eee68388651780c5d9d93e6797a7",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-31",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": "boundary: firstUnheldMonth is ulp-tolerant (cyclingSim.ts CyclingResult.firstUnheldMonth: \"a top-up landing exactly on the line can sit an ulp over it\")",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 19.7,
+        "tests": 134,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 43.2,
+        "tests": 1156,
+        "files": 36
+      },
+      "T3": {
+        "ok": true,
+        "secs": 7.8,
+        "tests": 369,
+        "files": 32
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 26.3
+      }
+    },
+    "secs": 97.3,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "49b4391ae76203ff61d996a5e62810ec",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-32",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": "docs/claude/almanac.md § Support-anchored policy (\"Hard breaker … Month 0 is the opening and never feeds it\")",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/decisionMemory.test.ts",
+      "test": "⭐ I24 — seeding the breaker reproduces the continuous run ⭐ P6 — seeded re-planning matches the continuous run to 1e-9 ₿",
+      "message": "AssertionError: expected 1.3797418955282434 to be close to 1.3043772234613935, received difference is 0.07536467206684994, but expected 5e-10\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/decisionMemory.test.ts:89:35\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2025:60\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-a"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 1.6,
+        "tests": 140,
+        "files": 2
+      }
+    },
+    "secs": 1.8,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "1b3402706d712ec6cf087d478b327129",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-33",
+    "target": "HE",
+    "file": "src/simulation/planSearch.ts",
+    "rule": "docs/claude/file-structure.md § planSearch.ts (M4: a run whose policyApplied differs from what was asked is NOT ranked) | boundary: no path ranked",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.7,
+        "tests": 36,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 4.1,
+        "tests": 69,
+        "files": 2
+      },
+      "T3": {
+        "ok": true,
+        "secs": 30.5,
+        "tests": 855,
+        "files": 48
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 25.6
+      }
+    },
+    "secs": 62,
+    "md5Before": "973315c6127594d065c3604e39ca5a9f",
+    "md5Mutated": "f26484de59e096e26a5a7b50f148cf51",
+    "md5After": "973315c6127594d065c3604e39ca5a9f",
+    "restored": true
+  },
+  {
+    "id": "HE-34",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules — the emergency top-up's copy",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+      "test": "⭐ the reserve saves only by restoring the line before a second drop (F4) ⭐ k2 0.72 — seized on the way down with no reserve; with 0.5 ₿, cold restores 70% in month 1 and month 2 survives",
+      "message": "AssertionError: expected 0.6999999999999998 to be close to 0.8, received difference is 0.1000000000000002, but expected 5e-10\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/cyclingSimPolicy.test.ts:1170:32\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 2.6,
+        "tests": 134,
+        "files": 1
+      }
+    },
+    "secs": 2.8,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "f522d454ead8d5a5581b902cc4f60a73",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-35",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules — top up first's copy",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+      "test": "⭐ the reserve saves only by restoring the line before a second drop (F4) ⭐ k2 0.72 — seized on the way down with no reserve; with 0.5 ₿, cold restores 70% in month 1 and month 2 survives",
+      "message": "AssertionError: expected 0.6999999999999998 to be close to 0.8, received difference is 0.1000000000000002, but expected 5e-10\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/cyclingSimPolicy.test.ts:1170:32\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 2.6,
+        "tests": 134,
+        "files": 1
+      }
+    },
+    "secs": 2.7,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "598180861500e47498dd134449658c9e",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-36",
+    "target": "HE",
+    "file": "src/simulation/cyclingSim.ts",
+    "rule": ".claude/rules/engine.md — The never-draw verdict is ONE rule (BL14) | boundary: a gap of exactly the $0.50 dust floor",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/goalAmount.test.ts",
+      "test": "⭐ GOAL TIE — with a goal, a gap under the dust floor is a tie, never a win by rounding (δ-L6) ⭐ GOAL TIE — the floor is the faces' dust floor; a gap at it is real; only a goal makes a tie",
+      "message": "AssertionError: expected [ true, true, false ] to deeply equal [ false, false, false ]\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/goalAmount.test.ts:397:63\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 3.9,
+        "tests": 22,
+        "files": 1
+      }
+    },
+    "secs": 4,
+    "md5Before": "e07e4280a2a2376a1215be98d77e20a9",
+    "md5Mutated": "f1af689ae408706fd7ed6538cea39278",
+    "md5After": "e07e4280a2a2376a1215be98d77e20a9",
+    "restored": true
+  },
+  {
+    "id": "HE-37",
+    "target": "HE",
+    "file": "src/simulation/goal.ts",
+    "rule": "docs/claude/engines.md § The plan's goal amount — goal.ts GOAL_EPS (\"a figure computed ONTO the goal never reads as below it\") | boundary",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/goalStandDown.test.ts",
+      "test": "⭐ STAND I3 — at the stand-down, month 1 ≡ THE MOVE's after, in every state, held or not, any income the at-goal reading THE MOVE uses is the engine's: with nothing owed net coins are the coins (atGoalOf, GOAL_EPS)",
+      "message": "AssertionError: expected [ true, false, false ] to deeply equal [ true, true, true ]\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/goalStandDown.test.ts:353:54\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.j"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 250.8,
+        "tests": 41,
+        "files": 2
+      }
+    },
+    "secs": 250.9,
+    "md5Before": "c0460f523768a0269178d4a02ae2e0db",
+    "md5Mutated": "fe5d0fbdb53e3aa444e8878b83d83b84",
+    "md5After": "c0460f523768a0269178d4a02ae2e0db",
+    "restored": true
+  },
+  {
+    "id": "HE-38",
+    "target": "HE",
+    "file": "src/simulation/monteCarlo.ts",
+    "rule": ".claude/rules/engine.md — The never-draw verdict is ONE rule (BL14)",
+    "status": "KILLED",
+    "tier": "T2",
+    "killedBy": {
+      "file": "src/simulation/__tests__/goalAmount.test.ts",
+      "test": "⭐ GOAL TIE — with a goal, a gap under the dust floor is a tie, never a win by rounding (δ-L6) ⭐ GOAL TIE — the futures count ties apart, never as beats; with no goal there are none",
+      "message": "AssertionError: FUTURES at the goal from month 1: expected [ true, true ] to deeply equal [ true, false ]\n    at /tmp/hardening-1/hunt-HE/src/simulation/__tests__/goalAmount.test.ts:411:87\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HE/node_modules/@vitest/runner/dis"
+    },
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.9,
+        "tests": 13,
+        "files": 1
+      },
+      "T2": {
+        "ok": false,
+        "secs": 6.4,
+        "tests": 50,
+        "files": 3
+      }
+    },
+    "secs": 8.5,
+    "md5Before": "6cf035968c0dae671997c372671cf5c1",
+    "md5Mutated": "1d5096c343921f901c59b1c2e2ecd85d",
+    "md5After": "6cf035968c0dae671997c372671cf5c1",
+    "restored": true
+  },
+  {
+    "id": "HE-39",
+    "target": "HE",
+    "file": "src/components/MonthBreakdown/MonthBreakdown.tsx",
+    "rule": ".claude/rules/engine.md — `getCollateralForTier`",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T2": {
+        "ok": true,
+        "secs": 3.8,
+        "tests": 0,
+        "files": 0
+      },
+      "T3": {
+        "ok": true,
+        "secs": 37.7,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.7
+      }
+    },
+    "secs": 71.4,
+    "md5Before": "a23e2d74ea8231aa88f3f5f56bc903dc",
+    "md5Mutated": "04d90c0bd337da663e5c887d4ea1514c",
+    "md5After": "a23e2d74ea8231aa88f3f5f56bc903dc",
+    "restored": true
+  },
+  {
+    "id": "HE-40",
+    "target": "HE",
+    "file": "src/simulation/crashPlaybook.ts",
+    "rule": "boundary: crashPlaybook — a shift whose shortfall is exactly 0 held the line (shortfallBtc 0 \"when the line held\")",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.7,
+        "tests": 13,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 8.4,
+        "tests": 203,
+        "files": 3
+      },
+      "T3": {
+        "ok": true,
+        "secs": 29.6,
+        "tests": 698,
+        "files": 47
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 33.3
+      }
+    },
+    "secs": 73.2,
+    "md5Before": "a73a2638cbeae2e2dcae4e78a7f7b138",
+    "md5Mutated": "7ab4a25c9c1ddddc26fadd6ab8835734",
+    "md5After": "a73a2638cbeae2e2dcae4e78a7f7b138",
+    "restored": true
+  }
+]

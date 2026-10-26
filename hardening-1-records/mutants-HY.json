@@ -1,0 +1,559 @@
+{
+ "target": "HY",
+ "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+ "mutants": [
+  {
+   "id": "HY-01",
+   "target": "HY",
+   "file": "src/lib/nostr/sync.ts",
+   "find": "    planFound: latest.size > 0,",
+   "replace": "    planFound: planAttempted,",
+   "rule": ".claude/rules/sync.md — `fetchAndSync` return shape",
+   "why": "planFound read off the decrypt loop instead of latestByDTag: a prefs event that fails to decrypt ahead of the plan (an unreachable signer) breaks the loop before the plan, and a key whose relays hold only its journal/prefs, both report planFound:false — the 'no plan found on this key' notice at an owner whose plan is on the relays",
+   "tests": [
+    "src/lib/nostr/__tests__/sync.test.ts",
+    "src/lib/nostr/__tests__/planLoadPull.test.ts",
+    "src/lib/nostr/__tests__/journalSync.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-02",
+   "target": "HY",
+   "file": "src/lib/planEvents/compact.ts",
+   "find": "const utf8 = new TextEncoder();\nconst byteLen = (s: string): number => utf8.encode(s).length;",
+   "replace": "const byteLen = (s: string): number => s.length;",
+   "rule": ".claude/rules/sync.md — The plan log stays inside one publishable event",
+   "why": "the budget trim measures String.length, not UTF-8 bytes: a log with non-ASCII values (viewer labels, notes, emoji) is judged inside 32 KiB while its real payload is larger, so the plan payload can pass 32,768 B and, with enough multi-byte text, the 40,960 B step it exists to stay under",
+   "tests": [
+    "src/lib/planEvents/__tests__/planLogSize.test.ts",
+    "src/lib/planEvents/__tests__/planEvents.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-03",
+   "target": "HY",
+   "file": "src/lib/nostr/syncEngine.ts",
+   "find": "      { events: compacted },",
+   "replace": "      { events: state.planEvents },",
+   "rule": ".claude/rules/sync.md — The plan log stays inside one publishable event",
+   "why": "publishPlanEventsNow persists the compacted log but sends the uncompacted one: a log grown by a pull's union (sync.ts sets the union without compacting) or an older build goes out past the budget — the size guard refuses it and the plan stops syncing; planLogEmit's PUBLISH reads only the persisted log",
+   "tests": [
+    "src/store/__tests__/planLogEmit.test.ts",
+    "src/lib/nostr/__tests__/journalSync.test.ts",
+    "src/store/__tests__/planLoadGuard.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-04",
+   "target": "HY",
+   "file": "src/lib/nostr/publish.ts",
+   "find": "guardPayload(dTag, byteLen(plaintext));",
+   "replace": "guardPayload(dTag, plaintext.length);",
+   "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step",
+   "why": "the guard is fed UTF-16 code units, not bytes: a page or plan with multi-byte text (€, é, emoji) under 40,960 code units but over 40,960 bytes passes the guard, is encrypted and goes out past the padding step (~66 KB, over a 64 KiB relay limit) — the failure the guard exists to refuse up front",
+   "tests": [
+    "src/lib/nostr/__tests__/publishEncrypted.test.ts",
+    "src/lib/nostr/__tests__/journalSync.test.ts",
+    "src/lib/nostr/__tests__/payloadSize.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-05",
+   "target": "HY",
+   "file": "src/lib/nostr/syncEngine.ts",
+   "find": "? await publishEncrypted(signer, pubkey, RECORDS_DTAG, V1_STUB, relays, timeout, known.seenAt + 1)",
+   "replace": "? await publishEncrypted(signer, pubkey, RECORDS_DTAG, V1_STUB, relays, timeout)",
+   "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step (the `minCreatedAt` floor; past the step records:v1 carries the stub)",
+   "why": "the records:v1 stub goes out dated by the local clock alone: when a device whose clock is ahead last wrote the full records:v1, the relays keep that frozen full copy (newer created_at), pre-5b readers go on reading it, and every pull re-queues a stub publish that loses again (SKEW pins the pages, manifest and full bridge — not the stub)",
+   "tests": [
+    "src/lib/nostr/__tests__/journalSync.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-06",
+   "target": "HY",
+   "file": "src/lib/nostr/syncGuard.ts",
+   "find": "if (plainBytes > PLAIN_STEP_BYTES) {",
+   "replace": "if (plainBytes >= PLAIN_STEP_BYTES) {",
+   "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step (boundary: refuses PAST 40,960 B)",
+   "why": "off by one at the step: a payload of exactly 40,960 B plain — which pads to 40,960 and goes out at ~55 KB, publishable — is refused as too large, its d-tag marked blocked and the app told it is too large to sync",
+   "tests": [
+    "src/lib/nostr/__tests__/journalSync.test.ts",
+    "src/lib/nostr/__tests__/payloadSize.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-07",
+   "target": "HY",
+   "file": "src/lib/nostr/syncEngine.ts",
+   "find": "      useStore.getState().setPlanDirty(false);   // the next plan change, or the next pull's repair, tries again",
+   "replace": "      useStore.getState().setNostrReconnectNeeded(true);   // planDirty stays true → retried by syncNow",
+   "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step (\"never raise Reconnect for it\")",
+   "why": "the plan channel's size refusal is treated as a signer failure: Reconnect goes up and planDirty stays set, so the dirty retry re-sends the same refused payload forever while the app blames the signer — only the journal's size path is pinned (journalSync GUARD/RECONNECT)",
+   "tests": [
+    "src/lib/nostr/__tests__/journalSync.test.ts",
+    "src/store/__tests__/planLogEmit.test.ts",
+    "src/lib/nostr/__tests__/syncNowHeld.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-08",
+   "target": "HY",
+   "file": "src/store/payloads.ts",
+   "find": "nostrRelays: _r, backupVerifiedAt: _bv, coldStorageBtcAsOf: _ca, ...rest }",
+   "replace": "nostrRelays: _r, backupVerifiedAt: _bv, ...rest }",
+   "rule": ".claude/rules/sync.md — Trusted-snapshot key set",
+   "why": "a conscious STRIP undone: coldStorageBtcAsOf rides ...rest into every trusted viewer's settings (the viewer receives cold pre-derived, so the stamp makes getCurrentColdBtc on the viewer re-date its anchor) — the exhaustive Object.keys literal must catch it",
+   "tests": [
+    "src/store/__tests__/viewerSnapshot.test.ts"
+   ],
+   "outsideList": true
+  },
+  {
+   "id": "HY-09",
+   "target": "HY",
+   "file": "src/store/slices/advisorJournalSlice.ts",
+   "find": "    kickRecordsPublish();\n  },\n  deleteLogEntry: (month) => {",
+   "replace": "  },\n  deleteLogEntry: (month) => {",
+   "rule": ".claude/rules/sync.md — `publishRecords` cadence",
+   "why": "upsertLogEntry — every monthly write funnels here: a sign-off, a reopen, a manual log — sets recordsDirty but no longer kicks publishRecordsNow, so a signed month reaches the relays (and the viewer fan-out) only at the next foreground sync or retry tick instead of at once",
+   "tests": [
+    "src/store/__tests__/dailyModeStore.test.ts",
+    "src/store/__tests__/planLoadGuard.test.ts",
+    "src/store/__tests__/recordsPublishDebounce.test.ts"
+   ],
+   "outsideList": true
+  },
+  {
+   "id": "HY-10",
+   "target": "HY",
+   "file": "src/lib/nostr/sync.ts",
+   "find": "{ preferLocalOnTie: cur.recordsDirty }",
+   "replace": "{ preferLocalOnTie: false }",
+   "rule": ".claude/rules/sync.md — Records merge",
+   "why": "recordsDirty no longer breaks the merge's ties: an unpublished local edit whose entry/day event ties the relays' copy on its clock loses to the relays' copy at the pull, and the publish after it sends the relays' version back",
+   "tests": [
+    "src/lib/nostr/__tests__/sync.test.ts",
+    "src/lib/nostr/__tests__/journalSync.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-11",
+   "target": "HY",
+   "file": "src/lib/nostr/sync.ts",
+   "find": "if (dTag === PREFS_DTAG && remoteTs > (useStore.getState().lastPrefsSyncAt ?? 0)) {",
+   "replace": "if (dTag === PREFS_DTAG && remoteTs >= (useStore.getState().lastPrefsSyncAt ?? 0)) {",
+   "rule": ".claude/rules/sync.md — The plan is event-sourced; only the prefs are LWW",
+   "why": "the prefs watermark admits the copy already applied: this device's own echo (live sub) or the same relay copy at the next pull re-hydrates over a pref changed since (simpleMode, tab order), so a local pref edit made before its debounced publish is reverted and then republished reverted — whole-object LWW broken",
+   "tests": [
+    "src/lib/nostr/__tests__/sync.test.ts",
+    "src/lib/nostr/__tests__/planLoadPull.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-12",
+   "target": "HY",
+   "file": "src/lib/nostr/sync.ts",
+   "find": "        useStore.getState().applyPlanFold(foldPlanEvents(merged));     // then derived scalars (raw — no event, no dirty)",
+   "replace": "        { const folded = foldPlanEvents(merged) as Record<string, unknown>; if (Array.isArray(folded.viewers) && folded.viewers.length === 0 && s.viewers?.length) delete folded.viewers; useStore.getState().applyPlanFold(folded as never); }   // then derived scalars — an empty incoming roster never clobbers a populated local one",
+   "rule": ".claude/rules/sync.md — `settings:v1` is retired (4e) (\"Never re-add a skip-guard ... in sync.ts's plan branch\")",
+   "why": "the retired roster guard back in the pull: the owner removes the last viewer on one device (an explicit viewers=[] event), every other device keeps its populated roster and keeps sealing snapshots to the removed viewer; sync.test's ROSTER pull runs on a mock with no local roster, so it can't see it",
+   "tests": [
+    "src/lib/nostr/__tests__/sync.test.ts",
+    "src/lib/nostr/__tests__/planLoadPull.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-13",
+   "target": "HY",
+   "file": "src/hooks/useNostrSync.ts",
+   "find": "    [recordsDirty, planDirty, prefsDirty, pendingViewerRevocations.length, live, viewerMode, backupGateOk, isAuthenticated, triggerSync],",
+   "replace": "    [recordsDirty, planDirty, prefsDirty, pendingViewerRevocations.length, live, viewerMode, backupGateOk, triggerSync],",
+   "rule": ".claude/rules/sync.md — The dirty-gated retry never starts an unlock (\"the hook's isAuthenticated, in the effect's deps\")",
+   "why": "isAuthenticated dropped from the retry effect's deps (no exhaustive-deps lint here): a device unlocked while offline with a dirty channel never arms the retry chain — the unlock doesn't re-run the effect — so the iOS offline self-heal is dead until some flag changes; bridgeRetired's RETRY regex reads only the deps array's first four entries",
+   "tests": [
+    "src/hooks/__tests__/useNostrSync.test.ts",
+    "src/lib/nostr/__tests__/bridgeRetired.test.ts"
+   ],
+   "outsideList": true
+  },
+  {
+   "id": "HY-14",
+   "target": "HY",
+   "file": "src/lib/nostr/syncNow.ts",
+   "find": "  if (!signer || (nostrSigningMethod === 'nip46' && Date.now() - lastReconnectAt > 20000)) {",
+   "replace": "  if (!signer || (nostrSigningMethod !== 'nip07' && Date.now() - lastReconnectAt > 20000)) {",
+   "rule": ".claude/rules/sync.md — Nostr reliability fix (\"Foreground/launch NIP-46 signer rebuild (restoreSigner, throttled ~20s inside syncNow)\")",
+   "why": "the foreground rebuild widened from NIP-46 to the local key: every syncNow more than 20 s after the last rebuild sends a signed-in local-key device through restoreSigner → unwrapSecretKey → WebAuthn, a Face ID / passkey sheet on every foreground with no tap",
+   "tests": [
+    "src/lib/nostr/__tests__/syncNowHeld.test.ts",
+    "src/lib/nostr/__tests__/firstPull.test.ts",
+    "src/lib/nostr/__tests__/journalSync.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-15",
+   "target": "HY",
+   "file": "src/lib/nostr/sync.ts",
+   "find": "    } else if (latest.has(RECORDS_DTAG) || latest.has(JOURNAL_MANIFEST_DTAG)) {",
+   "replace": "    } else if (latest.has(RECORDS_DTAG)) {",
+   "rule": ".claude/rules/general.md — No plan-dependent write before the plan loads",
+   "why": "a pull that finds the v2 journal (manifest) but no plan and no records:v1 (the best-effort bridge dropped) is recorded 'none' instead of 'absent' — the owner is offered 'Start a new plan', and its seed plan (today as the start) rewrites the journal it found: the 5b-spec §16 incident; planLoadPull's 'absent' case seeds records:v1 only",
+   "tests": [
+    "src/lib/nostr/__tests__/planLoadPull.test.ts",
+    "src/lib/nostr/__tests__/sync.test.ts",
+    "src/lib/nostr/__tests__/journalSync.test.ts"
+   ],
+   "outsideList": false
+  },
+  {
+   "id": "HY-16",
+   "target": "HY",
+   "file": "src/store/slices/dayLogSlice.ts",
+   "find": "const liq = overrides.cbLiqPrice ?? (s.cbLiquidationPrice > 0 ? s.cbLiquidationPrice : undefined);",
+   "replace": "const liq = overrides.cbLiqPrice ?? (s.cbLiquidationPrice >= 0 ? s.cbLiquidationPrice : undefined);",
+   "rule": ".claude/rules/general.md — `cbLiquidationPrice` (0 = not set)",
+   "why": "the not-set sentinel read as a price: a Coinbase balance re-anchor with no liquidation price entered stamps cbLiqPrice: 0 on the reading, which re-dates cbLiquidationPriceAsOf to today for a price that was never set (fake freshness) and puts a $0 liquidation price into the journal",
+   "tests": [
+    "src/store/__tests__/dailyModeStore.test.ts",
+    "src/store/__tests__/recordedCollateralStore.test.ts"
+   ],
+   "outsideList": true
+  },
+  {
+   "id": "HY-17",
+   "target": "HY",
+   "file": "src/store/persistConfig.ts",
+   "find": "    cbLtvTriggerPct:      persistedState.cbLtvTriggerPct  ?? 75,",
+   "replace": "    cbLtvTriggerPct:      75,",
+   "rule": ".claude/rules/store.md — Zustand v7 migration (\"adds cbPaymentStrategy/TriggerPct/TargetPct with defaults\")",
+   "why": "the v7 default overwrites the stored value: at the next store-version bump every user's Coinbase draw-trigger LTV resets to 75% (Safety's trigger line, the viewer's cbLtvTriggerPct) — a default must only fill an absent key; no migrateState test reads it",
+   "tests": [
+    "src/store/__tests__/dailyModeStore.test.ts",
+    "src/store/__tests__/viewerRoster.test.ts",
+    "src/store/__tests__/planGoalStore.test.ts"
+   ],
+   "outsideList": true
+  },
+  {
+   "id": "HY-18",
+   "target": "HY",
+   "file": "src/store/persistConfig.ts",
+   "find": "    btcPriceMode:         persistedState.btcPriceMode     ?? 'live',",
+   "replace": "    btcPriceMode:         'live',",
+   "rule": ".claude/rules/store.md — Zustand v8 migration",
+   "why": "btcPriceMode forced to 'live' on migrate: a user who typed a BTC price (mode 'manual') is flipped back to the live feed at the next store-version bump and loses the price their plan runs on — only the LIVE/SYNC button may restore 'live'",
+   "tests": [
+    "src/store/__tests__/dailyModeStore.test.ts",
+    "src/store/__tests__/viewerRoster.test.ts",
+    "src/store/__tests__/planGoalStore.test.ts"
+   ],
+   "outsideList": true
+  },
+  {
+   "id": "HY-19",
+   "target": "HY",
+   "file": "src/store/persistConfig.ts",
+   "find": "    nostrLogin:           persistedState.nostrLogin         ?? null,",
+   "replace": "    nostrLogin:           null,",
+   "rule": ".claude/rules/store.md — Zustand v10 migration",
+   "why": "the stored NIP-46 login is dropped on migrate: at the next store-version bump every bunker user's session can't restore across the reload (restoreSigner throws 'no stored login') and must sign in again",
+   "tests": [
+    "src/store/__tests__/dailyModeStore.test.ts",
+    "src/store/__tests__/viewerRoster.test.ts",
+    "src/store/__tests__/planGoalStore.test.ts"
+   ],
+   "outsideList": true
+  },
+  {
+   "id": "HY-20",
+   "target": "HY",
+   "file": "src/store/persistConfig.ts",
+   "find": "    cbLoanBalanceAsOf:      persistedState.cbLoanBalanceAsOf      ?? null,",
+   "replace": "    cbLoanBalanceAsOf:      null,",
+   "rule": ".claude/rules/store.md — Zustand v13 migration",
+   "why": "the Coinbase balance's as-of date is dropped on migrate: accruedCbBalance returns the bare balance for a null as-of, so after the next store-version bump Safety's Coinbase debt stops accruing interest and reads low until the balance is re-entered",
+   "tests": [
+    "src/store/__tests__/dailyModeStore.test.ts",
+    "src/store/__tests__/viewerRoster.test.ts",
+    "src/store/__tests__/planGoalStore.test.ts"
+   ],
+   "outsideList": true
+  }
+ ],
+ "rowCoverage": [
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "`fetchAndSync` return shape",
+   "status": "mutated",
+   "mutants": [
+    "HY-01"
+   ]
+  },
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "The plan log stays inside one publishable event",
+   "status": "mutated",
+   "mutants": [
+    "HY-02",
+    "HY-03"
+   ],
+   "why": "the burst rule, oldest-first trim, never-drop-a-latest and device-blindness are pinned case by case and by the FOLD-SAFE oracle (planLogSize.test.ts BURST / BUDGET / FOLD-SAFE / CONVERGE), so the mutants aim at what those fixtures can't see: multi-byte text, and the payload the publish actually sends"
+  },
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "The journal syncs as pages, and nothing is published past NIP-44's step",
+   "status": "mutated",
+   "mutants": [
+    "HY-04",
+    "HY-05",
+    "HY-06",
+    "HY-07"
+   ],
+   "why": "merge-once-after-the-fetch is pinned by journalSync WRITE-DURING-PULL (the onPageFetch write); the manifest-after-pages order by TORN; the carried unreadable page by CARRY/LISTING — no slot spent on them"
+  },
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "Trusted-snapshot key set",
+   "status": "mutated",
+   "mutants": [
+    "HY-08"
+   ],
+   "why": "brittle by design: HY-08 is expected killed by viewerSnapshot.test's exhaustive Object.keys(snap.settings) literal; the safe branch's strip list (buildSafeSafety) is H-S's safe-snapshot scaler"
+  },
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "`publishRecords` cadence",
+   "status": "mutated",
+   "mutants": [
+    "HY-09"
+   ],
+   "why": "FINDING: the row says 'no debounce', but publishRecordsNow is a 400 ms trailing debounce (src/lib/nostr/syncEngine.ts:50-53, documented there and pinned by recordsPublishDebounce.test.ts) — the row is stale. 'NOT triggered by setMonthlyLog' is not mutated: since 5b the publish sends only what differs from the relays' copies, so a kick from the pull's raw setter would publish nothing new (equivalent)"
+  },
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "Records merge",
+   "status": "mutated",
+   "mutants": [
+    "HY-10"
+   ],
+   "why": "the receive-gate form (recordsDirty gating the apply) is pinned by journalSync WRITE-DURING-PULL; HY-10 aims at the tie-breaker half"
+  },
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "The plan is event-sourced; only the prefs are LWW",
+   "status": "mutated",
+   "mutants": [
+    "HY-11"
+   ],
+   "why": "union-by-id keep-first and the (ts,id) fold are pinned by planEvents.test.ts; HY-11 aims at the prefs' whole-object LWW watermark, which no test reads"
+  },
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "`settings:v1` is retired (4e)",
+   "status": "mutated",
+   "mutants": [
+    "HY-12"
+   ],
+   "why": "naming settings:v1 is pinned by bridgeRetired's code-only grep and sync.test's #d list; the appliers' whitelists by viewerSettingsApply.test; HY-12 re-adds the retired roster guard in sync.ts's plan branch"
+  },
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "The dirty-gated retry never starts an unlock",
+   "status": "mutated",
+   "mutants": [
+    "HY-13"
+   ],
+   "why": "the scheduleDirtyRetry guard itself is pinned by 'RETRY locked' (useNostrSync.test.ts:97); HY-13 aims at the deps half of the row"
+  },
+  {
+   "rulesFile": ".claude/rules/sync.md",
+   "row": "Nostr reliability fix",
+   "status": "mutated",
+   "mutants": [
+    "HY-14"
+   ],
+   "why": "partly history ('store stays v11 (no migration …)'); merge-based receive and immediate records publish are HY-10 / HY-09's rows, decrypt-failure → nostrReconnectNeeded is pinned by journalSync DECRYPT/RECONNECT; HY-14 aims at the NIP-46-only, 20 s-throttled rebuild"
+  },
+  {
+   "rulesFile": ".claude/rules/general.md",
+   "row": "An exact (deep-equal) golden may depend only on",
+   "status": "other-target",
+   "mutants": [],
+   "why": "a test-writing rule over the engine's goldens and cyclingSim's imports (H-E); nothing in sync or the plan log computes a power-law input"
+  },
+  {
+   "rulesFile": ".claude/rules/general.md",
+   "row": "A hook may never sit to the right of",
+   "status": "other-target",
+   "mutants": [],
+   "why": "a component/hook-shape rule (render code; the repo is clean of it per the row) — not sync or the plan"
+  },
+  {
+   "rulesFile": ".claude/rules/general.md",
+   "row": "Never claim plan-data encryption-at-rest before Phase 5",
+   "status": "other-target",
+   "mutants": [],
+   "why": "a copy rule over the at-rest posture (keyVault / NostrAuthGate words) — H-K's keys and the audit's words"
+  },
+  {
+   "rulesFile": ".claude/rules/general.md",
+   "row": "No plan-dependent write before the plan loads",
+   "status": "mutated",
+   "mutants": [
+    "HY-15"
+   ],
+   "why": "every store refusal site (dayLog ×4, upsertLogEntry, deleteLogEntry, reconcile, emitPlanSets, the collateral reading, the relay edit) and every publish hold (records, plan, relay list, viewer fan-out) is pinned by planLoadGuard.test GUARD / INCIDENT / HELD and syncNowHeld; the pull's never-set-from-nothing and the plain-words log by planLoadPull; HY-15 aims at the 'absent' status a manifest-only journal must still get"
+  },
+  {
+   "rulesFile": ".claude/rules/general.md",
+   "row": "`strikeLtv` storage",
+   "status": "other-target",
+   "mutants": [],
+   "why": "the journal's/Advisor's LTV storage and display (H-J / H-S)"
+  },
+  {
+   "rulesFile": ".claude/rules/general.md",
+   "row": "Skip fields",
+   "status": "not-executable",
+   "mutants": [],
+   "why": "the Pay/Skip toggles retired at Run 3: no component reads or writes advisorSkip* (planYearWiring.test.ts:134 INV6; SimpleModeView.tsx:60 'DORMANT'), and the setters (src/store/slices/advisorJournalSlice.ts:53-55) have no caller (grep), so 'reset only when the user toggles back to Pay' has no code and a mutant on the setters is unreachable from the app; the 'persisted + synced' half rides the generic PLAN_EVENT_FIELDS partition (src/store/settingsFields.ts:23, H-K's file) pinned by planEvents.test 'field partition'. FINDING: the row describes a retired UI"
+  },
+  {
+   "rulesFile": ".claude/rules/general.md",
+   "row": "`cbLiquidationPrice`",
+   "status": "mutated",
+   "mutants": [
+    "HY-16"
+   ],
+   "why": "the 'guard with liquidationPrice === 0 before rendering the modeler' half is render-only (LiquidationModeler.tsx:19); the synced half is the plan-field partition (settingsFields.ts:17, H-K) and the trusted payload's exhaustive keys; HY-16 aims at '0 = not set' in the reading writer"
+  },
+  {
+   "rulesFile": ".claude/rules/general.md",
+   "row": "nostr-tools pin",
+   "status": "other-target",
+   "mutants": [],
+   "why": "a package.json pin — the platform, which this run never touches (spec §1.2)"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v7 migration",
+   "status": "mutated",
+   "mutants": [
+    "HY-17"
+   ]
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v8 migration",
+   "status": "mutated",
+   "mutants": [
+    "HY-18"
+   ]
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v9 migration",
+   "status": "not-executable",
+   "mutants": [],
+   "why": "what the row states is no longer code: migrateState carries lastRecordsSyncAt ?? null (src/store/persistConfig.ts:129) with no seed from lastSettingsSyncAt (retired at 4e and stripped by partializeState, persistConfig.ts:26), and lastLocalChangedAt no longer exists in src (grep: none); lastRecordsSyncAt is observability only (sync.md 'Records merge'), so a mutant changes only DevPanel's clock. FINDING: the row is stale"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v10 migration",
+   "status": "mutated",
+   "mutants": [
+    "HY-19"
+   ]
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v11 migration",
+   "status": "other-target",
+   "mutants": [],
+   "why": "not one of HY's store rows (task: v7, v8, v9, v10, v12, v13, v14, v16 only)"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v15 migration",
+   "status": "other-target",
+   "mutants": [],
+   "why": "the writer key's wrapped copy — H-K (keys)"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v16 migration",
+   "status": "not-executable",
+   "mutants": [],
+   "why": "advisorMonthStartBalance is inert since Run 3 — no reader anywhere (planYearWiring.test.ts:134 INV6; grep: only the slices, types, persistConfig, settingsFields, payloads and demoSeed), so any change to its migrate default or fallback chain changes a value nothing reads (equivalent by construction)"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v17 migration",
+   "status": "other-target",
+   "mutants": [],
+   "why": "viewer-side fields — H-K (identity/viewers)"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v18 migration",
+   "status": "other-target",
+   "mutants": [],
+   "why": "the viewer's wrapped key — H-K"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v20 migration",
+   "status": "other-target",
+   "mutants": [],
+   "why": "Strike collateral's seed — H-J / H-K"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v21 migration",
+   "status": "other-target",
+   "mutants": [],
+   "why": "the viewer roster's clean cut — H-K"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v19 migration",
+   "status": "other-target",
+   "mutants": [],
+   "why": "Daily Mode's backfill and the C2 seed — H-J"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v14 migration",
+   "status": "not-executable",
+   "mutants": [],
+   "why": "showPlanIncomeBar/StrikeBar/CbBar are inert: no reader (SettingsMain.tsx:841 'The store keeps showPlan*Bar, inert'; grep: only uiSlice, types and persistConfig) and device-local (never synced), so a migrate default changes a flag nothing reads"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v12 migration",
+   "status": "not-executable",
+   "mutants": [],
+   "why": "cbRotateBackPct is inert since Run 3 — no reader (planYearWiring.test.ts:134 INV6; grep: only the slices, types, persistConfig, settingsFields, payloads and demoSeed), so a migrate default or reset changes a value nothing reads"
+  },
+  {
+   "rulesFile": ".claude/rules/store.md",
+   "row": "Zustand v13 migration",
+   "status": "mutated",
+   "mutants": [
+    "HY-20"
+   ]
+  }
+ ]
+}

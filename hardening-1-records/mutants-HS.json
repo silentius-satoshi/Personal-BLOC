@@ -1,0 +1,1041 @@
+{
+  "target": "HS",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "mutants": [
+    {
+      "id": "HS-01",
+      "target": "HS",
+      "file": "src/simulation/strikeCredit.ts",
+      "find": "fullyBackedPrice: collateralBtc > 0 ? creditLine / (collateralBtc * STRIKE_MAX_DRAW_LTV) : 0,",
+      "replace": "fullyBackedPrice: collateralBtc > 0 ? creditLine / (collateralBtc * STRIKE_CURE_LTV) : 0,",
+      "rule": ".claude/rules/engine.md — `STRIKE_MAX_DRAW_LTV` (spec §5.1 GAP: fullyBackedPrice)",
+      "why": "fullyBackedPrice on Strike's 65% cure line instead of its 50% draw line: a $40,000 line on 1 BTC reads 'backed again above $61.5k' instead of $80k on the Ownership face and the Advisor tab",
+      "tests": [
+        "src/simulation/__tests__/strikeCredit.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-02",
+      "target": "HS",
+      "file": "src/simulation/cbMetrics.ts",
+      "find": "  if (!asOf) return balance;\n  const days = Math.max(0, (Date.now() - Date.parse(asOf)) / 86_400_000);",
+      "replace": "  if (!asOf) return balance;\n  const days = (Date.now() - Date.parse(asOf)) / 86_400_000;",
+      "rule": "docs/claude/engines.md § `cbMetrics.ts` — shared CB LTV / liq-price source of truth (spec §5.1 GAP: the accrual clamp)",
+      "why": "accruedCbBalance's clamp dropped: a future as-of date (a reading dated ahead, a clock behind) DISCOUNTS the Coinbase debt Safety, the viewer and the console read, so its LTV reads lower than the balance entered",
+      "tests": [
+        "src/simulation/__tests__/cbMetrics.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-03",
+      "target": "HS",
+      "file": "src/simulation/cbMetrics.ts",
+      "find": "  if (!(price > 0) || !asOf) return price;\n  const days = Math.max(0, (Date.now() - Date.parse(asOf)) / 86_400_000);",
+      "replace": "  if (!(price > 0) || !asOf) return price;\n  const days = (Date.now() - Date.parse(asOf)) / 86_400_000;",
+      "rule": "boundary: accruedCbLiquidationPrice never ages backwards (the twin of the accrual clamp, docs/claude/engines.md § `cbMetrics.ts`)",
+      "why": "the entered liquidation price's clamp dropped: a future as-of LOWERS Safety's Coinbase liquidation price and cbLiqFrac, so the CB bar's red line and the 'Liq at' figure (owner and trusted viewer) read a seizure price below the one entered",
+      "tests": [
+        "src/simulation/__tests__/cbMetrics.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-04",
+      "target": "HS",
+      "file": "src/simulation/safetyView.ts",
+      "find": "accruedCbLiquidationPrice(cbLiquidationPrice, cbAprPct, cbLiquidationPriceAsOf)",
+      "replace": "accruedCbLiquidationPrice(cbLiquidationPrice, cbAprPct, cbLiquidationPriceAsOf ?? cbLoanBalanceAsOf)",
+      "rule": "docs/claude/engines.md § `cbMetrics.ts` — accruedCbLiquidationPrice: a null AsOf means the value has never been anchored and is left alone (a figure computed from the wrong field)",
+      "why": "an entered liquidation price with no as-of of its own is aged from the BALANCE's date: Safety's liq price, cbLiqFrac and CB bar colour (owner and trusted viewer) drift up for a figure the owner never re-dated",
+      "tests": [
+        "src/simulation/__tests__/safetyView.test.ts",
+        "src/simulation/__tests__/safetyAtSupport.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-05",
+      "target": "HS",
+      "file": "src/simulation/safetyView.ts",
+      "find": "cb:     { liqPrice: view.cbLiqPrice, balance: view.accruedBalance },",
+      "replace": "cb:     { liqPrice: view.cbLiqPrice, balance: inputs.cbLoanBalance },",
+      "rule": "docs/claude/viewer.md § Viewer V2 — C-trusted = real figures (Strike/CB \"Liq at ~$P · $B balance\"); what a viewer sees equals what the owner sees",
+      "why": "the trusted viewer's Coinbase '$B balance' prints the balance as entered (un-accrued; and the seed's $60,000 with the loan switched off) where the owner's Safety card prints the accrued debt",
+      "tests": [
+        "src/simulation/__tests__/safetyView.test.ts",
+        "src/simulation/__tests__/safetyAtSupport.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-06",
+      "target": "HS",
+      "file": "src/simulation/safetyView.ts",
+      "find": "? inputs.advisorActualBlocBalance / (inputs.currentBtcHeld * strikeLiqLtv)   // bloc / (btcHeld × liqLtv)",
+      "replace": "? inputs.advisorActualBlocBalance / (inputs.currentBtcHeld * inputs.strikeLiquidationLtvPct)   // bloc / (btcHeld × liqLtv)",
+      "rule": "docs/claude/viewer.md § Viewer V2 — the trusted Strike \"Liq at ~$P\" (SafetyDashboard.tsx:101 mirrors the same formula); a percent read where the fraction is stored",
+      "why": "the trusted viewer's Strike 'Liq at ~$P' divides by the liquidation LTV as a PERCENT (85) instead of the fraction (0.85): $50,000 on 1 BTC reads ~$588 instead of ~$58,824, 100x off the owner's figure",
+      "tests": [
+        "src/simulation/__tests__/safetyView.test.ts",
+        "src/simulation/__tests__/safetyAtSupport.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-07",
+      "target": "HS",
+      "file": "src/simulation/safetyView.ts",
+      "find": "const strikeDropPct = strikeLiqLtv > 0 ? Math.max(0, 1 - view.strikeLtv / strikeLiqLtv) : 0;",
+      "replace": "const strikeDropPct = strikeLiqLtv > 0 ? 1 - view.strikeLtv / strikeLiqLtv : 0;",
+      "rule": "boundary: the trusted path's strikeDropPct clamp (the safe path's copy keeps Math.max(0, …); docs/claude/viewer.md § Viewer V2 — live drop%)",
+      "why": "past Strike's liquidation LTV the trusted viewer's drop% goes negative ('Safe through a ~-12% dip') where the safe path and the owner's cushion (SafetyDashboard's max(0, price − liq)) floor at 0",
+      "tests": [
+        "src/simulation/__tests__/safetyView.test.ts",
+        "src/simulation/__tests__/safetyAtSupport.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-08",
+      "target": "HS",
+      "file": "src/simulation/safetyView.ts",
+      "find": "  const strikeLevel = barLevel(strikeLtv, strikeLiqLtv * 0.76, strikeLiqLtv * 0.82);\n  const cbLevel: SafetyLevel = snap.hasCbLoan",
+      "replace": "  const strikeLevel = barLevel(strikeLtv, CREDIT_WARN_USED, CREDIT_ACT_USED);\n  const cbLevel: SafetyLevel = snap.hasCbLoan",
+      "rule": "docs/claude/viewer.md § Viewer V2 — scaleSafetyView re-barLevels from the payload thresholds (the owner's copy is deriveSafetyView's 0.76/0.82 × liq LTV)",
+      "why": "a copy-paste of the credit line above: the safe viewer's Strike gauge bands at 75%/90% instead of 64.6%/69.7% (85% liq LTV), so a Strike LTV the owner sees amber or red reads green to the viewer",
+      "tests": [
+        "src/simulation/__tests__/safetyView.test.ts",
+        "src/simulation/__tests__/safetyAtSupport.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-09",
+      "target": "HS",
+      "file": "src/simulation/safetyView.ts",
+      "find": "const f = livePrice > 0 && snap.btcPriceAtSnapshot > 0 ? snap.btcPriceAtSnapshot / livePrice : 1;",
+      "replace": "const f = livePrice > 0 ? snap.btcPriceAtSnapshot / livePrice : 1;",
+      "rule": "boundary: scaleSafetyView's factor guard — an unusable snapshot price falls back to factor 1 (docs/claude/viewer.md § Viewer V2)",
+      "why": "a snapshot sealed with no price (0, or absent on an older payload) scales every LTV to 0 (or NaN): the safe viewer's gauges read green and the drop% NaN whatever the owner's real levels",
+      "tests": [
+        "src/simulation/__tests__/safetyView.test.ts",
+        "src/simulation/__tests__/safetyAtSupport.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-10",
+      "target": "HS",
+      "file": "src/simulation/safetyView.ts",
+      "find": "    cbLevel = cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac);",
+      "replace": "    cbLevel = cbBarLevel(cbLtv, cbLtvTriggerPct, CB_LLTV);",
+      "rule": "docs/claude/engines.md § `cbMetrics.ts` — the entered liquidation price is authoritative (activeLiqPrice); cbBarLevel's red line is cbLiqFrac × 0.93",
+      "why": "the owner's CB bar (and the trusted viewer's) bands against Morpho's 86% instead of the entered liq price's fraction — the Almanac's projected-row rule (cbZoneLevel) copied into today's Safety: an entered $50,000 liq price on $100,000 / 2 BTC (frac 1.0) reds at 80% instead of 93%",
+      "tests": [
+        "src/simulation/__tests__/safetyView.test.ts",
+        "src/simulation/__tests__/safetyAtSupport.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-11",
+      "target": "HS",
+      "file": "src/simulation/safetyView.ts",
+      "find": "  const cbLevel: SafetyLevel = snap.hasCbLoan ? cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac) : 'safe';",
+      "replace": "  const cbLevel: SafetyLevel = snap.hasCbLoan ? cbBarLevel(cbLtv, cbLtvTriggerPct, CB_LLTV) : 'safe';",
+      "rule": "docs/claude/viewer.md § Viewer V2 — scaleSafetyView re-barLevels from the payload thresholds (the second copy of the CB band: the viewer's)",
+      "why": "the safe viewer's CB gauge ignores the owner's sealed cbLiqFrac and bands at 86% × 0.93: with an entered liq price the viewer's Coinbase colour differs from the owner's at the same price",
+      "tests": [
+        "src/simulation/__tests__/safetyView.test.ts",
+        "src/simulation/__tests__/safetyAtSupport.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-12",
+      "target": "HS",
+      "file": "src/simulation/strikeCredit.ts",
+      "find": "const ltvCap  = collateralBtc * btcPrice * STRIKE_MAX_DRAW_LTV;",
+      "replace": "const ltvCap  = collateralBtc * btcPrice * STRIKE_RETRIEVE_MAX_LTV;",
+      "rule": ".claude/rules/engine.md — `STRIKE_MAX_DRAW_LTV` (available = min(creditLine, collateral×price×0.50) − drawn)",
+      "why": "a swapped Strike constant (40% retrieve line for the 50% draw line): every available-credit surface understates Strike's room by a fifth",
+      "tests": [
+        "src/simulation/__tests__/strikeCredit.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-13",
+      "target": "HS",
+      "file": "src/simulation/runCoinbaseLoan.ts",
+      "find": "const isAlreadyLiquidatable     = btcPrice <= liquidationPrice;",
+      "replace": "const isAlreadyLiquidatable     = btcPrice < liquidationPrice;",
+      "rule": "boundary: > ↔ >= — at the liquidation price the loan IS liquidatable (Morpho seizes at the LLTV, no grace)",
+      "why": "with BTC exactly at the liquidation price the CB Loan tab's modeler says 'not yet liquidatable' and shows its normal scenarios, though Morpho seizes at that price",
+      "tests": [
+        "src/simulation/__tests__/liquidationModeler.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-14",
+      "target": "HS",
+      "file": "src/simulation/runCoinbaseLoan.ts",
+      "find": "const lifBonus               = Math.max(0, collateralSeizedUsd - debtRepaid);",
+      "replace": "const lifBonus               = collateralSeizedUsd - debtRepaid;",
+      "rule": "boundary: a dropped clamp — the liquidation penalty is never negative (docs/claude/engines.md § CB Loan: 4.38% penalty)",
+      "why": "when the seizure is capped by the collateral held (an under-water loan), the modeler prints a NEGATIVE 'LIF penalty' (a bonus to the owner) for the 75%/100% scenarios",
+      "tests": [
+        "src/simulation/__tests__/liquidationModeler.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-15",
+      "target": "HS",
+      "file": "src/components/Almanac/planMonthView.ts",
+      "find": "fixes.push(f.coldBtc >= A",
+      "replace": "fixes.push(f.coldBtc > A",
+      "rule": "boundary: >= ↔ > — the catch-up names cold when cold covers it (docs/claude/almanac.md § The plan of record (Run 2) — the status, the catch-up as facts)",
+      "why": "with exactly enough cold to bring Coinbase within its limit, THIS MONTH's catch-up says 'Add BTC of collateral to Coinbase' instead of 'Move BTC from cold storage to Coinbase'",
+      "tests": [
+        "src/components/Almanac/__tests__/planMonthView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-16",
+      "target": "HS",
+      "file": "src/components/Almanac/planMonthView.ts",
+      "find": "if (overAtMonthEnd(r) || shownUsd(r.unfundedUsd)) return 'var(--amber)';",
+      "replace": "if (overAtMonthEnd(r)) return 'var(--amber)';",
+      "rule": "docs/claude/file-structure.md § planMonthView.ts — monthTrack: amber over Coinbase's limit, or bills unpaid (its docstring); an inverted/dropped filter",
+      "why": "the scrubber's year paints a month whose bills go unpaid green ('within the limits'), so the track hides the months the savings line counts",
+      "tests": [
+        "src/components/Almanac/__tests__/planMonthView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-17",
+      "target": "HS",
+      "file": "src/components/Almanac/supportPolicyView.ts",
+      "find": "const over = headroomUsd <= -DUST_USD;",
+      "replace": "const over = headroomUsd < -DUST_USD;",
+      "rule": "boundary: <= ↔ < at the dust floor — THE one 'over' rule is planRun's cbOverLimitAtMonthEnd (headroom <= -DUST_USD); the card must agree with THIS MONTH",
+      "why": "exactly 50 cents over its limit at support, the policy card says 'Coinbase: at its limit at support' while THIS MONTH's status and track call the same month over",
+      "tests": [
+        "src/components/Almanac/__tests__/supportPolicyView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-18",
+      "target": "HS",
+      "file": "src/components/Almanac/decisionView.ts",
+      "find": "`Strike keeps what your ${fmtUSD(ctx.runLineUsd)} line needs at support (${fmtUSD(ctx.support)}); ${cbClause}.`",
+      "replace": "`Strike keeps what your ${fmtUSD(ctx.runLineUsd)} line needs at support (${fmtUSD(ctx.price)}); ${cbClause}.`",
+      "rule": ".claude/rules/engine.md — THE MOVE's copy lives in `moveCard` (every line TRUE of its inputs; a figure printed from the wrong field)",
+      "why": "THE MOVE's why line prints TODAY's price as the support price ('needs at support ($100,000)' at a $66,000 support) on the Decision face, THIS MONTH and Daily",
+      "tests": [
+        "src/components/Almanac/__tests__/decisionView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-19",
+      "target": "HS",
+      "file": "src/components/Almanac/decisionView.ts",
+      "find": "+ `(${fmtUSD(depth * ctx.support)}).`));",
+      "replace": "+ `(${fmtUSD(depth * ctx.price)}).`));",
+      "rule": ".claude/rules/engine.md — THE MOVE's copy lives in `moveCard` (the limit-depth line is a multiple of SUPPORT)",
+      "why": "'Coinbase survives price down to 0.70× support ($X)' prices X off today's price, not support: at 1.5× support the dollar figure is 50% too high and contradicts its own multiple",
+      "tests": [
+        "src/components/Almanac/__tests__/decisionView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-20",
+      "target": "HS",
+      "file": "src/components/Almanac/decisionView.ts",
+      "find": "const m = cbMetrics(ctx.cbDebt, plan.opening.cbCollateralBtc, ctx.price, ctx.cbLtvTriggerPct);",
+      "replace": "const m = cbMetrics(ctx.cbDebt, plan.after.cbCollateralBtc, ctx.price, ctx.cbLtvTriggerPct);",
+      "rule": ".claude/rules/engine.md — THE MOVE's copy lives in `moveCard`, and the cliff is `cbMetrics().liqPrice` (it reads plan.opening, N5)",
+      "why": "under the move threshold the cliff and the price alert are priced on the deferred `after` position, a Coinbase collateral the owner does not hold today",
+      "tests": [
+        "src/components/Almanac/__tests__/decisionView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-21",
+      "target": "HS",
+      "file": "src/components/Almanac/decisionView.ts",
+      "find": "return ownerLineUsd >= suggestedUsd",
+      "replace": "return ownerLineUsd > suggestedUsd",
+      "rule": "boundary: >= ↔ > — 'covers': the owner's line at or above the suggestion (docs/claude/almanac.md § Decision face — suggestedLineWords, one copy with THE MOVE's line)",
+      "why": "an owner line exactly at the suggested line reads 'A $X line would cover two months of bills' with a 'Try $X' button that changes nothing (THE MOVE and the Smart BLOC tab)",
+      "tests": [
+        "src/components/Almanac/__tests__/decisionView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-22",
+      "target": "HS",
+      "file": "src/components/Almanac/decisionView.ts",
+      "find": "return seeded && supportPolicyResolution(ctx).policyApplied;",
+      "replace": "return seeded || supportPolicyResolution(ctx).policyApplied;",
+      "rule": ".claude/rules/engine.md — The Decision face seeds its run from THE MOVE only when the move is MADE",
+      "why": "an && read as ||: the run is seeded from THE MOVE whenever a move exists, even when the engine IGNORES the policy (a Strike liquidation LTV at or under its 70% call — the B4 bug), and from placement.opening when no move is worth making",
+      "tests": [
+        "src/components/Almanac/__tests__/decisionView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-23",
+      "target": "HS",
+      "file": "src/components/Almanac/decisionView.ts",
+      "find": "const at = p !== null && shownUsd(p) ? `, at ${usd(p)}` : '';",
+      "replace": "const at = p !== null && shownUsd(p) ? `, at ${fmtUSD(p)}` : '';",
+      "rule": ".claude/rules/journal.md — THIS MONTH, Daily and Daily's sheets print dollars to the cent (a shared builder takes a formatter — never a second copy)",
+      "why": "a seizure on the way down names its price in whole dollars inside THIS MONTH's 'Why this plan?' ('liquidates the loan on the way down, at $57,140'), the one figure that ignores the formatter planSchedule was handed",
+      "tests": [
+        "src/components/Almanac/__tests__/decisionView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-24",
+      "target": "HS",
+      "file": "src/components/Almanac/decisionView.ts",
+      "find": "const depth = Math.round(HARD_BREAKER_DEPTH * 100);\n  if (ctx.breaker === 'loading')",
+      "replace": "const depth = Math.round((1 - HARD_BREAKER_DEPTH) * 100);\n  if (ctx.breaker === 'loading')",
+      "rule": ".claude/rules/engine.md — A run shown as THIS MONTH'S MOVE carries the policy's memory, or says it can't (the breaker line)",
+      "why": "THE MOVE's one-short breaker warning says a month-end 'closed more than 90% under support' instead of 10% — the trip it warns of misdescribed (supportPolicyView's brokenSentence keeps 10%)",
+      "tests": [
+        "src/components/Almanac/__tests__/decisionView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-25",
+      "target": "HS",
+      "file": "src/components/Almanac/decisionView.ts",
+      "find": "${shownUsd(plan.strikeRoomUsd) ? `${fmtUSD(plan.strikeRoomUsd)} of room` : 'no room'}",
+      "replace": "${plan.strikeRoomUsd > 0 ? `${fmtUSD(plan.strikeRoomUsd)} of room` : 'no room'}",
+      "rule": "boundary: a dropped dust floor — THE MOVE names no figure under its floor, never \"$0\" (docs/claude/file-structure.md § decisionView.ts)",
+      "why": "Strike short of its line with a few cents of room left: THE MOVE's short line reads 'leaves $0 of room' instead of 'no room'",
+      "tests": [
+        "src/components/Almanac/__tests__/decisionView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-26",
+      "target": "HS",
+      "file": "src/components/Almanac/ownershipFaceView.ts",
+      "find": "  const o = deriveOwnership(row.btcHeld, row.debt, row.price);",
+      "replace": "  const o = deriveOwnership(row.btcHeld + row.coldBtc, row.debt, row.price);",
+      "rule": ".claude/rules/engine.md — Every opening figure on a face includes the cold reserve, and no Almanac face passes `deriveOwnership`'s cold parameter (the pool counted twice, through the first argument)",
+      "why": "the Strategy face's hero 'Yours' and its Milestones 'Yours' count the cold pool twice (btcHeld already holds it) — three arguments, so coldWiring's argument count passes",
+      "tests": [
+        "src/components/Almanac/__tests__/ownershipFaceView.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-27",
+      "target": "HS",
+      "file": "src/components/Settings/coldStorageView.ts",
+      "find": "import { toLocalISO } from '../../utils/format';\n\n/**\n * BL33 — Settings → Strike Strategy's COLD STORAGE group, as words. PURE.\n *\n * The field shows the LIVE total — the total last entered plus every cold move since (`deriveColdStorage`) — so the line\n * under it says what that figure is made of, in the owner's words: \"Entered <day>, plus N moves since.\" Entering a total\n * re-dates it (the anchor is the moment it was entered, `coldStorageBtcAsOf`), and only the moves after it are added\n * (`coldMovesSinceAnchor`, the derive's own rule: a move dated after that day, or logged later that same day — a move\n * backdated before it is already inside the total, so \"since\", never \"logged since\"). Never \"anchor\", never the\n * Almanac's sweep: the faces' plans never change this total — only a move you log, or a total you enter.\n */\nexport const COLD_GROUP_LEAD =\n  'Coins in your own custody, pledged to nobody. They count in what you hold and in your net coins (your goal) — '\n  + \"never in a loan's LTV.\";\nexport const COLD_FIELD_LABEL = 'Total in cold storage';\nexport const COLD_HOW =\n  'When you move coins in or out, log it in Daily → Collateral → Cold. Entering a new total here sets it as of today.';\n\n/** What the field's figure is made of: the day the total was entered, and the cold moves since (the derive's rule). */\nexport function coldAsOfLine(asOfMs: number | null, movesSince: number): string {\n  if (asOfMs === null || !Number.isFinite(asOfMs)) return 'Not dated yet — enter your total once to date it.';\n  const day = toLocalISO(new Date(asOfMs));",
+      "replace": "/**\n * BL33 — Settings → Strike Strategy's COLD STORAGE group, as words. PURE.\n *\n * The field shows the LIVE total — the total last entered plus every cold move since (`deriveColdStorage`) — so the line\n * under it says what that figure is made of, in the owner's words: \"Entered <day>, plus N moves since.\" Entering a total\n * re-dates it (the anchor is the moment it was entered, `coldStorageBtcAsOf`), and only the moves after it are added\n * (`coldMovesSinceAnchor`, the derive's own rule: a move dated after that day, or logged later that same day — a move\n * backdated before it is already inside the total, so \"since\", never \"logged since\"). Never \"anchor\", never the\n * Almanac's sweep: the faces' plans never change this total — only a move you log, or a total you enter.\n */\nexport const COLD_GROUP_LEAD =\n  'Coins in your own custody, pledged to nobody. They count in what you hold and in your net coins (your goal) — '\n  + \"never in a loan's LTV.\";\nexport const COLD_FIELD_LABEL = 'Total in cold storage';\nexport const COLD_HOW =\n  'When you move coins in or out, log it in Daily → Collateral → Cold. Entering a new total here sets it as of today.';\n\n/** What the field's figure is made of: the day the total was entered, and the cold moves since (the derive's rule). */\nexport function coldAsOfLine(asOfMs: number | null, movesSince: number): string {\n  if (asOfMs === null || !Number.isFinite(asOfMs)) return 'Not dated yet — enter your total once to date it.';\n  const day = new Date(asOfMs).toISOString().split('T')[0];",
+      "rule": "docs/claude/ui.md § Date Formatting — local dates come from todayLocalISO() / toLocalISO(), never toISOString() split at the T",
+      "why": "Settings' 'Entered <day>' prints the UTC day: a cold total entered at 9 pm in New York reads as entered tomorrow",
+      "tests": [
+        "src/components/Settings/__tests__/coldStorageGroup.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-28",
+      "target": "HS",
+      "file": "src/components/ui/numberInputModel.ts",
+      "find": "return !Number.isNaN(n) && n >= 0 ? n : null;",
+      "replace": "return !Number.isNaN(n) && n > 0 ? n : null;",
+      "rule": ".claude/rules/ui.md — `NumberInput` saving ('live' hands on each readable, non-negative keystroke)",
+      "why": "typing 0 into a live draft (the Safety card's balance, the Log sheet) hands nothing on, so the draft keeps the old figure until the field is left",
+      "tests": [
+        "src/components/ui/__tests__/numberInputModel.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-29",
+      "target": "HS",
+      "file": "src/components/ui/numberInputModel.ts",
+      "find": "return { write: text === shown && !dated ? null : clamped, show: text };",
+      "replace": "return { write: clamped === value && !dated ? null : clamped, show: text };",
+      "rule": ".claude/rules/ui.md — `NumberInput` saving (numberCommit: saved only when it differs from what the field SHOWS)",
+      "why": "a typed figure equal to the one the field shows at its decimals (0.12345679 over a stored 0.123456789) is saved again, re-writing a plan setting nobody changed",
+      "tests": [
+        "src/components/ui/__tests__/numberInputModel.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-30",
+      "target": "HS",
+      "file": "src/components/ui/numberInputModel.ts",
+      "find": "return save === 'leave';",
+      "replace": "return save !== 'button';",
+      "rule": ".claude/rules/ui.md — A field that saves on leaving also saves what was typed when the app goes away — without ending the edit",
+      "why": "a 'live' draft also commits when the app goes to the background, writing a what-if figure through the commit path",
+      "tests": [
+        "src/components/ui/__tests__/numberInputModel.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HS-31",
+      "target": "HS",
+      "file": "src/components/Almanac/planRun.ts",
+      "find": "    broken: f.breakerSeed?.state.broken ?? false,",
+      "replace": "    broken: false,",
+      "rule": ".claude/rules/engine.md — A run shown as THIS MONTH'S MOVE carries the policy's memory (and The Decision face seeds…: ONE placement input, broken from the same breakerSeed as openingBreaker)",
+      "why": "THIS MONTH's MOVE is built as if the model were never broken while its run opens broken from the same seed: the card says 'Strike releases this today' for a move the run won't make",
+      "tests": [
+        "src/components/Almanac/__tests__/planRun.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-32",
+      "target": "HS",
+      "file": "src/components/Almanac/planRun.ts",
+      "find": "    support: supportPath[0],\n    policySettings,\n    expenses: f.expenses,",
+      "replace": "    support: supportPath[1],\n    policySettings,\n    expenses: f.expenses,",
+      "rule": ".claude/rules/engine.md — THIS MONTH, Daily and THE MOVE come from ONE builder (THE MOVE at S₀ = supportPath[0])",
+      "why": "THIS MONTH's MOVE is measured at next month's support while the Decision face's is at S₀: the two screens show different moves and over-limit figures for the same plan",
+      "tests": [
+        "src/components/Almanac/__tests__/planRun.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-33",
+      "target": "HS",
+      "file": "src/components/Playbook/playbookView.ts",
+      "find": "      case 'partial':      return ` · plan: pay down ${pd}, still above the ${ceil} ceiling`;",
+      "replace": "      case 'partial':      return ` · plan: pay down ${pd}`;",
+      "rule": ".claude/rules/engine.md — The paydown badge has FIVE states, and three earn a colour (never collapse partial into defended)",
+      "why": "the in-progress month's partial badge reads exactly like defended ('plan: pay down $X'), dropping 'still above the 15% ceiling' — a losing month looks healthy (tone stays amber, words don't)",
+      "tests": [
+        "src/components/Playbook/__tests__/playbookView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-34",
+      "target": "HS",
+      "file": "src/components/Daily/DailyModeView.tsx",
+      "find": "const currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);",
+      "replace": "const currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, advisorActualBlocBalance, btcPrice);",
+      "rule": ".claude/rules/engine.md — Strike avail-credit invariant (the daily-view trio pill)",
+      "why": "the trio pill's 'available' swaps price and drawn (positional arguments): Daily shows a Strike availability unrelated to the LTV-capped figure Safety and the viewer show",
+      "tests": [
+        "src/components/Almanac/__tests__/planRunWiring.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-35",
+      "target": "HS",
+      "file": "src/components/Almanac/CyclingFace.tsx",
+      "find": "  const supportPath = useMemo(() => buildSupportPath(startDate, months), [startDate, months]);",
+      "replace": "  const supportPath = buildSupportPath(startDate, months);",
+      "rule": ".claude/rules/engine.md — Policy objects on a face are memoised on stable identities, or the lens reset fires every render",
+      "why": "supportPath gets a new identity every render: engineInputs rebuild, both runs re-run and the lens reset fires each render, so an engaged price stress dies at once",
+      "tests": [
+        "src/components/Almanac/__tests__/supportPolicyWiring.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-36",
+      "target": "HS",
+      "file": "src/components/Almanac/supportPolicyInputs.ts",
+      "find": "return Array.from({ length: n + 1 }, (_, m) => plBandAt('floor', startDate, m));",
+      "replace": "return Array.from({ length: n + 1 }, (_, m) => plBandAt('floor', startDate, m + 1));",
+      "rule": ".claude/rules/engine.md — A face builds `supportPath` only through `buildSupportPath` and never stresses or phase-shifts it (a month off by one)",
+      "why": "the support path is phase-shifted a month: S₀ is next month's support, so THE MOVE, every limit at support and Safety-adjacent faces read a support the day hasn't reached",
+      "tests": [
+        "src/components/Almanac/__tests__/supportPolicyInputs.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-37",
+      "target": "HS",
+      "file": "src/components/Viewer/ViewerHomeView.tsx",
+      "find": "pct={s.strikeLtv * 100}",
+      "replace": "pct={s.strikeLtv}",
+      "rule": ".claude/rules/general.md — `strikeLtv` storage (decimal; multiply ×100 for display)",
+      "why": "the viewer's Strike LTV gauge is handed the stored fraction as a percent: 50% LTV draws as 0.5% while its colour (from the level) says amber",
+      "tests": [
+        "src/components/Almanac/__tests__/planRunWiring.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-38",
+      "target": "HS",
+      "file": "src/components/Summary/SummaryBar.tsx",
+      "find": "return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).toLocaleString();",
+      "replace": "return '$' + Math.round(Math.abs(n)).toLocaleString();",
+      "rule": ".claude/rules/ui.md — `SummaryBar fmtUSD` (local sign-preserving)",
+      "why": "a deficit reads as a surplus figure: expenses $1,000 over income print '$1,000' (only the colour says red)",
+      "tests": [],
+      "outsideList": true
+    },
+    {
+      "id": "HS-39",
+      "target": "HS",
+      "file": "src/simulation/miningUtils.ts",
+      "find": "const totalDailyEV_sats = usdToSats(totalDailyEV_usd, btcPrice);",
+      "replace": "const totalDailyEV_sats = usdToSats(totalDailyEV_usd - monthlyElecCost(totalPowerW, electricityRateCents) / 30, btcPrice);",
+      "rule": ".claude/rules/ui.md — Mining electricity (fiat overhead — 100% sats kept, never deducted)",
+      "why": "the Miners tab's sats kept (MiningProjectionTable reads dailyEV_sats) are net of the power bill, so a miner whose electricity is paid in dollars shows fewer sats than it mines",
+      "tests": [
+        "src/simulation/__tests__/mining.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-40",
+      "target": "HS",
+      "file": "src/components/ui/PassphraseInput.tsx",
+      "find": "        autoCorrect=\"off\"\n        autoCapitalize=\"none\"\n",
+      "replace": "        autoCorrect=\"off\"\n",
+      "rule": ".claude/rules/ui.md — Every masked field goes through `ui/PassphraseInput` (it bakes in the four iOS suppressions)",
+      "why": "one suppression dropped: iOS autocapitalizes the first letter of a revealed passphrase, so the encrypt and decrypt sides disagree for good",
+      "tests": [],
+      "outsideList": true
+    },
+    {
+      "id": "HS-41",
+      "target": "HS",
+      "file": "src/components/ui/EdgeBackGesture.tsx",
+      "find": "          blurFocused();\n          try { (document.elementFromPoint(x, y)",
+      "replace": "          try { (document.elementFromPoint(x, y)",
+      "rule": ".claude/rules/ui.md — A page closed from code blurs the focused field first (the forwarded tap)",
+      "why": "a forwarded tap on the edge zone (a Back button under it) leaves the page with a typed 'leave' field still focused: React runs no onBlur on unmount, so the figure is lost",
+      "tests": [
+        "src/components/ui/__tests__/numberInputModel.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-42",
+      "target": "HS",
+      "file": "src/components/Layout/AppShell.tsx",
+      "find": "  }, [hiddenTabs, activeTab, hasCbLoan]);",
+      "replace": "  }, [hiddenTabs, activeTab]);",
+      "rule": ".claude/rules/ui.md — Tab hidden guard (also the CB Loan / Emergency tab with the Coinbase loan off)",
+      "why": "switching the Coinbase loan off while on the CB Loan or Emergency tab leaves it open on an empty page: the guard's effect no longer re-runs on hasCbLoan (its regex pins the body, not the deps)",
+      "tests": [
+        "src/components/Advisor/__tests__/planEdgesWiring.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HS-43",
+      "target": "HS",
+      "file": "src/components/Settings/SettingsMain.tsx",
+      "find": "  { key: 'mining',    label: 'Miners'              },",
+      "replace": "  { key: 'mining',    label: 'Mining'              },",
+      "rule": ".claude/rules/ui.md — `SettingsMain` ALL_TABS (keep in sync with AppShell `ALL_TABS_META`)",
+      "why": "a tab relabelled in one list only: Settings' tab manager says 'Mining' for the tab the bar calls 'Miners' (only the Emergency label is pinned)",
+      "tests": [
+        "src/components/Advisor/__tests__/planEdgesWiring.test.ts"
+      ],
+      "outsideList": true
+    }
+  ],
+  "rowCoverage": [
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Every support-policy stress figure is support(t)",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE); HS-18/HS-19 touch support-vs-price WORDS in THE MOVE, filed under the moveCard row"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The support policy's settings are the owner's SAVED plan",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "THIS MONTH, Daily and THE MOVE come from ONE builder",
+      "status": "mutated",
+      "mutants": [
+        "HS-32"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Under the support policy, Morpho's seizure on the way down comes FIRST",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Cold is never retrieved at or above support",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Every opening figure on a face includes the cold reserve",
+      "status": "mutated",
+      "mutants": [
+        "HS-26"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "A stop at support can never exceed its leg's defense line",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Under the policy, every Strike → Coinbase collateral move by a defense obeys",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The keeps have ONE definition each",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "A run shown as THIS MONTH'S MOVE carries the policy's memory",
+      "status": "mutated",
+      "mutants": [
+        "HS-24",
+        "HS-31"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The Decision face seeds its run from THE MOVE only when the move is MADE",
+      "status": "mutated",
+      "mutants": [
+        "HS-22",
+        "HS-31"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The Decision face's Print never clears its body class synchronously",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "Its code is DecisionFace.tsx's printSchedule and C1 effect (DecisionFace.tsx:593-612), none of HS's files; the behaviour is a browser's print lifecycle (Safari returns from print() at once), which no node test can observe, and decisionWiring.test.ts C1 (lines 249-272) already reads every edit to that source by regex — a mutant is either read there or visible only in a real browser"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "THE MOVE's copy lives in `moveCard`, and the cliff is `cbMetrics().liqPrice`",
+      "status": "mutated",
+      "mutants": [
+        "HS-18",
+        "HS-19",
+        "HS-20",
+        "HS-25"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`crashPlaybook` is the one crash-day answer",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The console's doom warning keys off the after-state",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Every crash-day step amount is floored to its printed precision",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`runAdvisor` is gone",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The verdict compares all-in equity on both sides",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The never-draw verdict is ONE rule",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Policy objects on a face are memoised on stable identities",
+      "status": "mutated",
+      "mutants": [
+        "HS-35"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The stop clamp has one definition, `effectivePolicyStops`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "A face builds `supportPath` only through `buildSupportPath`",
+      "status": "mutated",
+      "mutants": [
+        "HS-36"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The Strike cap never outranks Coinbase survival",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The paydown badge has FIVE states",
+      "status": "mutated",
+      "mutants": [
+        "HS-33"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Power Law A constants",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`ltvTriggered` mode",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE) (a History row: runAdvisor left the code in 5e)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`ltvTriggered` band",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE) (a History row: runAdvisor left the code in 5e)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Phase 4 priority",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "BLOC draw order",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`getCollateralForTier`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`computeLiquidationAnalysis`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E owns it (task: every engine.md row HS does not own belongs to HE) (its \"standalone\" row; HS-13/HS-14 plant BOUNDARY mutants inside it, not this row)"
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`STRIKE_MAX_DRAW_LTV`",
+      "status": "mutated",
+      "mutants": [
+        "HS-01",
+        "HS-12"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Strike avail-credit invariant",
+      "status": "mutated",
+      "mutants": [
+        "HS-34",
+        "HS-12"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "THIS MONTH, Daily and Daily's sheets print dollars to the cent",
+      "status": "mutated",
+      "mutants": [
+        "HS-23"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "A draw/paydown with no `target` is STRIKE",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-J owns it (task: HS takes only journal.md's first row, the cents row)"
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "A Coinbase borrow/paydown is journal-only at EVERY dayLog reader",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-J owns it (task: HS takes only journal.md's first row, the cents row)"
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "A buy's dollars are the owner's",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-J owns it (task: HS takes only journal.md's first row, the cents row)"
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "Strike collateral (v20 Collateral-Truth)",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-J owns it (task: HS takes only journal.md's first row, the cents row)"
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "`deriveCurrentPosition`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-J owns it (task: HS takes only journal.md's first row, the cents row)"
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "`MonthlyLogOverlay`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-J owns it (task: HS takes only journal.md's first row, the cents row)"
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "Every masked field goes through `ui/PassphraseInput`",
+      "status": "mutated",
+      "mutants": [
+        "HS-40"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "`SummaryBar fmtUSD`",
+      "status": "mutated",
+      "mutants": [
+        "HS-38"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "Mining electricity",
+      "status": "mutated",
+      "mutants": [
+        "HS-39"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "Mining strategy cards",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "The presets are MiningMain.tsx's handleStrategySelect (MiningMain.tsx:18-29), a click handler only a render reaches (no test renders MiningMain). Note for the owner: calcAllStrategies (miningUtils.ts:134-139) computes all three cards from the devices' CURRENT soloMining and reads the strategy id only for its label, so whether the cards are 'independent of per-device soloMining' is a question for the rule, not a mutant"
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "`MiningOddsBar`",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "A component-structure rule (MiningOddsBar.tsx:16 reads the devices from the store, not props): nothing a pure module computes, and no node test renders the bar"
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "`fmtMining`",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "A module-placement rule (inlined in utils/format.ts so there is no circular import): a one-edit mutant can't move a function between modules; mining.test.ts's fmtMining cases pin its output"
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "Override a composed class's property on a DOUBLED selector",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "CSS: hunt.mjs check parses every mutated file as TypeScript (syntaxErrors → ts.transpileModule), so a .module.css mutant can't be planted; composedOverrides.test.ts is the audit over every *.module.css"
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "Never `position: fixed` under EdgeBackGesture's `.page`",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "CSS and device layout (a will-change containing block), not plantable through the TS-parsing harness; pinned by controlDockWiring.test.ts (source) and e2e/controlDock.spec.ts"
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "`NumberInput` suffix",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "A layout convention (no suffix inside the input: the caret misbehaves on device); no logic in numberInputModel.ts and nothing a node test observes"
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "`NumberInput` saving",
+      "status": "mutated",
+      "mutants": [
+        "HS-28",
+        "HS-29"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "A page closed from code blurs the focused field first",
+      "status": "mutated",
+      "mutants": [
+        "HS-41"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "A field that saves on leaving also saves what was typed when the app goes away",
+      "status": "mutated",
+      "mutants": [
+        "HS-30"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "Tab hidden guard",
+      "status": "mutated",
+      "mutants": [
+        "HS-42"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/ui.md",
+      "row": "`SettingsMain` ALL_TABS",
+      "status": "mutated",
+      "mutants": [
+        "HS-43"
+      ],
+      "why": "At the base SettingsMain.tsx:72-81 already lacks the 'almanac' row AppShell.tsx:75 has (maybe deliberate: the Almanac is a Tools tab, always available) — for the owner"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "An exact (deep-equal) golden may depend only on `+ − × ÷`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E: a test-convention rule for the engine goldens; HS writes no golden and its modules hold no approximated Math that feeds one (cbMetrics accrues with Math.pow and is outside the G1 walk)"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "A hook may never sit to the right of `||`, `&&`, or `?:`",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "HS's fourteen modules are pure — none calls a hook — so the shape can only live in a .tsx; and `npm run lint` catches it (eslint.config.js:35, react-hooks/rules-of-hooks: a probe `!!useStore(a) || !!useStore(b)` reported 'React Hook \"useStore\" is called conditionally'), a gate the hunt's four tiers don't run — a mutant would 'survive' by construction"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "Never claim plan-data encryption-at-rest before Phase 5",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-K (identity and key copy); nothing in HS prints at-rest posture"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "No plan-dependent write before the plan loads (5c)",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-Y (the plan-load guard); HS modules are pure readers and write nothing"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "`strikeLtv` storage",
+      "status": "mutated",
+      "mutants": [
+        "HS-37"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "Skip fields",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-Y / H-K (synced settings); no HS module reads the skip fields"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "`cbLiquidationPrice`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-Y / H-K (its sync and the modeler's === 0 guard); HS's figures read it — HS-03 and HS-04 mutate its ACCRUAL, filed under their own boundaries"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "nostr-tools pin",
+      "status": "other-target",
+      "mutants": [],
+      "why": "package.json is never touched (spec §1.2); no mutant"
+    }
+  ]
+}

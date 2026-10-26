@@ -1,0 +1,279 @@
+{
+  "target": "HY",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "survivors": [
+    {
+      "id": "HY-02",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — The plan log stays inside one publishable event",
+      "file": "src/lib/planEvents/compact.ts",
+      "line": 26,
+      "why": "Probed: the trim measures String.length, so a multi-byte log is judged inside the 32 KiB budget while its UTF-8 payload is past it (and past the 40,960 B step).",
+      "input": "compactPlanEvents(150 'set' events, field 'note', value 'é'.repeat(100), ts 60 s apart ending at now = 200 days, ids e000..e149)",
+      "baseOutput": "kept 115; payload 32,557 B (<= 32,768)",
+      "mutantOutput": "kept 150; payload 42,462 B (> 40,960 step)",
+      "proposedTest": {
+        "file": "src/lib/planEvents/__tests__/compactHardening.test.ts",
+        "title": "sync.md — The plan log stays inside one publishable event: the budget counts UTF-8 bytes, not code units",
+        "assertion": "expect(new TextEncoder().encode(JSON.stringify({ events: compactPlanEvents(log, now) })).length).toBeLessThanOrEqual(PLAN_LOG_BUDGET_BYTES)  // 150 x 'é'.repeat(100) history, round ts"
+      }
+    },
+    {
+      "id": "HY-03",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — The plan log stays inside one publishable event",
+      "file": "src/lib/nostr/syncEngine.ts",
+      "line": 231,
+      "why": "Read: base sends the compacted log it persists; mutant persists the compacted log but sends state.planEvents unchanged, so a log grown by a pull's union (not compacted) goes out over budget or with burst middles.",
+      "input": "state.planEvents = 3 events on field 'income' at ts 0, 1,000, 2,000 ms (one burst) + planLoaded, signed in; publishPlanEventsNow() with publishEncrypted mocked",
+      "baseOutput": "publishEncrypted data = { events: [the ts-2,000 event] } (1 event, same as the persisted log)",
+      "mutantOutput": "publishEncrypted data = { events: all 3 events } (differs from the persisted log)",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/syncEngineHardening.test.ts",
+        "title": "sync.md — The plan log stays inside one publishable event: the publish sends the compacted log it persists",
+        "assertion": "expect(publishEncrypted.mock.calls[0][3]).toEqual({ events: useStore.getState().planEvents }); expect(publishEncrypted.mock.calls[0][3].events).toHaveLength(1)"
+      }
+    },
+    {
+      "id": "HY-04",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step",
+      "file": "src/lib/nostr/publish.ts",
+      "line": 44,
+      "why": "Probed: the guard is fed code units; a multi-byte payload under 40,960 units but over 40,960 bytes passes the guard and reaches encrypt.",
+      "input": "publishEncrypted({} signer, 'pk', 'personal-bloc:plan-events:v1', 'é'.repeat(30_000)) — 30,002 units, 60,002 B",
+      "baseOutput": "throws PayloadTooLargeError before touching the signer",
+      "mutantOutput": "passes the guard; throws 'signer missing NIP-44 support' (would encrypt with a real signer)",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/publishHardening.test.ts",
+        "title": "sync.md — nothing is published past NIP-44's step: the guard measures UTF-8 bytes",
+        "assertion": "await expect(publishEncrypted(signerWithNip44, 'pk', PLAN_DTAG, 'é'.repeat(30_000))).rejects.toBeInstanceOf(PayloadTooLargeError); expect(signerWithNip44.nip44.encrypt).not.toHaveBeenCalled()"
+      }
+    },
+    {
+      "id": "HY-05",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step (minCreatedAt floor; records:v1 stub)",
+      "file": "src/lib/nostr/syncEngine.ts",
+      "line": 191,
+      "why": "Read: the stub publish drops the known.seenAt + 1 floor, so with a relay copy dated ahead of the local clock the stub is created_at = local now and loses to the frozen full records:v1.",
+      "input": "journal past the step (v1BridgeTarget -> 'stub'), known.seenAt = 2,000,000,000 (relay copy ahead), Date.now() = 1,000,000,000 s; publishEncrypted spied",
+      "baseOutput": "stub publishEncrypted minCreatedAt arg = 2,000,000,001",
+      "mutantOutput": "stub publishEncrypted minCreatedAt arg = default 0 (created_at = 1,000,000,000 < relay copy)",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/syncEngineHardening.test.ts",
+        "title": "sync.md — nothing is published past NIP-44's step: the records:v1 stub carries the minCreatedAt floor",
+        "assertion": "const call = publishEncrypted.mock.calls.find((c) => c[2] === RECORDS_DTAG); expect(call[6]).toBe(2_000_000_001)"
+      }
+    },
+    {
+      "id": "HY-06",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step (refuses PAST 40,960 B)",
+      "file": "src/lib/nostr/syncGuard.ts",
+      "line": 46,
+      "why": "Probed: off by one at the step; exactly 40,960 B is publishable but the mutant refuses it.",
+      "input": "guardPayload('personal-bloc:plan-events:v1', PLAIN_STEP_BYTES)",
+      "baseOutput": "no throw",
+      "mutantOutput": "throws PayloadTooLargeError",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/syncGuardHardening.test.ts",
+        "title": "sync.md — nothing is published past NIP-44's step: exactly the step is allowed, one byte past is refused",
+        "assertion": "expect(() => guardPayload(D, PLAIN_STEP_BYTES)).not.toThrow(); expect(() => guardPayload(D, PLAIN_STEP_BYTES + 1)).toThrow(PayloadTooLargeError)"
+      }
+    },
+    {
+      "id": "HY-07",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — The journal syncs as pages, and nothing is published past NIP-44's step (never raise Reconnect for it)",
+      "file": "src/lib/nostr/syncEngine.ts",
+      "line": 247,
+      "why": "Read: on PayloadTooLargeError the mutant raises Reconnect and leaves planDirty set instead of clearing planDirty.",
+      "input": "signed-in, planLoaded, publishEncrypted mocked to reject with new PayloadTooLargeError(PLAN_DTAG, 50_000); publishPlanEventsNow()",
+      "baseOutput": "returns false; planDirty false; nostrReconnectNeeded false",
+      "mutantOutput": "returns false; planDirty true; nostrReconnectNeeded true",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/syncEngineHardening.test.ts",
+        "title": "sync.md — nothing is published past NIP-44's step: a plan size refusal never raises Reconnect and clears planDirty",
+        "assertion": "expect(await publishPlanEventsNow()).toBe(false); expect(useStore.getState().nostrReconnectNeeded).toBe(false); expect(useStore.getState().planDirty).toBe(false)"
+      }
+    },
+    {
+      "id": "HY-09",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — `publishRecords` cadence",
+      "file": "src/store/slices/advisorJournalSlice.ts",
+      "line": 84,
+      "why": "Read: upsertLogEntry sets recordsDirty but no longer calls kickRecordsPublish (src/store/bootstrap.ts:164), so a signed month waits for the next sync tick.",
+      "input": "planLoaded store; vi.mock('../../lib/nostr/syncEngine') with publishRecordsNow spy; useStore.getState().upsertLogEntry({ month: '2026-01', ... round values })",
+      "baseOutput": "publishRecordsNow called once (after the dynamic import settles)",
+      "mutantOutput": "publishRecordsNow not called",
+      "proposedTest": {
+        "file": "src/store/slices/__tests__/advisorJournalSliceHardening.test.ts",
+        "title": "sync.md — `publishRecords` cadence: a monthly log write kicks the records publish",
+        "assertion": "useStore.getState().upsertLogEntry(entry); await vi.dynamicImportSettled(); expect(publishRecordsNow).toHaveBeenCalledTimes(1)"
+      }
+    },
+    {
+      "id": "HY-10",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — Records merge",
+      "file": "src/lib/nostr/sync.ts",
+      "line": 327,
+      "why": "Read: recordsDirty is the rule's merge tie-breaker; the mutant always passes preferLocalOnTie:false, so a dirty local entry that ties the relays' copy loses at the pull.",
+      "input": "st.recordsDirty = true; local monthlyLog [{ month: '2026-01', updatedAt: 1,000, expensesActual: 100 }]; relay journal page/v1 with the same month, updatedAt 1,000, expensesActual 200; fetchAndSync",
+      "baseOutput": "local entry kept (setMonthlyLog not called, or called with expensesActual 100)",
+      "mutantOutput": "relay entry wins (setMonthlyLog called with expensesActual 200)",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/syncHardening.test.ts",
+        "title": "sync.md — Records merge: recordsDirty breaks a tie in favour of the local edit",
+        "assertion": "expect(st.setMonthlyLog.mock.calls.flat(2).find((e) => e.month === '2026-01')?.expensesActual ?? 100).toBe(100)"
+      }
+    },
+    {
+      "id": "HY-11",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — The plan is event-sourced; only the prefs are LWW",
+      "file": "src/lib/nostr/sync.ts",
+      "line": 118,
+      "why": "Probed: the watermark admits a prefs copy dated exactly lastPrefsSyncAt (own echo / same copy), re-hydrating over a newer local pref.",
+      "input": "lastPrefsSyncAt = 100; applyRemoteEvent(prefs:v1 event created_at 100, { simpleMode: true })",
+      "baseOutput": "hydratePrefs called 0 times",
+      "mutantOutput": "hydratePrefs called 1 time",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/syncHardening.test.ts",
+        "title": "sync.md — only the prefs are LWW: a prefs copy no newer than the watermark is not re-applied",
+        "assertion": "expect(st.hydratePrefs).not.toHaveBeenCalled()"
+      }
+    },
+    {
+      "id": "HY-13",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — The dirty-gated retry never starts an unlock (the hook's isAuthenticated, in the effect's deps)",
+      "file": "src/hooks/useNostrSync.ts",
+      "line": 117,
+      "why": "Read only (a hook; no render harness): with isAuthenticated out of the deps an unlock while dirty does not re-run scheduleDirtyRetry, so the retry chain never arms. bridgeRetired's RETRY regex reads only the first four deps.",
+      "input": "source text of the retry effect's deps array",
+      "baseOutput": "deps include isAuthenticated",
+      "mutantOutput": "deps omit isAuthenticated",
+      "proposedTest": {
+        "file": "src/hooks/__tests__/useNostrSyncHardening.test.ts",
+        "title": "sync.md — The dirty-gated retry never starts an unlock: isAuthenticated is in the retry effect's deps",
+        "assertion": "const deps = src.match(/scheduleDirtyRetry\\([\\s\\S]*?\\),\\s*\\[([^\\]]*)\\]/)![1]; expect(deps.split(',').map((d) => d.trim())).toContain('isAuthenticated')"
+      }
+    },
+    {
+      "id": "HY-14",
+      "class": "GAP",
+      "rule": ".claude/rules/sync.md — Nostr reliability fix (Foreground/launch NIP-46 signer rebuild, throttled ~20s inside syncNow)",
+      "file": "src/lib/nostr/syncNow.ts",
+      "line": 20,
+      "why": "Read: the mutant widens the throttled rebuild to every non-nip07 method, so a local-key device with a signer goes through restoreSigner (WebAuthn) every foreground >20 s apart.",
+      "input": "nostrSigningMethod 'local', nostrSigner present, backup gate ok, markSignerFresh() then Date.now() advanced 30,000 ms; syncNow with restoreSigner mocked",
+      "baseOutput": "restoreSigner not called",
+      "mutantOutput": "restoreSigner called once",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/syncNowHardening.test.ts",
+        "title": "sync.md — Nostr reliability fix: the foreground signer rebuild is NIP-46 only",
+        "assertion": "expect(restoreSigner).not.toHaveBeenCalled()"
+      }
+    },
+    {
+      "id": "HY-15",
+      "class": "GAP",
+      "rule": ".claude/rules/general.md — No plan-dependent write before the plan loads",
+      "file": "src/lib/nostr/sync.ts",
+      "line": 178,
+      "why": "Probed: a pull that finds only the v2 journal manifest records 'none' (owner offered Start a new plan) instead of 'absent'.",
+      "input": "fetchAndSync with the relays returning only a journal manifest event (no plan, no records:v1), one relay connected",
+      "baseOutput": "planPull { status: 'unreadable', reason: 'absent' }",
+      "mutantOutput": "planPull { status: 'none' }",
+      "proposedTest": {
+        "file": "src/lib/nostr/__tests__/syncHardening.test.ts",
+        "title": "general.md — No plan-dependent write before the plan loads: a manifest-only pull is 'absent', never 'none'",
+        "assertion": "expect(getPlanPull()).toMatchObject({ status: 'unreadable', reason: 'absent' })"
+      }
+    },
+    {
+      "id": "HY-16",
+      "class": "GAP",
+      "rule": ".claude/rules/general.md — `cbLiquidationPrice` (0 = not set)",
+      "file": "src/store/slices/dayLogSlice.ts",
+      "line": 130,
+      "why": "Read: with cbLiquidationPrice = 0 (not set) the mutant's >= 0 stamps cbLiqPrice: 0 on the reading.",
+      "input": "store: planLoaded, hasCbLoan true, cbLiquidationPrice 0, cbLoanBalance 10,000; emitBalanceReading({ cbBal: 10_000 })",
+      "baseOutput": "reading has no cbLiqPrice",
+      "mutantOutput": "reading.cbLiqPrice = 0",
+      "proposedTest": {
+        "file": "src/store/slices/__tests__/dayLogSliceHardening.test.ts",
+        "title": "general.md — `cbLiquidationPrice`: 0 = not set, never stamped on a reading",
+        "assertion": "const r = useStore.getState().dayLog.at(-1)!.reading; expect('cbLiqPrice' in r).toBe(false)"
+      }
+    },
+    {
+      "id": "HY-17",
+      "class": "GAP",
+      "rule": ".claude/rules/store.md — Zustand v7 migration (adds cbPaymentStrategy/TriggerPct/TargetPct with defaults)",
+      "file": "src/store/persistConfig.ts",
+      "line": 106,
+      "why": "Probed: the default overwrites a stored trigger LTV.",
+      "input": "migrateState({ monthlyLog: [], cbLtvTriggerPct: 80 })",
+      "baseOutput": "cbLtvTriggerPct 80",
+      "mutantOutput": "cbLtvTriggerPct 75",
+      "proposedTest": {
+        "file": "src/store/__tests__/persistConfigHardening.test.ts",
+        "title": "store.md — Zustand v7 migration: the default fills only an absent cbLtvTriggerPct",
+        "assertion": "expect(migrateState({ monthlyLog: [], cbLtvTriggerPct: 80 }).cbLtvTriggerPct).toBe(80); expect(migrateState({ monthlyLog: [] }).cbLtvTriggerPct).toBe(75)"
+      }
+    },
+    {
+      "id": "HY-18",
+      "class": "GAP",
+      "rule": ".claude/rules/store.md — Zustand v8 migration",
+      "file": "src/store/persistConfig.ts",
+      "line": 128,
+      "why": "Probed: a manual BTC price mode is forced back to live.",
+      "input": "migrateState({ monthlyLog: [], btcPriceMode: 'manual' })",
+      "baseOutput": "'manual'",
+      "mutantOutput": "'live'",
+      "proposedTest": {
+        "file": "src/store/__tests__/persistConfigHardening.test.ts",
+        "title": "store.md — Zustand v8 migration: a stored btcPriceMode survives",
+        "assertion": "expect(migrateState({ monthlyLog: [], btcPriceMode: 'manual' }).btcPriceMode).toBe('manual')"
+      }
+    },
+    {
+      "id": "HY-19",
+      "class": "GAP",
+      "rule": ".claude/rules/store.md — Zustand v10 migration",
+      "file": "src/store/persistConfig.ts",
+      "line": 130,
+      "why": "Probed: the stored NIP-46 login is dropped.",
+      "input": "migrateState({ monthlyLog: [], nostrLogin: 'bunker://x' })",
+      "baseOutput": "'bunker://x'",
+      "mutantOutput": "null",
+      "proposedTest": {
+        "file": "src/store/__tests__/persistConfigHardening.test.ts",
+        "title": "store.md — Zustand v10 migration: a stored nostrLogin survives",
+        "assertion": "expect(migrateState({ monthlyLog: [], nostrLogin: 'bunker://x' }).nostrLogin).toBe('bunker://x')"
+      }
+    },
+    {
+      "id": "HY-20",
+      "class": "GAP",
+      "rule": ".claude/rules/store.md — Zustand v13 migration",
+      "file": "src/store/persistConfig.ts",
+      "line": 110,
+      "why": "Probed: the Coinbase balance's as-of date is dropped.",
+      "input": "migrateState({ monthlyLog: [], cbLoanBalanceAsOf: '2026-01-01' })",
+      "baseOutput": "'2026-01-01'",
+      "mutantOutput": "null",
+      "proposedTest": {
+        "file": "src/store/__tests__/persistConfigHardening.test.ts",
+        "title": "store.md — Zustand v13 migration: a stored cbLoanBalanceAsOf survives",
+        "assertion": "expect(migrateState({ monthlyLog: [], cbLoanBalanceAsOf: '2026-01-01' }).cbLoanBalanceAsOf).toBe('2026-01-01')"
+      }
+    }
+  ],
+  "skipped": []
+}

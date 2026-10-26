@@ -1,0 +1,92 @@
+{
+  "area": "A1",
+  "lens": "seq",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "findings": [
+    {
+      "id": "A1s-1",
+      "severity": "Critical",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1774,
+      "title": "The never-draw baseline never liquidates: its Coinbase loan compounds through any crash with no 86% test, and its coins are pooled across venues. So the verdict (faces, Decision tile) and the futures' 'Beats never borrowing' compare the plan with a never-draw world that Morpho would have seized.",
+      "evidence": "Probe src/__probe__/A1-seqA.test.ts in /tmp/hardening-1/audit-A1b (deleted after the run). Command: `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/A1-seqA.test.ts --maxWorkers=1`. Inputs (synthetic): Strike 1 BTC, $30,000 line, $0 drawn; Coinbase 1 BTC owing $50,000; cold 0.5 BTC; income $8,000, bills $6,000; Strike APR 12, CB APR 6; cbLtvCapPct 70, defendCbLtv true; policy 45/50, zones 2.0/3.0, 12-month buffer, no cash, support flat at $40,000. Path: $100k, 90k, 70k, 55k, $50k at m4, then linear to $150k at m24. OUTPUT: in mode 'hold' (the engine's own never-draw strategy) cbLtv by month is [0.5, 0.5462, 0.6866, 0.8488, 0.9051], so liqMonth = 4, seizedBtc 1.0649, last.equity $298,303 and btcHeld 1.9887. The same run's baselineEquity is $401,677 with baselineBtc 3.0536, i.e. no seizure. The plan (policyApplied true, liqMonth null) has allIn $371,745 against baselineAllIn $401,677, and verdictVsNeverDraw gives {kind:'loses', wins:false, equityDelta:-29931}. Against the hold run's allIn of $298,303 the plan is +$73,442. Futures probe A1-seqC (priceFutures, 300 futures, seed 1, 120 months, start 2027-01-01, anchor $94,000, Coinbase 1 BTC owing $60,000, never-draw run as mode 'hold' with no sweep): the never-draw world is seized in 10 of 300 futures. In those futures the pooled baseline overstates it by about $1.8M (e.g. baselineAllIn $6,367,555 vs $4,566,397 seizable). The readout's beatsNeverDraw is 283, against 284 versus the seizable world (one verdict flips). CODE: cyclingSim.ts:1774 pools strike + cb + cold into baseBtc; :1779 compounds baseCbDebt every month; lines 1778-1812 run no LTV or seizure test; :1814 baselineEquity = baseBtc × last price − debts. The header at cyclingSim.ts:24-25 says that for `hold` 'the strategy IS the baseline', and engines.md:740 says 'a run that never acts still IS the never-draw world'. Both are false once Morpho seizes.",
+      "whyItMatters": "The never-draw verdict (head, tile tone, 'never-draw: ±$X') and the futures' share are the plan's headline money comparison. On a crash that recovers — the case the support policy exists for — the plan's survival is scored as a loss of $29,931 when it is a gain of $73,442, because the comparator keeps coins Morpho took. The same overstated baseline feeds monteCarlo.ts:80 (beatsNeverDraw) and cyclingFaceView.ts:866.",
+      "lane": "Heavy",
+      "fixSketch": "Give the baseline the Coinbase leg's own seizure (debt against Coinbase collateral plus its pledged buys, the engine's month-end / on-the-way-down test), or compute it as a sweep-free mode 'hold' run and read that run's all-in equity.",
+      "notKnownBecause": "§9 names the never-draw verdict tying by float residue without a goal, and the policy-off Strike leg, but not the baseline's missing liquidation. engines.md 'Still open' lists only the no-goal tie."
+    },
+    {
+      "id": "A1s-2",
+      "severity": "Medium",
+      "file": "src/components/Almanac/decisionView.ts",
+      "line": 153,
+      "title": "A crash month whose fallback top-up restores Coinbase still prints 'The defense falls $X short — Coinbase stays over its defense line', and THIS MONTH / Daily show a red 'Coinbase defense falls short'. defenseShortfallUsd is the debt shift's shortfall, measured before the top-up covered it.",
+      "evidence": "Probe src/__probe__/A1-seqB.test.ts (deleted). Command: `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/A1-seqB.test.ts --maxWorkers=1`. Inputs: Strike 2 BTC, $3,000 line, $0 drawn; Coinbase 2 BTC owing $62,000; cold 1 BTC; $8k in, $6k out; policy 45/50/2/3/12; support $100k; price $100k then $40k (k 0.4, under the 0.523 depth, so shift first). OUTPUT for row 1: defenseDrawnUsd 3000, topUpFromColdBtc 0.06821, cbLtvPreDefense 0.7599, month-end cbLtv 0.7000; sim.firstUnheldMonth null and topUpExhaustedMonth null, so the line held. rowActions(row1) gives [..., 'Move 0.068 ₿ from cold storage into Coinbase.', 'Draw $3,000 on Strike and pay Coinbase down with it.', 'The defense falls $1,910 short — Coinbase stays over its defense line.']. planMonthActions(sim, plan, 1) includes 'Coinbase defense falls short | | $1,910.00 | bad'. CODE PATH: cyclingSim.ts:1467 sets defenseShortfallUsd = d.shortfallUsd (the shift's only). :1533-1565 the fallback top-up covers it (t.shortfallBtc 0) and leaves the field unchanged. decisionView.ts:152-153 prints the field and asserts 'stays over'. planMonthView.ts:99 shows it with tone 'bad'. The faces read firstUnheldMonth instead (cyclingFaceView.ts:148-154).",
+      "whyItMatters": "On the Decision schedule, its print-out and 'Why this plan?', and in THIS MONTH / Daily's rows, a defense that held reads as one that failed, in red, beside a console that says it held. That is a crash-day safety misstatement.",
+      "lane": "Light",
+      "fixSketch": "Print the short only when the month ends over the line (row.cbLtv > cap, the firstUnheldMonth rule); when collateral covered it, drop the line or say the top-up covers the rest.",
+      "notKnownBecause": "§9's crash-day items (the console's boundary print and fixed stage ladder, Safety's amber title) are different sentences. Nothing in §9 covers the schedule's defense-short line."
+    },
+    {
+      "id": "A1s-3",
+      "severity": "Medium",
+      "file": "src/components/Almanac/supportPolicyView.ts",
+      "line": 512,
+      "title": "After a Coinbase seizure the unpaid-bills line blames 'the credit line and the limits at support'. In fact the plan stops borrowing only because Coinbase was liquidated, and the Strike line still has room.",
+      "evidence": "Probe src/__probe__/A1-seqE.test.ts (deleted). Command: `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/A1-seqE.test.ts --maxWorkers=1`. Inputs: Strike 1 BTC, $30,000 line, $0 drawn; Coinbase 1 BTC owing $60,000; $4k in, $6k out; policy 45/50/2/3/12, no cash; support $50k; price $100k, then $65k at m1 (seized on the way down), then linear to $90k at m12. OUTPUT: liqMonth 1 (onTheWayDown true), firstUnfundedMonth 1, firstCeilingThrottleMonth null, creditExhaustedMonth null. Rows 1-3: zone 'accumulate', strikeDrawn 0, unfundedUsd 2000, Strike line room $30,000, Strike room at support $25,000. policyUnpaidNote(policyReading(sim, 6, 6000)) returns 'From month 1, $24,000 of bills went unpaid — the credit line and the limits at support couldn't cover them. Set a cash reserve to cover them.' CODE PATH: cyclingSim.ts:1157-1158 allows a draw only while liqMonth === null. supportPolicyView.ts:512 picks UNPAID_CAUSE[zone], which for 'accumulate' is line 502's sentence, without asking liqMonth. neverDrawsOf (same file) does handle the liquidation.",
+      "whyItMatters": "The sentence names a false cause, shown in the policy card's details and each face's constraints slot. It points the owner at a bigger line or a cash reserve and never says the real reason: borrowing ended at the seizure.",
+      "lane": "Light",
+      "fixSketch": "When the first unpaid month is at or after liqMonth (way down) or after it (month-end), name the liquidation: 'Coinbase was liquidated in month L — the plan borrows nothing more'.",
+      "notKnownBecause": "§9 lists 'the zero-state words' and the goal's unpaid wording, not the post-liquidation cause. The UNPAID_CAUSE table has no liquidation entry."
+    },
+    {
+      "id": "A1s-4",
+      "severity": "Medium",
+      "file": "src/components/Almanac/decisionView.ts",
+      "line": 115,
+      "title": "Every month after a Coinbase seizure the schedule tells the owner to 'Buy $X of bitcoin and pledge it to Coinbase'. The loan is gone, the plan never borrows again, and the run never sweeps those coins to cold.",
+      "evidence": "Probe src/__probe__/A1-seqD.test.ts (deleted). Command: `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/A1-seqD.test.ts --maxWorkers=1`. Inputs: Coinbase 1 BTC owing $60,000 at $100k; Strike 1 BTC, $3,000 line; $8k in, $6k out; policy 45/50/2/3/12; support $50k; price $100k, then $65k at m1, then linear to $130k at m12. OUTPUT: liqMonth 1, seizedOnTheWayDown true. Rows 1-12: cbDebt 0, cbCollateralBtc rising from 0.1331 to 0.3602, coldBtc 0, sweptToColdBtc 0, postLiquidation true. Schedule month 1 is ['Coinbase liquidates the loan on the way down, at $70,116.', 'Buy $2,000 of bitcoin (≈ 0.031 ₿) and pledge it to Coinbase.']. Months 2-12 each repeat the same 'pledge it to Coinbase' buy. CODE PATH: cyclingSim.ts:1276-1277 adds buys to cbColl after a seizure. :1675 gates the policy sweep on liqMonth === null, so only the goal stand-down passes. decisionView.ts:115 prints fixed text with no liquidation branch. planStatus already says 'Coinbase has been liquidated — borrowing has ended' (planMonthView.ts:248).",
+      "whyItMatters": "The schedule, its print-out and 'Why this plan?' (which reads planSchedule's words) tell the owner to keep pledging coins to a seized position. The run parks them there for the rest of the horizon rather than in cold, so cold figures after a seizure understate. It also breaks the N8 rule that no words promise a loan after a liquidation.",
+      "lane": "Light",
+      "fixSketch": "After liqMonth, word the buy without 'pledge it to Coinbase'. Separately, as a Heavy follow-up, let step 9 sweep a debt-free Coinbase pool to cold after a seizure, which cannot re-lever anything.",
+      "notKnownBecause": "§9 has 'the Coinbase leg with the loan off' (a switch setting) but nothing about the schedule's words or the routing after a seizure."
+    },
+    {
+      "id": "A1s-5",
+      "severity": "Minor",
+      "file": "src/components/Almanac/decisionView.ts",
+      "line": 79,
+      "title": "In a shift-first crash month the schedule (and THIS MONTH's rows) lists the cold → Coinbase top-up before the debt shift. The engine and the Emergency Console do the reverse.",
+      "evidence": "Same probe B2 (k 0.4, below the 0.523 depth). crashPlaybook on the month's state gives order 'shiftFirst', steps [shiftToStrike $3,000, coldToCoinbase 0.1182]. The engine shifts at cyclingSim.ts:1439-1476, then runs the fallback top-up at :1533. rowActions prints 'Move 0.068 ₿ from cold storage into Coinbase.' before 'Draw $3,000 on Strike and pay Coinbase down with it.', and planMonthActions does the same ('Cold storage → Coinbase' before 'Pay Coinbase from Strike'). ACTION_FIELDS (decisionView.ts:136-145) fixes coldToCoinbase ahead of debtShift, while its comment at :79 says 'in the engine's own month order'. A row merges both top-up sites into topUpFromColdBtc, so the order is lost.",
+      "whyItMatters": "On a crash day the order is the point of the playbook: top up first above the depth, shift first below it. In every shift-first month the schedule's order contradicts the console's.",
+      "lane": "Light",
+      "fixSketch": "Order a crash month's kinds by the playbook's order for that row (shift first when k < depth, k ≥ 1, or doomed), or say that the month's top-ups are merged.",
+      "notKnownBecause": "Not in §9."
+    },
+    {
+      "id": "A1s-6",
+      "severity": "Minor",
+      "file": "src/components/Almanac/decisionView.ts",
+      "line": 299,
+      "title": "coinbaseLoanLine says nothing when the plan opens a Coinbase loan through pledged buys and a refinance, because it looks only for a Strike → Coinbase release.",
+      "evidence": "Probe B1 (deleted). Inputs: no Coinbase loan (cbCollateralBtc 0, cbDebt 0); Strike 1 BTC, $40,000 line, $0 drawn; flat $100k; support $50k (k 2.0); policy 45/50/2/3/12. Placement: state 'ready', strikeLeg 'nothing' (keep 1.6 BTC > 1 BTC). Run: m1 buys $2,000, cbColl 0.02; m2 draws $441, refinances $446, cbDebt $455; strikeToCbBtc 0 in every row. coinbaseLoanLine(sim, plan, false) returns null. The month-1 schedule says 'Buy $2,000 of bitcoin (≈ 0.020 ₿) and pledge it to Coinbase.' The docblock (decisionView.ts:289-290) says 'say when, rather than letting a schedule of Coinbase moves appear out of nowhere'. The gate at :299-300 reads only strikeToCbBtc. decisionView.test.ts:267 pins null on rows with strikeToCbBtc zeroed and refinancedUsd still set.",
+      "whyItMatters": "The guard doesn't guard. An owner with no Coinbase loan sees Coinbase pledges and a Coinbase borrow in month 2, and no line says the plan opens a loan.",
+      "lane": "Light",
+      "fixSketch": "Key the line on the first row with Coinbase collateral or a refinance (cbCollateralBtc > 0 or refinancedUsd > 0) and name the earlier one.",
+      "notKnownBecause": "Close to §9's 'the Coinbase leg with the loan off' (almanac.md:1592: the plan pledges to a Coinbase leg the owner doesn't have). This finding is narrower: the line meant to announce that leg has a gate that misses it. It is flagged as adjacent; the judge may fold it in."
+    }
+  ],
+  "examined": [
+    "The order inside a month (cyclingSim.ts:1100-1765): Coinbase interest, then the seizure on the way down, the goal read, draw or restore/pay-down/buy, step 5, refinance, top up first, shift, reserve and guard, fallback, the Strike cap top-up, the Strike call, the sweep, the month-end breach. It matches engine.md, and the seizure stays right after interest.",
+    "Fuzz, 4,000 random 24-month policy runs (opening holds 0-3, engine deposits): no Strike release (strikeToCb, strikeToCold, topUpFromStrike) inside a hold set by the opening or by an engine cold → Strike top-up or cure. 224 deposits, 3,182 months checked, 0 violations.",
+    "Fuzz, 4,000 random 36-month runs, 1,618 seized: after liqMonth there is no draw, refinance, debt shift, Strike → Coinbase migration, top-up or non-stand-down sweep (0 re-lever). seizedOnTheWayDown ⇒ firstOpenPastLltvMonth === liqMonth (0 mismatches). monthsInZone.broken equals the broken rows (0 mismatches). 421 runs re-armed and 2,960 in-run breaks occurred.",
+    "strikeHoldUntil = m + 2 never shortens a seeded hold: holdMonthsFrom gives at most 3, and m + 2 ≥ 3 for m ≥ 1. strikeHoldAt and holdMonthsFrom agree at the 60-day boundary (through = today → hold 1).",
+    "Breaker: nextRearmableBreakerState wraps the one trip rule, and its re-arm acts on the Nth month. breakerFromHistory folds UTC month-ends through last month with junk carried. brokenSentence covers seeded break + re-arm + second break, and the counts add up (traced).",
+    "THE MOVE vs the run: placement's order (cbPastLiquidation > broken > paused > ready). opening = after only when worthMoving. seedsFromMove asks supportPolicyResolution. engineInputsOf seeds collateral only (debts unchanged). The baseline uses the seeded totals (conserved). The month-1 equivalence sweep holds for its premises (no Strike balance, zero rates).",
+    "A crash at month 0: no engine action; the month-end breach seizes an opening past 86%, which placement marks cbPastLiquidation, so the run is not seeded. planStatus m=1 and postLiquidation words are consistent.",
+    "The crash playbook vs the engine: the same gates (doom at the open, the depth band, the dust drop after top up first, the fallback skipped when doomed after the shift), and the release cap is re-measured after the shift.",
+    "Goal reached then lost: with any debt left the goal can be lost and the draws resume. The stand-down (both debts exactly 0) is absorbing, because net coins cannot move with no debt.",
+    "Futures: seizedMonth = min(liqMonth, firstOpenPastLltvMonth). seizedWithinYear counts m ≤ 12. seizedHalfByMonth is the lower median. monthYear uses calendar arithmetic, consistent with addMonths' clamp.",
+    "A loan repaid then re-opened: the pay-down's 0.005 floor, then the refinance from cbDebt 0 with the fee on the marginal brackets (cbBorrowFee); the pay-down zone and the refinance zone are disjoint."
+  ]
+}

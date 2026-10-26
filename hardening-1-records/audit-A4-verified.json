@@ -1,0 +1,160 @@
+{
+  "area": "A4",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "findings": [
+    {
+      "id": "A4-1",
+      "severity": "Critical",
+      "file": "src/components/Viewer/ViewerHomeView.tsx",
+      "line": 144,
+      "title": "With the Coinbase loan switched off (onboarding's \"No\"), the Dashboard's \"Where the coins sit\" and \"Who holds the coins\" count the store's placeholder 1.48 ₿ on Coinbase as the owner's coins, while the goal tile on the same screen counts none.",
+      "evidence": "Path: src/store/slices/cbLoanSlice.ts:22 hasCbLoan false, :25 cbCollateralBtc 1.48 (the seed; store.md:68 'default 1.48'); src/components/Onboarding/OnboardingModal.tsx:83-86 sets Coinbase's collateral only when the owner answers yes; ViewerHomeView.tsx:144 venueCbBtc = deriveCbCollateral(st.dayLog, st.cbCollateralBtc) (not gated, comment :236-238) feeds VenueBar (:240) and OwnershipBar btcHeld (:250); the goal tile's net coins read planCbCollateralOf (:122 → src/components/Almanac/planRun.ts:48-49, 0 with the loan off). Scan (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts`, seedAndGoto = the e2e's plain seed, no Coinbase fields), simple:dashboard at 390: \"Where the coins sit 1.480 ₿ total · STRIKE 0.000 ₿ $0 · 0% · COINBASE 1.480 ₿ $121,360 · 100% · COMBINED 1.480 ₿ … Who holds the coins 1.480 ₿ held · YOURS 1.480 ₿ $121,360 · 100% · OWED 0.000 ₿\". Edge E8 (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts --project=w390 edge.spec.ts -g 'E8'`; hasCbLoan false, planGoalNetBtc 1, manual $100,000): \"GOAL: Your goal ₿0.000 of ₿1.000 net coins today · 0%\" and on the same screen \"BARS: Where the coins sit 1.480 ₿ total … COINBASE 1.480 ₿ $148,000 · 100% … Who holds the coins 1.480 ₿ held YOURS 1.480 ₿ $148,000 · 100%\"; persisted state {\"hasCbLoan\":false,\"dayLog\":0} (cbCollateralBtc is the in-memory default).",
+      "whyItMatters": "Every install that declines a Coinbase loan is told on its home screen that it holds 1.48 ₿ (~$148k at $100k) it never entered, and \"yours\" 100% of it; the goal tile right below says ₿0.000 — two figures for the same coins on one screen. A trusted viewer is shown the same. The plan readers exclude this seed by rule (D-R2-4: 'never the fresh install's seed $60,000 on 1.48 ₿'); the Dashboard's bars don't.",
+      "fixSketch": "Feed the venue and ownership bars Coinbase's coins through planCbCollateralOf (or only a Coinbase collateral the owner recorded), so the bars and the goal tile read one figure.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "Re-traced at base: ViewerHomeView.tsx:144 venueCbBtc = deriveCbCollateral(dayLog, cbCollateralBtc) is ungated while useNetCoinsToday (:122) uses planCbCollateralOf (0 with loan off); cbLoanSlice.ts:25 seed 1.48; persisted state carries no dayLog. throwaway Playwright (vscan/, port 5181, sw blocked, retries 0, through slot; deleted), plain seed + simpleView 'dashboard', manual $100,000, planGoalNetBtc 1: 'Your goal ₿0.000 of ₿1.000 · 0%' beside 'Where the coins sit 1.480 ₿ total … COINBASE 1.480 ₿ $148,000 · 100%' and 'Who holds the coins … YOURS 1.480 ₿ $148,000 · 100%'. A money figure the owner never entered, on the home screen of every loan-off install; not §9 (D-R2-4's leg is the plan's, almanac.md:1587-1593). Critical stands.",
+      "lane": "Light"
+    },
+    {
+      "id": "A4-2",
+      "severity": "Medium",
+      "file": "src/components/SimpleMode/SafetyDashboard.tsx",
+      "line": 101,
+      "title": "A Strike balance with no Strike collateral reads as maximally safe in the Strike card's liquidation cushion — \"$100,000.00 above liq ~$0.00 · 100% drop away\" — beside its own \"∞ LTV POOR\", and as \"Liq at ~$0\" on the Dashboard and a trusted viewer's home.",
+      "evidence": "Path: SafetyDashboard.tsx:101-103 strikeLiqPrice = currentBtcHeld > 0 ? bal/(btc×liqLtv) : 0; :104 strikeDropUsd = max(0, btcPrice − 0) = btcPrice; :105 strikeDropPct = 1; printed at :202. src/simulation/safetyView.ts:395-397 (computeViewerSafety, trusted figures) has the same 0 fallback → ViewerHomeView.tsx:159 \"Liq at ~${fmtUSD(f.strike.liqPrice)}\". Edge E7 (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts --project=w390 edge.spec.ts -g 'E7'`; advisorActualBlocBalance 1000, creditLine 10000, no Strike collateral, manual $100,000): THIS MONTH, Strike card flipped with ⇄ liquidation → \"STRIKE BLOC ∞ LTV POOR EDIT 85% liq ₿0.00000 · $100,000.00 above liq ~$0.00 · 100% drop away · $1,000.00 balance\"; Dashboard → \"100% Strike BLOC LTV POOR Liq at ~$0 $1,000 balance\".",
+      "whyItMatters": "Debt with nothing behind it is already past liquidation; the cushion says the price could fall 100% first — the inversion test-suite.md:25-28 names ('returning 0 there rendered the worst possible state as perfectly safe'). The level is right; the sentence under it contradicts it, on the Safety card itself.",
+      "fixSketch": "With debt and no collateral, give no liquidation price (\"no collateral — past liquidation\") and a 0% drop, in SafetyDashboard and computeViewerSafety alike.",
+      "severityInput": "Critical",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "Code as stated: SafetyDashboard.tsx:101-105 liq price 0 when currentBtcHeld 0 → drop = price, 100%; safetyView.ts:395-397 same 0 → 'Liq at ~$0'. throwaway Playwright (vscan/, port 5181, sw blocked, retries 0, through slot; deleted) (advisorActualBlocBalance 1000, creditLine 10000, strikeCollateralBtc 0): card '∞ LTV | POOR | … ₿0.00000 · $100,000.00 above liq ~$0.00 · 100% drop away · $1,000.00 balance'; Dashboard 'POOR | Liq at ~$0 | $1,000 balance'. SEVERITY Critical → Medium: the level word (∞, POOR) is right and no coin is at risk (nothing pledged to seize); the state needs a Strike balance with zero recorded collateral, which the lender does not allow — a figure disagreeing with its word (§6 Medium), not a wrong money figure.",
+      "lane": "Heavy"
+    },
+    {
+      "id": "A4-3",
+      "severity": "Critical",
+      "file": "src/components/LivingOnBitcoin/StrategyCards.tsx",
+      "line": 50,
+      "title": "The Living on Bitcoin tab prints a negative net worth as a positive one (\"$6,863\" for −$6,863) through the sign-dropping fmtUSD, and at zero holdings prints \"Real Return -Infinity%\", \"NaN%\", \"BTC Held ₿ -0.3556 BTC\" and a crash test \"LTV: 0% SAFE\" on $42,000 of unbacked debt.",
+      "evidence": "Path: StrategyCards.tsx:50 fmtUSD(result.finalNetWorthReal) → src/utils/format.ts:3-4 Math.abs (ui.md: 'Shared — exact, no sign'; the SummaryBar rule keeps a local sign-preserving copy for this reason); :12-14,64 fmtPct(realReturn); src/simulation/runNoBitcoin.ts:58 (real−nominal)/nominal, nominal 0 → NaN; runMaxLeverage.ts:87 / runSmartBLOC_Living.ts:95 x/0 → −Infinity; runSmartBLOC_Living.ts:81,94 finalLtv = 0 when coins are 0 → crashLtv 0 → StressTest.tsx:13-17,38 'Safe'. Edge E3 (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts --project=w390 edge.spec.ts -g 'E3'`; full mode, income $0, growth −50%): \"Max Leverage (Dangerous) $6,863 NET WORTH BTC Held ₿ 0.7000 BTC Amount Drawn $42,000 … Final LTV 120.0% Real Return -109.8% Smart BLOC (Crash-Safe) $9,407 NET WORTH … Final LTV 127.4% Real Return -113.4%\"; probe (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx vitest run src/__probeA4__/a4.probe.test.tsx --maxWorkers=2`, same inputs): maxLev netReal=-6862.75 loc=42000.00. Edge E4 (holdings 0, income $0): \"Max Leverage (Dangerous) $41,176 NET WORTH BTC Held ₿ 0.0000 BTC Interest Paid $2,958 Real Return -Infinity% … Sell to Live (No LoC) $52,292 NET WORTH BTC Held ₿ -0.3556 BTC … No Bitcoin (Cash Only) $0 NET WORTH … Real Return NaN% Crash Stress Test BTC price crashes: $150,000 → $30,000 Max Leverage LTV: 0% SAFE … Smart BLOC LTV: 0% SAFE\"; probe: netReal=-41176.47 loc=42000 crashLtv=0 realReturn=-Infinity, noBtc realReturn=NaN.",
+      "whyItMatters": "The tab exists to show when Max Leverage is dangerous; in exactly that case it prints the loss as a positive net worth, and calls $42,000 drawn on no coins SAFE. Reachable with the tab's own sliders (holdings min 0, income min $0, growth min −50%) and the plan's own income and expenses (shared store fields).",
+      "fixSketch": "Print net worth sign-preserving, show '—' for a return over a zero base, stop Sell to Live at zero coins, and give a zero-collateral debt an infinite crash LTV printed through fmtLtvPct.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "Re-traced: StrategyCards.tsx:50 fmtUSD (format.ts:3-4 Math.abs); runNoBitcoin.ts:58 /nominal; runSmartBLOC_Living.ts:81,94-95 finalLtv 0 at 0 coins, crashLtv = finalLtv/0.2; StressTest.tsx:13-17 <0.70 → safe. probe (throwaway vitest, worktree, through slot) (0.7 ₿, $100,000, income 0, growth −50%, expenses 3500): smart netReal −9406.97 shown '$9,407', maxLev −6862.75 shown '$6,863'; at 0 ₿: maxLev netReal −41176.47, loc 42000, crashLtv 0; noBtc realReturn NaN; sell finalBtcHeld −0.3556. throwaway Playwright (vscan/, port 5181, sw blocked, retries 0, through slot; deleted) Living tab: 'Smart BLOC (Crash-Safe) | $9,407 | NET WORTH | … Final LTV | 127.4% | Real Return | -113.4%'. A sign-dropped net worth is a wrong money figure — Critical stands. LANE Light → Heavy: the crash-LTV and Sell-to-Live fixes sit in src/simulation/run*.ts (money math).",
+      "lane": "Heavy"
+    },
+    {
+      "id": "A4-4",
+      "severity": "Medium",
+      "file": "src/components/Daily/dailyView.ts",
+      "line": 30,
+      "title": "Daily's activity row for a Strike balance reading taken with no Strike collateral reads \"(0.0% LTV)\" once the app reloads (\"Infinity% LTV\" before), through an open-coded LTV formatter the fmtLtvPct guard can't see.",
+      "evidence": "Path: dailyView.ts:30 pct = (frac) => `${(frac * 100).toFixed(1)}%`, used for strikeLtv (:68) and cbLtv (:70); src/store/slices/dayLogSlice.ts:118 strikeLtv = computeStrikeLtv(strikeBal, collateral, price) = Infinity at 0 collateral; persist and sync are JSON, which writes Infinity as null; (null*100).toFixed(1) = \"0.0\". Probe (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx vitest run src/__probeA4__/a4.probe.test.tsx --maxWorkers=2 -t 'Daily reading'`): live → {\"label\":\"Balance reading\",\"detail\":\"Strike $1,000.00 (Infinity% LTV)\"}; after JSON round trip reading={\"strikeBal\":1000,\"strikeLtv\":null,\"price\":100000} → \"Strike $1,000.00 (0.0% LTV)\". Edge E6 on screen (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts --project=w390 edge.spec.ts -g 'E6'`): STORED \"reading\":{\"strikeBal\":1000,\"strikeLtv\":null,\"price\":100000}; ROWS [\"Oct 25\\nBalance reading\\nStrike $1,000.00 (0.0% LTV)\"]. The guard (src/utils/__tests__/fmtLtvPct.test.ts:12) needs an identifier containing 'ltv' before '* 100).toFixed' — 'frac' passes it.",
+      "whyItMatters": "The journal records an unbacked $1,000 Strike balance as 0.0% LTV — the safest reading for the worst state, the inversion CLAUDE.md:47's rule exists to stop; the same row's CB half has the same formatter.",
+      "fixSketch": "Print a reading's LTVs through fmtLtvPct and read a null LTV as non-finite ('∞' with debt, '—' otherwise), never 0.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "dailyView.ts:30 pct open-coded, :68/:70; probe (throwaway vitest, worktree, through slot): describeDayEvent live 'Strike $1,000.00 (Infinity% LTV)'; after JSON round trip strikeLtv null → 'Strike $1,000.00 (0.0% LTV)'. fmtLtvPct(null) already returns '—'. Guard regex in fmtLtvPct.test.ts:11 needs 'ltv' before '* 100' — 'frac' passes. Guard line is :11 (OPEN_CODED_LTV), not :12.",
+      "lane": "Light"
+    },
+    {
+      "id": "A4-5",
+      "severity": "Medium",
+      "file": "src/components/Almanac/ScenarioFace.tsx",
+      "line": 37,
+      "title": "The Scenario face prints \"Strike LTV Infinity% → Infinity% NaNpp\", \"+Infinitypp\" and \"Crash LTV … Infinity%\" whenever Strike collateral is zero against a Strike balance — a local LTV formatter the guard misses.",
+      "evidence": "Path: ScenarioFace.tsx:37 pct = (frac) => (frac*100).toFixed(1)+'%', :38 pp; applied at :133-136 and :142 to diffScenarios' strikeLtv/crashLtv (src/simulation/scenarioDiff.ts:97-104, 123; safetyView.ts:199-200 computeStrikeLtv → Infinity; Infinity − Infinity = NaN for the delta). Edge E1 (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts --project=w390 edge.spec.ts -g 'E1'`; store: Strike balance $1,000, line $10,000, no Strike collateral): \"Credit used 10.0% → 10.0% +0.0pp Strike LTV Infinity% → Infinity% NaNpp Crash LTV Infinity% → Infinity% No dimension worsens\". Edge E2 (Strike collateral 0.1 ₿, the 'Strike collateral' what-if lever typed to 0): before \"Strike LTV 10.0% → 10.0% +0.0pp Crash LTV 50.0% → 50.0%\"; after \"Strike LTV 10.0% → Infinity% +Infinitypp Crash LTV 50.0% → Infinity% Hypothetical is worse on 1 of 3\".",
+      "whyItMatters": "The what-if built to ask 'what if I move my collateral off Strike' prints broken text at exactly that answer; the guard that should have caught it keys on the variable's name.",
+      "fixSketch": "Print the LTV cells through fmtLtvPct and the pp chip as '—' for a non-finite delta.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "ScenarioFace.tsx:37-38 local pct/pp, applied :133-136 and :142 with no finite guard; computeStrikeLtv(1000,0,p) = Infinity (fmtLtvPct.test asserts the source emits it), so 'Infinity%' and Infinity−Infinity = NaN 'NaNpp' follow by construction. Not re-run on screen (code path is direct).",
+      "lane": "Light"
+    },
+    {
+      "id": "A4-6",
+      "severity": "Medium",
+      "file": "src/components/Collateral/TierCards.tsx",
+      "line": 28,
+      "title": "The Smart BLOC tab's Custom tier says \"Day-one LTV: 0.0% · 80% crash → 0% Safe\" for a month's expenses drawn on ₿0.0000 of collateral, and the LTV guard exempts the whole file on a reason (\"a ratio of configured constants\") that is false for this card.",
+      "evidence": "Path: TierCards.tsx:28-30 customDayOneLtv = sandboxBtc > 0 && btcPrice > 0 ? expenses/(sandboxBtc×btcPrice) : 0; :31-33 label 'Safe'; printed at :119 ((customDayOneLtv * 100).toFixed(1)) and :124. src/utils/__tests__/fmtLtvPct.test.ts:64-65 drops every grep hit containing 'TierCards' because 'TierCards' day-one LTV is a ratio of configured constants and cannot be non-finite' — true of :69 (the TIERS constants), not of :119 (a computed ratio with a 0 fallback). Scan (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts`), loan seed at 1280, full:tab:Smart BLOC: \"CUSTOM ₿ 0.0000 BTC Day-one LTV: 0.0% 80% crash → 0% Safe\" (expenses $3,500, Strike collateral 0, so sandboxBtc = getCurrentBtcHeld() = 0).",
+      "whyItMatters": "The sandbox tells an owner with no Strike collateral that drawing the month's expenses stays Safe through an 80% crash — the 0-for-infinite inversion the LTV rule names — and the guard can never catch this file's next open-coded LTV because its exemption is file-wide.",
+      "fixSketch": "Make the zero-collateral custom LTV infinite and print it through fmtLtvPct ('∞', 'Liquidated'); narrow the guard's exemption to line 69's constant tiers.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "TierCards.tsx:29-34 0 fallback → crash 0 → 'Safe'; :119 open-coded; fmtLtvPct.test.ts:64-65 exempts every 'TierCards' line on a reason true only of the constant tiers. Code path settles it.",
+      "lane": "Light"
+    },
+    {
+      "id": "A4-7",
+      "severity": "Medium",
+      "file": "src/utils/format.ts",
+      "line": 59,
+      "title": "The Mining face's figures disagree with its words: a negative net prints \"$-1.0620\", the sats net subtracts electricity under the face's own \"100% of mined sats kept\", and with no live quote every figure is valued at a hard-coded $80,000 labelled \"Live: $80,000\".",
+      "evidence": "Path: format.ts:58-59 fmtMiningUSD: n < 0.01 → '$' + n.toFixed(4) for any negative; src/simulation/miningUtils.ts monthlyNetUSD = gross − elec, its sats = usdToSats(net); src/components/Mining/MiningProjectionTable.tsx:131-139 'NET ACCUMULATED' = gross sats + 'Electricity paid in fiat · 100% of mined sats kept'; rule .claude/rules/ui.md:20 'Mining electricity | Fiat overhead — 100% sats kept, never deducted'; src/hooks/useMiningSimulation.ts:15 btcPriceOverride ?? livePrice ?? 80000; src/components/Mining/MiningInputsPanel.tsx:245 'Live: $' + (livePrice ?? btcPrice). Scan (all three seeds, both widths, Mining face and Miners tool, 60 screens): \"Daily EV $0.08 Monthly Net $-1.0620 Yearly Net $-12.7442\". Edge E5 sats (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts --project=w390 edge.spec.ts -g 'E5'`): \"Daily EV 101 sats Monthly Net -1,328 sats Yearly Net -15,930 sats\" beside \"⛏ Mined 丰 1,625 sats … NET ACCUMULATED 丰 1,625 sats Electricity paid in fiat · 100% of mined sats kept\". Edge E9 (app price manual $100,000, live quote aborted as offline): \"BTC Price LIVE MANUAL Live: $80,000\". Probe (default fleet at $100,000): usd monthlyNet=$-0.4570 yearlyNet=$-5.4845; sats monthlyNet=-457 sats.",
+      "whyItMatters": "The default fleet (two Bitaxes at 12¢/kWh) nets negative, so every visit shows a malformed dollar; sats mode deducts what the face and the rule say is never deducted; offline — the PWA's precached mode — a made-up price is labelled live and the owner's manual price is ignored.",
+      "fixSketch": "Format a negative mining dollar as '−$1.06'; show the sats net without electricity (or label it 'after electricity'); fall back to the store's btcPrice with a word that isn't 'Live'.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "format.ts:58-59 fmtMiningUSD: probe (throwaway vitest, worktree, through slot) fmtMiningUSD(−1.062) = '$-1.0620'; default fleet at $100,000 monthlyNet −$0.457 → '$-0.4570', −457 sats; miningUtils.ts:69-70 net sats = gross − electricity vs MiningProjectionTable.tsx:131-139 gross 'NET ACCUMULATED … 100% of mined sats kept' and rule ui.md:20; useMiningSimulation.ts:15 '?? 80000' with MiningInputsPanel.tsx:245 'Live: $'. Three defects in one finding; each holds by code.",
+      "lane": "Light"
+    },
+    {
+      "id": "A4-8",
+      "severity": "Medium",
+      "file": "src/components/Almanac/CyclingFace.tsx",
+      "line": 1171,
+      "title": "Cycling, Ownership and Strategy say \"This run: $0 over 0 borrows — a blended 2.00% of the amount moved\" and that the move \"still pays for itself after ~3.6 months at that blended fee\" on a run that moved nothing.",
+      "evidence": "Path: src/components/Almanac/cyclingFaceView.ts:161-165 refinanceFeeFraction falls back to CB_FEE_TIER1_PCT (0.02) when totalRefinancedUsd is 0 (cyclingFaceView.test.ts:168 pins the fallback); CyclingFace.tsx:408-409 feeFraction/feeBreakEvenMonths, :1171-1174 print it as this run's realized blend (OwnershipFace.tsx:1139-1142, UnifiedFace.tsx:966-969 the same). Scan (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts`), loan seed ($50,000 on 1 ₿, policy on), 15 screen visits (Cycling and Ownership faces, both widths, all loan-bearing seeds): \"This run: $0 over 0 borrows — a blended 2.00% of the amount moved. The Strike→Coinbase move still pays for itself after ~3.6 months at that blended fee.\" (text dump simple:face:Cycling line 193).",
+      "whyItMatters": "A sentence about what this run did states a realized fee rate for borrows that never happened, and a break-even for a move the run never makes — a false sentence on three faces, on the e2e's own seed.",
+      "fixSketch": "With no borrows, say 'No sweep to Coinbase on this run' and give the tier-1 fee's break-even as a rate, not as this run's blend.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "cyclingFaceView.ts:160-164 returns 0.02 when nothing moved (probe (throwaway vitest, worktree, through slot): refinanceFeeFraction(0,0) = 0.02); CyclingFace.tsx:1171-1174 prints it as 'This run: … a blended 2.00%' with no cbFeeCount guard; OwnershipFace.tsx:1139-1142 identical. The 0-borrow run on the loan seed rests on the scan; not re-run (the sentence's falsity at 0 borrows is by code).",
+      "lane": "Light"
+    },
+    {
+      "id": "A4-9",
+      "severity": "Minor",
+      "file": "src/components/Almanac/OwnershipFace.tsx",
+      "line": 897,
+      "title": "The Ownership (and Strategy) chart's ₿ axis rounds its ticks to one decimal, so a small stack's axis reads \"0.0₿ | 0.0₿ | 0.1₿ | 0.1₿ | 0.1₿\".",
+      "evidence": "Path: OwnershipFace.tsx:897 and UnifiedFace.tsx:834 tickFormatter={(x) => `${x.toFixed(1)}₿`}; Recharts' ticks 0, 0.03, 0.06, 0.09, 0.12 round to two pairs of equal labels. Scan (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx playwright test -c scan/playwright.config.ts`), plain seed (seedAndGoto), Ownership face at 390 and 1280 and in full mode: \"0 | 2 | 4 | … | 24 | 0.0₿ | 0.0₿ | 0.1₿ | 0.1₿ | 0.1₿\".",
+      "whyItMatters": "Repeated labels make the axis unreadable for any stack under about half a coin — a new owner's.",
+      "fixSketch": "Choose the tick decimals from the domain's span (2–3 dp under 1 ₿).",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "OwnershipFace.tsx:897 and UnifiedFace.tsx:834 tickFormatter x.toFixed(1); ticks under 0.15 ₿ round to repeated labels. Not re-run (scan's screen; formatter is unambiguous).",
+      "lane": "Light"
+    },
+    {
+      "id": "A4-10",
+      "severity": "Minor",
+      "file": "src/components/Viewer/goalTileView.ts",
+      "line": 28,
+      "title": "The Dashboard's goal tile (and Settings → Your plan with a goal set) prints a dust net-coins debt as a negative zero — \"−₿0.000 of ₿1.000\", read aloud \"minus 0.000 bitcoin\" — although the no-goal reading guards exactly that.",
+      "evidence": "Path: goalTileView.ts:28 goalPair(net, goal, reached) → net.toFixed(3) = '-0.000' for −0.0005 < net < 0 (planMonthView.ts:303-310); :33 netBtcText → '−₿0.000'; :36 aria 'minus 0.000'; the no-goal branch :59-60 maps '-0.000' to '0.000' ('a dust debt never reads as a negative zero'). planGoalLine (planMonthView.ts:326-329) goes through the same goalPair. Probe (`cd /tmp/hardening-1/audit-A4 && /tmp/hardening-1/bin/slot npx vitest run src/__probeA4__/a4.probe.test.tsx --maxWorkers=2 -t 'goal tile'`): goalTileView(-0.0001, 1) → {\"value\":\"−₿0.000 of ₿1.000\",\"sub\":\"net coins today · 0%\",\"aria\":\"Your goal: minus 0.000 bitcoin in net coins today, of 1.000 — 0%.\"}; goalNowView(-0.0001, null) → {\"value\":\"₿0.000\"}.",
+      "whyItMatters": "The same reading has two spellings depending on whether a goal is set, and a minus sign stands on a figure that prints zero.",
+      "fixSketch": "Apply goalNowView's '-0.000' → '0.000' rule inside goalPair (once), so the tile, Settings and THIS MONTH's goal line agree.",
+      "verdict": "CONFIRMED",
+      "verifierEvidence": "goalTileView.ts:28 via planMonthView.ts:303-310 goalPair (toFixed(3) unguarded); probe (throwaway vitest, worktree, through slot): goalTileView(−0.0001,1).value '−₿0.000 of ₿1.000', aria 'minus 0.000'; goalNowView(−0.0001,null).value '₿0.000'.",
+      "lane": "Light"
+    }
+  ],
+  "allowance": [
+    {
+      "text": "Failed to load resource: net::ERR_FAILED (https://api.coinbase.com/v2/prices/BTC-USD/spot)",
+      "why": "The hermetic stub (controlDock.spec.ts L20) aborts the live quote and Chromium logs every aborted fetch as console.error; useBtcPrice.ts:30-58 fetches on mount and every poll even in manual mode (only the store push at :38 is gated by btcPriceMode). Re-observed: the only console error across the three verification screens."
+    }
+  ],
+  "scanNotes": {
+    "websocketError": "The scan's '[vite] failed to connect to websocket' came from its own routeWebSocket(/.*/) closing Vite's HMR socket; E1 must not stub localhost WebSockets, and then needs no allowance for it.",
+    "scanField": "Counts (305 visits, per-seed splits) not re-run — UNVERIFIED as numbers, but nothing in the findings rests on them alone; the three Critical screens were re-visited and reproduced. faceCounts are consistent with AlmanacView's visibleFaces array (gated faces absent, unified dropped without a loan)."
+  },
+  "counts": {
+    "input": 10,
+    "confirmed": 10,
+    "refuted": 0,
+    "unverified": 0,
+    "severityChanged": 1,
+    "bySeverity": {
+      "Critical": 2,
+      "Medium": 6,
+      "Minor": 2
+    },
+    "laneChanged": 1
+  }
+}

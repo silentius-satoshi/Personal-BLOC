@@ -1,0 +1,549 @@
+{
+  "target": "HJ",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "mutants": [
+    {
+      "id": "HJ-01",
+      "target": "HJ",
+      "file": "src/components/Daily/calendarModel.ts",
+      "find": "if (flowVenue(ev) === 'strike') draw += ev.amount;",
+      "replace": "if (ev.target === 'strike') draw += ev.amount;",
+      "rule": ".claude/rules/journal.md — A draw/paydown with no `target` is STRIKE",
+      "why": "A bare `ev.target` read in the sign-off's stream: every legacy target-less Strike draw lands in cbDraw, so a month that drew $1,000 prefills \"Expenses actually paid\" at $0.00 and confirmMonth writes 0 to expensesActual.",
+      "tests": [
+        "src/components/Daily/__tests__/calendarModel.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-02",
+      "target": "HJ",
+      "file": "src/store/dailyRouting.ts",
+      "find": "if (!ev || !isMonthlyMeaningful(ev)) return null;",
+      "replace": "if (!ev) return null;",
+      "rule": ".claude/rules/journal.md — A Coinbase borrow/paydown is journal-only at EVERY dayLog reader",
+      "why": "monthOf stops gating on isMonthlyMeaningful (\"rerollMonth filters anyway\"): a Coinbase borrow (or a cold move, or setCbCollateralBtc's cbCollateralReading) logged into a SIGNED daily month that holds a Strike draw re-rolls it and flips confirmed → false — a journal-only event reopens a sign-off.",
+      "tests": [
+        "src/store/__tests__/cbDebtEvents.test.ts",
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/coldStorage.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-03",
+      "target": "HJ",
+      "file": "src/store/dailyRouting.ts",
+      "find": "const inMonth = s.dayLog.filter((e) => isMonthlyMeaningful(e) && bucketEventToMonth(e.date, start) === month);",
+      "replace": "const inMonth = s.dayLog.filter((e) => bucketEventToMonth(e.date, start) === month);",
+      "rule": ".claude/rules/journal.md — A buy's dollars are the owner's",
+      "why": "The lag check counts journal-only events: a Coinbase borrow or a cold move logged after the month was signed makes monthEntryCurrent false, so a dollars-only buy edit ($650 → $700) takes the full path and reopens the signed month instead of writing Income → BTC alone.",
+      "tests": [
+        "src/store/__tests__/buyDollarsStore.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-04",
+      "target": "HJ",
+      "file": "src/simulation/logUtils.ts",
+      "find": "&& (e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts))) {",
+      "replace": "&& e.ts > anchor.ts) {",
+      "rule": ".claude/rules/journal.md — Strike collateral (v20 Collateral-Truth)",
+      "why": "deriveStrikeCollateral's strictly-after filter goes ts-only (deriveCbCollateral's idiom) — copy 1 of the (date, ts) ordering: a 0.3 ₿ Strike deposit backfilled to a date BEFORE a 1.0 ₿ reading but logged after it is re-summed, so current collateral reads 1.3 ₿ (base 1.0 ₿) and Safety's Strike LTV understates.",
+      "tests": [
+        "src/simulation/__tests__/strikeCollateral.test.ts",
+        "src/simulation/__tests__/coldStorage.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-05",
+      "target": "HJ",
+      "file": "src/simulation/logUtils.ts",
+      "find": "if (e.kind !== 'balanceReading' || e.reading.strikeCollateral === undefined) continue;\n    if (anchor === null || e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts)) anchor = e;",
+      "replace": "if (e.kind !== 'balanceReading' || e.reading.strikeCollateral === undefined) continue;\n    if (anchor === null || e.date >= anchor.date) anchor = e;",
+      "rule": ".claude/rules/journal.md — Strike collateral (v20 Collateral-Truth)",
+      "why": "deriveStrikeCollateral's anchor pick drops its ts tiebreak (date >=, array order wins a tie): two same-day collateral readings 0.5 ₿ then 0.6 ₿; editing the first to 0.9 ₿ bumps its ts but keeps its array slot (updateDayEvent maps in place) — base anchors 0.9 ₿, the mutant keeps 0.6 ₿.",
+      "tests": [
+        "src/simulation/__tests__/strikeCollateral.test.ts",
+        "src/simulation/__tests__/coldStorage.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-06",
+      "target": "HJ",
+      "file": "src/simulation/logUtils.ts",
+      "find": "if (e.kind !== 'balanceReading' || e.reading.cbBal === undefined) continue;\n    if (anchor === null || e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts)) anchor = e;",
+      "replace": "if (e.kind !== 'balanceReading' || e.reading.cbBal === undefined) continue;\n    if (anchor === null || e.ts > anchor.ts) anchor = e;",
+      "rule": "docs/claude/journal.md § Coinbase borrow & paydown events (journal-only; store unchanged, NO bump)",
+      "why": "unreconciledCbFlows' anchor goes ts-primary — copy 2 of the (date, ts) ordering: a CB reading dated 01-20 ($70,000) plus an older one backfilled later (dated 01-05, $50,000, higher ts) — the backfill anchors, so a $10,000 borrow dated 01-10 (already inside the $70,000) is reported stale and the sheet suggests $60,000 (base: no signal, $70,000).",
+      "tests": [
+        "src/simulation/__tests__/cbDebtRollup.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-07",
+      "target": "HJ",
+      "file": "src/simulation/logUtils.ts",
+      "find": "const sorted = [...monthlyLog].sort((a, b) => a.month - b.month);",
+      "replace": "const sorted = [...monthlyLog];",
+      "rule": ".claude/rules/journal.md — `deriveCurrentPosition`",
+      "why": "deriveCurrentPosition trusts the log's order: an unsorted monthlyLog (setMonthlyLog, a raw pull, a restored backup) puts the Advisor position card's Strike balance and last logged month on whichever entry came last — month 1's $3,000 instead of month 3's $9,000.",
+      "tests": [
+        "src/simulation/__tests__/monthlyLog.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-08",
+      "target": "HJ",
+      "file": "src/store/persistConfig.ts",
+      "find": "if (e.btcHeld == null) e.btcHeld = running;",
+      "replace": "e.btcHeld = running;",
+      "rule": ".claude/rules/store.md — Zustand v11 migration",
+      "why": "The v11 btcHeld backfill made unconditional: migrateState runs on EVERY bump, so the next one overwrites each month's RECORDED Strike col (0.62 ₿ from its reading) with the running chain (baseline + cumulative buys) — the chain journal.md's v20 row deleted.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/viewerRoster.test.ts",
+        "src/store/__tests__/planGoalStore.test.ts",
+        "src/store/__tests__/simpleView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HJ-09",
+      "target": "HJ",
+      "file": "src/store/persistConfig.ts",
+      "find": "if (e.expensesActual == null) e.expensesActual = persistedState.expenses ?? 0;",
+      "replace": "e.expensesActual = persistedState.expenses ?? 0;",
+      "rule": ".claude/rules/store.md — Zustand v11 migration",
+      "why": "The v11 expensesActual default made unconditional: the next bump replaces every month's actual expenses — the sign-off's signed $2,500 — with the plan's static $3,500 assumption.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/viewerRoster.test.ts",
+        "src/store/__tests__/planGoalStore.test.ts",
+        "src/store/__tests__/simpleView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HJ-10",
+      "target": "HJ",
+      "file": "src/store/persistConfig.ts",
+      "find": "if (e.confirmed == null) e.confirmed = true;",
+      "replace": "e.confirmed = true;",
+      "rule": ".claude/rules/store.md — Zustand v19 migration",
+      "why": "The v19 backfill made unconditional (\"only where undefined\" dropped): the next bump signs every open month — confirmed:false (awaiting sign-off, or reopened by an edit) becomes confirmed:true with no review.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/viewerRoster.test.ts",
+        "src/store/__tests__/planGoalStore.test.ts",
+        "src/store/__tests__/simpleView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HJ-11",
+      "target": "HJ",
+      "file": "src/store/persistConfig.ts",
+      "find": "if (e.source == null)    e.source = 'manual';",
+      "replace": "e.source = 'manual';",
+      "rule": ".claude/rules/store.md — Zustand v19 migration",
+      "why": "The v19 source backfill made unconditional: the next bump stamps every daily-owned month source:'manual' — the M2 guard stops protecting the Ledger's months from Monthly/Advisor writes.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/viewerRoster.test.ts",
+        "src/store/__tests__/planGoalStore.test.ts",
+        "src/store/__tests__/simpleView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HJ-12",
+      "target": "HJ",
+      "file": "src/store/persistConfig.ts",
+      "find": "if (migratedDayLog.length === 0 && persistedState.hasCbLoan && persistedState.cbCollateralBtc != null) {",
+      "replace": "if (persistedState.hasCbLoan && persistedState.cbCollateralBtc != null) {",
+      "rule": ".claude/rules/store.md — Zustand v19 migration",
+      "why": "The C2 seed loses its empty-journal guard: every later bump appends another synthetic cbCollateralReading (dated the migration day, 1.48 ₿) to an existing journal, which then syncs as if the owner had logged it — ONE seed becomes one per bump.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/viewerRoster.test.ts",
+        "src/store/__tests__/planGoalStore.test.ts",
+        "src/store/__tests__/simpleView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HJ-13",
+      "target": "HJ",
+      "file": "src/store/persistConfig.ts",
+      "find": "strikeCollateralBtc:  persistedState.strikeCollateralBtc ?? seedStrikeCollateral,",
+      "replace": "strikeCollateralBtc:  seedStrikeCollateral,",
+      "rule": ".claude/rules/store.md — Zustand v20 migration",
+      "why": "The v20 cache-seed ignores the stored cache: at the next bump an owner whose collateral no reading states (getCurrentBtcHeld = the cache, 0.80 ₿) is re-seeded from the last entry's btcHeld + pending (a corrected 0.62 ₿) — current collateral moves across a migration that must leave it byte-identical.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/viewerRoster.test.ts",
+        "src/store/__tests__/planGoalStore.test.ts",
+        "src/store/__tests__/simpleView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HJ-14",
+      "target": "HJ",
+      "file": "src/store/dailyRouting.ts",
+      "find": "const targetMonth = start.getUTCMonth() + (month - 1);",
+      "replace": "const targetMonth = start.getUTCMonth() + month;",
+      "rule": "docs/claude/journal.md § Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)",
+      "why": "strategyMonthDate steps one month too far: a month the journal creates is dated at the NEXT anniversary (month 1 of a 2026-06-01 plan gets 2026-07-01, which buckets to month 2) — the Ledger CSV's Date column and the month log name the wrong month.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/recordedCollateralStore.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-15",
+      "target": "HJ",
+      "file": "src/store/slices/advisorJournalSlice.ts",
+      "find": "for (let m = 1; m <= 12; m++) {",
+      "replace": "for (let m = 1; m < 12; m++) {",
+      "rule": "docs/claude/journal.md § Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)",
+      "why": "The one-shot reconcile's ascending loop stops at 11: a draw the calendar-anniversary fix moves from month 11 into month 12 leaves month 11 but never arrives — month 12, rolled under the old 30.4375 buckets, is never re-rolled and under-reports expensesActual.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/recordedCollateralStore.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-16",
+      "target": "HJ",
+      "file": "src/store/slices/advisorJournalSlice.ts",
+      "find": "const { entry: fresh } = rollupMonth(s.dayLog, m, start, priorStocksForMonth(s.dayLog, start, m));",
+      "replace": "const { entry: fresh } = rollupMonth(s.dayLog, m, start, priorStocksForMonth(s.dayLog, start, m - 1));",
+      "rule": "docs/claude/journal.md § Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)",
+      "why": "The reconcile passes m − 1 to priorStocksForMonth (which already steps back one): a signed carry-forward month's fresh rollup borrows stocks from TWO months back ($2,000 instead of $3,000), differs from the stored entry, and a joining device's one-shot reconcile re-rolls and un-signs it — the diff guard is no longer idempotent.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/recordedCollateralStore.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-17",
+      "target": "HJ",
+      "file": "src/store/dailyRouting.ts",
+      "find": "if (existing && existing.source === 'daily') get().deleteLogEntry(month);",
+      "replace": "if (existing) get().deleteLogEntry(month);",
+      "rule": "docs/claude/daily-mode.md § Daily Mode (P2a — store wiring; store v18→19)",
+      "why": "The emptied-month cleanup deletes any entry, not only a daily-owned one: a hand-logged (manual) month 1 whose only boundary Strike deposit the reconcile re-attributes to month 2 is deleted and tombstoned — the owner's manual record is lost.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/cbDebtEvents.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-18",
+      "target": "HJ",
+      "file": "src/store/slices/advisorJournalSlice.ts",
+      "find": "if (e) get().upsertLogEntry({ ...e, ...extras, confirmed: true });",
+      "replace": "if (e) get().upsertLogEntry({ ...e, ...extras, confirmed: true, provisional: false });",
+      "rule": "docs/claude/daily-mode.md § Daily Mode (P4c-3b — reconcile → Review → confirm flow; store stays v19, NO store changes)",
+      "why": "The sign-off clears provisional: \"Confirm as provisional\" stores provisional:false, so a month whose stocks were carried forward reads as measured — the orthogonal-flags model (only a reading clears it) breaks and the Ledger stops marking the estimate.",
+      "tests": [
+        "src/store/__tests__/strikeMinPayment.test.ts",
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/buyDollarsStore.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-19",
+      "target": "HJ",
+      "file": "src/simulation/logUtils.ts",
+      "find": "if (orphaned || curAsOf === null || R.date >= curAsOf) {",
+      "replace": "if (orphaned || curAsOf === null || R.date > curAsOf) {",
+      "rule": "docs/claude/journal.md § Logging Consolidation §5b — Readings-Unification (the journal drives the live safety anchors; store stays v19)",
+      "why": "deriveReadingAnchors' guard goes strict (date > asOf): a reading logged TODAY after a same-day knob set (Settings stamps asOf = today) never re-anchors — Safety keeps the typed $6,000 while the journal's reading says $5,000.",
+      "tests": [
+        "src/simulation/__tests__/readingAnchors.test.ts",
+        "src/simulation/__tests__/cbDebtRollup.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-20",
+      "target": "HJ",
+      "file": "src/store/dailyRouting.ts",
+      "find": "return { oldDate: ev.date, strikeBal: ev.reading.strikeBal, cbBal: ev.reading.cbBal, cbLiqPrice: ev.reading.cbLiqPrice };",
+      "replace": "return { oldDate: ev.date, strikeBal: ev.reading.strikeBal, cbBal: ev.reading.cbBal };",
+      "rule": "docs/claude/journal.md § Logging Consolidation §5b — Readings-Unification (the journal drives the live safety anchors; store stays v19)",
+      "why": "readingCtx omits cbLiqPrice: deleting the reading that set the Coinbase liquidation price ($61,000) no longer falls back to the surviving reading's $60,000 — Safety keeps a liquidation price from a deleted reading.",
+      "tests": [
+        "src/store/__tests__/dailyModeStore.test.ts",
+        "src/store/__tests__/buyDollarsStore.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-21",
+      "target": "HJ",
+      "file": "src/components/Daily/calendarModel.ts",
+      "find": "else if (ev.kind === 'minPayment') minPayment += ev.amount;",
+      "replace": "else if (ev.kind === 'minPayment') paydown += ev.amount;",
+      "rule": "docs/claude/journal.md § Logging Consolidation — One Ledger, One Sign-off, a Pure Playbook (§1–§4 + §2b; store stays v19, NO bump)",
+      "why": "Strike's minimum (a minPayment event) summed into the stream's paydown: the review's Paydown row grows by the $200 minimum and streams.minPayment stays 0, so the sign-off's \"Strike minimum paid\" prefill falls back to the owed estimate instead of the $200 logged — the minimum is balance-neutral by rule.",
+      "tests": [
+        "src/components/Daily/__tests__/calendarModel.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-22",
+      "target": "HJ",
+      "file": "src/components/Daily/calendarModel.ts",
+      "find": "if (onDay.some((e) => e.kind === 'draw' || e.kind === 'buy' || e.kind === 'paydown' || e.kind === 'deposit' || e.kind === 'withdraw')) {",
+      "replace": "if (onDay.some((e) => e.kind === 'draw' || e.kind === 'buy' || e.kind === 'paydown' || e.kind === 'deposit')) {",
+      "rule": "docs/claude/daily-mode.md § Daily Mode (P4c-1a — Week|Month calendar + pure calendarModel; store stays v19)",
+      "why": "buildDayCells forgets withdraw: a day whose only event is a collateral withdraw (0.05 ₿ off Strike) shows no 'logged' pip on the Week/Month calendar.",
+      "tests": [
+        "src/components/Daily/__tests__/calendarModel.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-23",
+      "target": "HJ",
+      "file": "src/lib/ledgerCsv.ts",
+      "find": "if (hasCbLoan) cells.push(num(e.cbBal), num(e.cbLtv));",
+      "replace": "if (hasCbLoan) cells.push(num(e.cbLtv), num(e.cbBal));",
+      "rule": "docs/claude/almanac.md § M-L1 — Ledger face (seventh Almanac face) + CSV export (store unchanged, NO bump)",
+      "why": "The CB cells swapped under an unchanged header: with hasCbLoan the CSV's \"CB bal\" column carries 0.4 (the LTV) and \"CB LTV\" carries 60000 — column order holds in the header only.",
+      "tests": [
+        "src/lib/__tests__/ledgerCsv.test.ts",
+        "src/lib/__tests__/ledgerCold.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-24",
+      "target": "HJ",
+      "file": "src/lib/ledgerCsv.ts",
+      "find": "if (/[\",\\r\\n]/.test(value)) return `\"${value.replace(/\"/g, '\"\"')}\"`;",
+      "replace": "if (/[\",\\r\\n]/.test(value)) return `\"${value}\"`;",
+      "rule": "docs/claude/almanac.md § M-L1 — Ledger face (seventh Almanac face) + CSV export (store unchanged, NO bump)",
+      "why": "csvCell quotes a cell but no longer doubles an embedded quote: a cell holding `\"` (a malformed Date string, 2026-01-01\"x) ends the field early and shifts the row — the RFC-4180 escaping the doc promises.",
+      "tests": [
+        "src/lib/__tests__/ledgerCsv.test.ts",
+        "src/lib/__tests__/ledgerCold.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-25",
+      "target": "HJ",
+      "file": "src/simulation/logUtils.ts",
+      "find": "return { show: drift > 0.05 && materialSinceDismissal, avg };",
+      "replace": "return { show: drift >= 0.05 && materialSinceDismissal, avg };",
+      "rule": "boundary: THIS MONTH's expenses prompt fires at drift > 5% (computeExpenseReanchor; docs/claude/file-structure.md logUtils entry)",
+      "why": "The re-anchor prompt fires at exactly 5% drift: three done months averaging $4,200 against a $4,000 plan (200 / 4,000 = 0.05) raise the prompt the rule reserves for drift > 5%.",
+      "tests": [
+        "src/simulation/__tests__/monthlyLog.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HJ-26",
+      "target": "HJ",
+      "file": "src/simulation/logUtils.ts",
+      "find": "if (anchorMs === null || !Number.isFinite(anchorMs)) return true;",
+      "replace": "if (anchorMs === null) return true;",
+      "rule": "docs/claude/engines.md § `coldStorageBtc` — a REAL balance, not the projection",
+      "why": "isAfterColdAnchor loses its non-finite guard: a NaN coldStorageBtcAsOf (a stamp the derive can't read, treated like null) makes toLocalISO print 'NaN-NaN-NaN', which no date exceeds — a 0.2 ₿ cold deposit drops out of the live cold total (base counts it) and Settings' \"N moves since\" reads 0.",
+      "tests": [
+        "src/simulation/__tests__/coldStorage.test.ts",
+        "src/store/__tests__/coldStorage.test.ts"
+      ],
+      "outsideList": false
+    }
+  ],
+  "rowCoverage": [
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "THIS MONTH, Daily and Daily's sheets print dollars to the cent",
+      "status": "other-target",
+      "mutants": [],
+      "why": "The cents row is owned by H-S (spec §5.2: journal.md (the cents row) is in H-S's rules)."
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "A draw/paydown with no `target` is STRIKE",
+      "status": "mutated",
+      "mutants": [
+        "HJ-01"
+      ],
+      "why": "The earlier probe already caught flowVenue's 'strike' default; HJ-01 plants the rule's other half (a bare ev.target read) on the sign-off's prefill stream."
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "A Coinbase borrow/paydown is journal-only at EVERY dayLog reader",
+      "status": "mutated",
+      "mutants": [
+        "HJ-02"
+      ],
+      "why": "The rollup skip (the probe), isMonthlyMeaningful's line, aggregateEvents' split, rebuildEditedFlow and the labels are each pinned (cbDebtRollup/cbDebtEvents/calendarModel/cbDebtSheet tests); HJ-02 drops the shared predicate at monthOf, which none of them reaches."
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "A buy's dollars are the owner's",
+      "status": "mutated",
+      "mutants": [
+        "HJ-03"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "Strike collateral (v20 Collateral-Truth)",
+      "status": "mutated",
+      "mutants": [
+        "HJ-04",
+        "HJ-05",
+        "HJ-08",
+        "HJ-13"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "`deriveCurrentPosition`",
+      "status": "mutated",
+      "mutants": [
+        "HJ-07"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/journal.md",
+      "row": "`MonthlyLogOverlay`",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "A React component row (portal to document.body, centered modal, 0-indexed initialMonth, openInEditMode, months = PlanLogRow[]): the repo has no render harness, and its only readers are source-reading wiring tests of its props — a mutant there is observable only by a render (or e2e, which the hunt does not run)."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v7 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v8 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v9 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v10 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v11 migration",
+      "status": "mutated",
+      "mutants": [
+        "HJ-08",
+        "HJ-09"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v15 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v16 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v17 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v18 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v20 migration",
+      "status": "mutated",
+      "mutants": [
+        "HJ-13"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v21 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v19 migration",
+      "status": "mutated",
+      "mutants": [
+        "HJ-10",
+        "HJ-11",
+        "HJ-12"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v14 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v12 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v13 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "HJ owns only the v11, v19 and v20 rows of store.md (task assignment); this migration row belongs to another target."
+    }
+  ]
+}

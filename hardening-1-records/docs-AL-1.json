@@ -1,0 +1,2233 @@
+{
+ "key": "AL-1",
+ "doc": "docs/claude/almanac.md",
+ "lines": "1-399, 400-882",
+ "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+ "counts": {
+  "TRUE": 343,
+  "STALE": 10,
+  "FALSE": 3,
+  "HISTORY": 30,
+  "UNCHECKABLE": 17
+ },
+ "records": [
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 8,
+   "claim": "The dial is built but NOT mounted on any surface (the surface switch is P4)",
+   "verdict": "HISTORY",
+   "evidence": "Phase-scoped P1 note; CycleDial is now mounted by HalvingClock.tsx:41 and CycleClock.tsx:70. Note CycleDial.tsx:15 docblock still says 'Not wired to any surface (P4)' — a stale code comment, not a doc pointer.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 92,
+   "claim": "Simple mode: an inline FA book-solid SVG icon button (15px Daily / 16px Monthly, matching each view's existing grid icon) in both appbars (DailyModeView + SimpleModeView)",
+   "verdict": "FALSE",
+   "evidence": "Both views now render the shared HeaderNavCluster (DailyModeView.tsx:226-232, SimpleModeView.tsx:132-139); its single Almanac button is a 15px SVG (HeaderNavCluster.tsx:83-84, width=\"15\" height=\"15\" viewBox=\"0 0 640 640\") in both — no per-view 15/16px sizes. The onOpenAlmanac → setActiveTab('almanac') wiring still holds (AppShell.tsx:302,343,345). Phase-log paragraph (P4) may be read as history; flagged because it reads present-tense.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 132,
+   "claim": "AlmanacView widened ... to a full 6-face hub; face widened to 'halving'|'cycle'|'mining'|'powerlaw'|'sats'|'defense'",
+   "verdict": "HISTORY",
+   "evidence": "Phase-scoped; the Face union is now 12 keys (AlmanacView.tsx:55). Later sections in the doc record each widening.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 310,
+   "claim": "the sub-nav/pager visibleFaces array APPENDS it LAST (after the ledger spread)",
+   "verdict": "HISTORY",
+   "evidence": "Phase-scoped: the pager is gone (AlmanacView.tsx:45-49) and scenario is no longer last — cycling/ownership/unified/decision follow it (AlmanacView.tsx:116-123). Still after the ledger spread.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 381,
+   "claim": "the liquidated branch must survive being appended to the call (three unit cases pin it)",
+   "verdict": "STALE",
+   "evidence": "The M10 describe in cyclingFaceView.test.ts:760-787 has FOUR cases (763 called+survived, 769 called+liquidated, 775 yielded+liquidated, 782 yielded+survived). Shallow history (boundary commit 61ff6e7) can't say whether the doc counted three of them on purpose — verifier please judge.",
+   "correction": {
+    "before": "(three unit cases pin it)",
+    "after": "(four unit cases pin it)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 391,
+   "claim": "the Almanac's only *background* network call remains the consented useChainTip",
+   "verdict": "FALSE",
+   "evidence": "Other Almanac faces poll on their own: the Power Law face calls useBtcPrice (PowerLawFace.tsx:2,55), which fetches the spot price every 10 s (useBtcPrice.ts:7,32,58); so do the Mining face's panel (MiningInputsPanel.tsx:3) and the Sats face's panel (ConverterSidebar.tsx:2), and the Decision face fetches history through usePowerLawData (DecisionFace.tsx:18; usePowerLawData.ts:42). It holds only if read as the clock/engine faces' own surface. useMorphoRate.ts:59 repeats the same claim in its docblock.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 397,
+   "claim": "cyclingSim.test.ts (26)",
+   "verdict": "STALE",
+   "evidence": "grep -cE '^\\s*(it|test)\\(' src/simulation/__tests__/cyclingSim.test.ts → 100 (no .each/.skip). 'Suite 968 → 1004' on line 398 is a dated snapshot (HISTORY).",
+   "correction": {
+    "before": "cyclingSim.test.ts` (26)",
+    "after": "cyclingSim.test.ts` (100)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 397,
+   "claim": "powerLaw.test.ts (10, all RELATIONAL against a fixed UTC date)",
+   "verdict": "STALE",
+   "evidence": "grep -cE '^\\s*(it|test)\\(' src/simulation/__tests__/powerLaw.test.ts → 18; START fixed at powerLaw.test.ts:16.",
+   "correction": {
+    "before": "`powerLaw.test.ts` (10, all",
+    "after": "`powerLaw.test.ts` (18, all"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 404,
+   "claim": "cyclingFaceView.ts has a TYPE-only import of CyclingRow (from the engine)",
+   "verdict": "FALSE",
+   "evidence": "cyclingFaceView.ts:1-3 imports VALUES from the engine (allInEquity, baselineAllInEquity, neverDrawTie) beside the types, plus value imports from ownership, runCoinbaseLoan, cbMetrics, strikeCredit, emergencyModel and supportPolicyView (lines 4-13); its own docblock (lines 15-24) lists them. React-free and store-free still hold.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 412,
+   "claim": "btcGained(row, base, rowPriceOverride?) → {gross, net}",
+   "verdict": "STALE",
+   "evidence": "The field is now `yours`, not `net`: BtcGain {gross, yours} (cyclingFaceView.ts:427-432,441-446); every caller reads .yours (CyclingFace.tsx:548-550). The sentence still holds: gross is price-independent and the override re-prices the row side only.",
+   "correction": {
+    "before": "`{gross, net}`",
+    "after": "`{gross, yours}`"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 457,
+   "claim": "FACES now covers all three engine faces (Cycling, Ownership, UnifiedFace.tsx)",
+   "verdict": "STALE",
+   "evidence": "resetMirror.test.ts:20: const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx', 'DecisionFace.tsx'] — four.",
+   "correction": {
+    "before": "covers **all three** engine faces (Cycling, Ownership, **UnifiedFace.tsx**)",
+    "after": "covers **all four** engine faces (Cycling, Ownership, **UnifiedFace.tsx**, **DecisionFace.tsx**)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 470,
+   "claim": "useStressLens ... (both faces)",
+   "verdict": "STALE",
+   "evidence": "useStressLens( is called by four faces: CyclingFace, OwnershipFace, UnifiedFace, DecisionFace (grep -rln 'useStressLens(' src/components).",
+   "correction": {
+    "before": ", both faces)",
+    "after": ", all four engine faces)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 500,
+   "claim": "Its expected-callers list now names THREE faces (Cycling, Ownership, UnifiedFace)",
+   "verdict": "STALE",
+   "evidence": "stressAnchor.test.ts:104-115: 'all four engine faces (Cycling, Ownership, Strategy, Decision)' — the list adds DecisionFace.tsx.",
+   "correction": {
+    "before": "names THREE faces (Cycling, Ownership, UnifiedFace)",
+    "after": "names FOUR faces (Cycling, Ownership, UnifiedFace, DecisionFace)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 528,
+   "claim": "cyclingFaceView.test.ts (19)",
+   "verdict": "STALE",
+   "evidence": "grep -cE '^\\s*(it|test)\\(' src/components/Almanac/__tests__/cyclingFaceView.test.ts → 136. 'Suite 1004 → 1023' (line 532) is a dated snapshot.",
+   "correction": {
+    "before": "`src/components/Almanac/__tests__/cyclingFaceView.test.ts` (19)",
+    "after": "`src/components/Almanac/__tests__/cyclingFaceView.test.ts` (136)"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 585,
+   "claim": "Wired (real-cold spec v1): all three engine faces pass getCurrentColdBtc()",
+   "verdict": "STALE",
+   "evidence": "Four engine faces pass it: CyclingFace.tsx:213, OwnershipFace.tsx:236, UnifiedFace.tsx:205, DecisionFace.tsx:321 (plus usePlanMonth.ts:46).",
+   "correction": {
+    "before": "all three engine faces pass",
+    "after": "all four engine faces pass"
+   }
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 605,
+   "claim": "the Cycling cold split adds a `− ₿X retrieved for the top-up` row",
+   "verdict": "STALE",
+   "evidence": "The row's copy is now '− X ₿ used to defend the loans' (cyclingFaceView.ts:487 '\"used to defend the loans\", not \"retrieved for the top-up\"'; :500). The row still exists so the origins reconcile (cyclingFaceView.ts:483-484).",
+   "correction": {
+    "before": "`− ₿X retrieved for the top-up`",
+    "after": "`− X ₿ used to defend the loans`"
+   }
+  }
+ ],
+ "trueClaims": [
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 10,
+   "claim": "useMempoolData.ts / PowerLawSidebar both deleted by the Power Law face",
+   "evidence": "powerLawWiring.test.ts:188 asserts src/hooks/useMempoolData.ts absent; grep src: no PowerLawSidebar."
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 13,
+   "claim": "src/simulation/cycleModel.ts exists, pure, no Date.now() in exported math",
+   "evidence": "cycleModel.ts: no import lines; grep Date.now → none"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 14,
+   "claim": "cycleModel imports NOTHING from the risk/position core",
+   "evidence": "grep '^import' src/simulation/cycleModel.ts → none"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 17,
+   "claim": "epochFromHeight → {index, era, startBlock, endBlock, reward}; index=floor(h/210000), era=index+1, re",
+   "evidence": "cycleModel.ts:40-50"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 18,
+   "claim": "epochProgress adds {blocksIntoEpoch, blocksRemaining, fraction}, fraction=(h−startBlock)/210000",
+   "evidence": "cycleModel.ts:57-66"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 20,
+   "claim": "fraction half-open [0,1): at endBlock rolls to next epoch → 0",
+   "evidence": "cycleModel.ts:36,52-56; cycleModel.test.ts:45-46"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 21,
+   "claim": "dateAtBlock(target, tip, blockS=600), blockAtDate(ms) anchored at H4, blockPositionInEpoch(ms,e)",
+   "evidence": "cycleModel.ts:69-88"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 23,
+   "claim": "Constants HALVING_INTERVAL 210_000, GENESIS_REWARD 50, TARGET_BLOCK_S 600",
+   "evidence": "cycleModel.ts:15-17"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 24,
+   "claim": "H4 {block 840_000, 20 Apr 2024}, NEXT_HALVING_BLOCK 1_050_000, H5_EST date-fallback only",
+   "evidence": "cycleModel.ts:18-20"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 25,
+   "claim": "Epoch 6 (≥1,050,000 → reward 1.5625) derives with no code change",
+   "evidence": "cycleModel.test.ts:26-34"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 26,
+   "claim": "CYCLE_TURNS 14 turns from CYCLE_ANCHOR Mon 6 Oct 2025 high",
+   "evidence": "cycleModel.ts:21,100,107-119"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 27,
+   "claim": "alternating High→Low +364d / Low→High +1064d to ~2050, multiples of 7 → Mondays",
+   "evidence": "cycleModel.ts:98-100,112"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 28,
+   "claim": "first low = Mon 5 Oct 2026; nextTurnAfter(ms)",
+   "evidence": "cycleModel.test.ts:77-82; cycleModel.ts:122"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 29,
+   "claim": "cycleModel.test.ts has 12 cases",
+   "evidence": "grep -cE '^\\s*(it|test)\\(' → 12"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 29,
+   "claim": "test cases: epoch-5 + 2028 rollover, fraction single-source, blocksRemaining exact, 144 blocks≈1 day",
+   "evidence": "cycleModel.test.ts:16-63"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 32,
+   "claim": "tests: blockAtDate(H4.date)===H4.block; 14 turns, Monday, strictly increasing, alternation",
+   "evidence": "cycleModel.test.ts:64-96"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 34,
+   "claim": "src/components/Almanac/CycleDial.tsx (+ .module.css) exists, declarative SVG, no createElementNS",
+   "evidence": "ls src/components/Almanac; grep createElementNS CycleDial.tsx → none"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 36,
+   "claim": "Props {height, mode:'live'|'estimated', emphasis?:'halving'|'cycle'}",
+   "evidence": "CycleDial.tsx:17-22"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 37,
+   "claim": "hand, arc and % all from epochProgress(height).fraction",
+   "evidence": "CycleDial.tsx:59-61,75,154"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 40,
+   "claim": "viewBox 0 0 360 360, CX/CY 180, R 140, polar/arc helpers, 12 ticks",
+   "evidence": "CycleDial.tsx:25-27,32-43,55,118"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 41,
+   "claim": "projection markers clamped/hidden outside [0,1]; high --amber, low --maroon",
+   "evidence": "CycleDial.tsx:64-73,148-149"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 42,
+   "claim": "progress arc arc(R,0.4,NOW); halving cut + '½ HALVING' at 0%; NOW hand",
+   "evidence": "CycleDial.tsx:152-180"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 43,
+   "claim": "a11y role=progressbar, aria-valuemin/max 0/100, aria-valuenow=round(NOW), aria-valuetext",
+   "evidence": "CycleDial.tsx:119-127"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 44,
+   "claim": "Colors via app tokens --btc/--green/--bg-base; .module.css only sizing+track/tick+mono label",
+   "evidence": "CycleDial.tsx:133-180; CycleDial.module.css"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 47,
+   "claim": "token --maroon: #8B3A3A in tokens.css",
+   "evidence": "src/styles/tokens.css:36"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 51,
+   "claim": "CycleDial emphasis-aware 'halving'|'cycle'",
+   "evidence": "CycleDial.tsx:20,58"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 52,
+   "claim": "markers ghosted vs confident (glow + solid dot); arc gradient sw9 vs solid --btc sw8 opacity .55",
+   "evidence": "CycleDial.tsx:88-98,152-157"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 53,
+   "claim": "cut confident vs ghosted (lowercase 'halving' --text-faint); hand --green vs --text-primary",
+   "evidence": "CycleDial.tsx:76,160-176"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 54,
+   "claim": "hand/arc/% position stays epochProgress fraction on both emphases (HR-1)",
+   "evidence": "CycleDial.tsx:59-60"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 56,
+   "claim": "gradient <defs> emitted only for halving",
+   "evidence": "CycleDial.tsx:130-137"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 57,
+   "claim": "children center overlay (.dialCenter inside .dialwrap)",
+   "evidence": "CycleDial.tsx:115,183; CycleDial.module.css .dialCenter"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 58,
+   "claim": "aria-valuetext branches per emphasis; viewBox stays '0 0 360 360'",
+   "evidence": "CycleDial.tsx:118,123-127"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 59,
+   "claim": "AlmanacView .container width:100%; box-sizing:border-box; overflow-x:hidden",
+   "evidence": "AlmanacView.module.css:11-13 composes toolShell .toolContainer (toolShell.module.css:10-16)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 61,
+   "claim": ".dialwrap width:100%; max-width:300px; margin:0 auto",
+   "evidence": "CycleDial.module.css .dialwrap"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 65,
+   "claim": "HalvingClock.tsx (+ .module.css) default face; day-count Math.round(blocksRemaining·600/86400)",
+   "evidence": "HalvingClock.tsx:28"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 66,
+   "claim": "est. ~{Mon YYYY} from H5_EST + 'block N / 1,050,000'",
+   "evidence": "HalvingClock.tsx:29,47-50"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 67,
+   "claim": "3-cell stat row Through epoch / Blocks to halving / Block height",
+   "evidence": "HalvingClock.tsx:54-72"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 68,
+   "claim": "ghosted projection card: next-low floor + last-high peak via CYCLE_TURNS, proj-bar, caption",
+   "evidence": "HalvingClock.tsx:33-36,74-93"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 69,
+   "claim": "HalvingClock one-time Date.now() read, no interval",
+   "evidence": "HalvingClock.tsx:32; no setInterval"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 71,
+   "claim": "CycleClock.tsx: ticking Nd HH:MM:SS countdown to next CYCLE_TURNS low",
+   "evidence": "CycleClock.tsx:18-28,54,59"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 73,
+   "claim": "the one ticker: 1s setInterval gated by usePageVisibility, resync on resume, cleanup",
+   "evidence": "CycleClock.tsx:44-51; grep setInterval Almanac → only CycleClock.tsx:49"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 74,
+   "claim": "'idealized cadence' tag + 'why idealized' note always with countdown",
+   "evidence": "CycleClock.tsx:74,96-103"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 75,
+   "claim": "stat row Descending phase --maroon / Since proj. peak --amber / Block height",
+   "evidence": "CycleClock.tsx:79-93; CycleClock.module.css:87-88"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 76,
+   "claim": "'Open Halving Clock →' link (--btc) calling onSwitchToHalving",
+   "evidence": "CycleClock.tsx:119-121; CycleClock.module.css:171-172"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 78,
+   "claim": "AlmanacView local face state, default 'halving', unpersisted",
+   "evidence": "AlmanacView.tsx:62"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 79,
+   "claim": "passes the SAME height/mode to both clock faces",
+   "evidence": "AlmanacView.tsx:129-130"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 81,
+   "claim": "the useChainTip seam lives in AlmanacView so a face switch never remounts the data layer",
+   "evidence": "AlmanacView.tsx:65,126-143"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 82,
+   "claim": "cycle hand var(--text-primary); translucent surfaces via color-mix on app tokens",
+   "evidence": "CycleDial.tsx:76; CycleClock.module.css:101,138"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 84,
+   "claim": "Both clock faces import nothing from the risk/position core",
+   "evidence": "HalvingClock.tsx:1-3; CycleClock.tsx:1-5 — only cycleModel/CycleDial/usePageVisibility"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 89,
+   "claim": "'almanac' in ALL_TABS_META + TOOL_KEYS + toolTabs default",
+   "evidence": "AppShell.tsx:75,82; uiSlice.ts:57"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 89,
+   "claim": "toolTabs covers desktop, TOOL_KEYS covers mobile",
+   "evidence": "AppShell.tsx:263 effectiveToolKeys = isMobile ? TOOL_KEYS : toolTabs"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 90,
+   "claim": "almanac: null sidebar, <AlmanacView/> in main, no hasCbLoan gate",
+   "evidence": "AppShell.tsx:466,486"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 91,
+   "claim": "Store ActiveTab union includes 'almanac'; tabOrder default unchanged (no almanac)",
+   "evidence": "store/types.ts:31; uiSlice.ts:56"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 94,
+   "claim": "setActiveTab('almanac') → simpleMode && activeTab==='almanac' surface with ← Back header",
+   "evidence": "AppShell.tsx:302,411-420"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 96,
+   "claim": "reuses .simpleModeSettings/.simpleModeSettingsHeader/.simpleModeBackBtn/.simpleModeSettingsTitle",
+   "evidence": "AppShell.tsx:413-416"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 97,
+   "claim": "onOpenAlmanac: () => void prop on both views",
+   "evidence": "DailyModeView.tsx:35; SimpleModeView.tsx:19"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 99,
+   "claim": "onOpenAlmanac/onOpenSettings call setPreviousTab(activeTab) before navigating",
+   "evidence": "AppShell.tsx:296 goSettings, 302 goAlmanac"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 100,
+   "claim": "mirrors BrandingDropdown's openSettings",
+   "evidence": "BrandingDropdown.tsx:52-54"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 103,
+   "claim": "viewBox back to '0 0 360 360'",
+   "evidence": "CycleDial.tsx:118"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 104,
+   "claim": ".dialwrap width:100%; max-width:300px; margin:0 auto",
+   "evidence": "CycleDial.module.css .dialwrap"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 105,
+   "claim": "AlmanacView .container width:100%; box-sizing:border-box; overflow-x:hidden",
+   "evidence": "toolShell.module.css:10-16 via AlmanacView.module.css:11-13"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 107,
+   "claim": ".container max-width 600px; margin 0 auto; padding 0 16px 32px",
+   "evidence": "toolShell.module.css:14-16"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 108,
+   "claim": "matches Daily/Monthly's .content",
+   "evidence": "DailyModeView.module.css:12-16; SimpleModeView.module.css:8-12"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 109,
+   "claim": "AppShell.module.css [data-active-tab=almanac] .sidebar none + .main grid-column 1/-1",
+   "evidence": "AppShell.module.css:76-77"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 111,
+   "claim": "matches the liqsim/settings pattern",
+   "evidence": "AppShell.module.css:70-71,74-75"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 113,
+   "claim": "[data-active-tab=powerlaw] carries the same two rules; renders <PowerLawFace /> bare, no sidebar",
+   "evidence": "AppShell.module.css:87-88; AppShell.tsx:470,482"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 115,
+   "claim": "almanac third rule: .main { overflow-x: clip; overflow-y: visible; min-width: 0; padding-bottom: 0 }",
+   "evidence": "AppShell.module.css:82"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 116,
+   "claim": ".main's overflow-y: auto",
+   "evidence": "AppShell.module.css:65"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 120,
+   "claim": "powerlaw rules pinned by powerLawWiring",
+   "evidence": "powerLawWiring.test.ts:175-176"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 122,
+   "claim": "fourth rule [data-active-tab=almanac] .main { --dock-bleed: 20px }; .main padding 20px all widths",
+   "evidence": "AppShell.module.css:61,84; no .main padding override in media queries"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 123,
+   "claim": "dock margin 12px calc(-16px - var(--dock-bleed, 0px)) 0 under 1024px",
+   "evidence": "ControlDock.module.css:11,78-83; milestones.test.ts:140"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 125,
+   "claim": "Simple mode's Almanac has no [data-active-tab]",
+   "evidence": "AppShell.tsx:411-420 (no data-active-tab on that branch)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 136,
+   "claim": "face is local useState, default 'halving', nothing persisted/synced",
+   "evidence": "AlmanacView.tsx:62"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 138,
+   "claim": "every tool shares src/components/Tools/toolShell.module.css .toolContainer (centering, overflow, pad",
+   "evidence": "toolShell.module.css:10-16"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 140,
+   "claim": "EmergencyConsole adopted toolContainer",
+   "evidence": "EmergencyConsole.module.css:2"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 142,
+   "claim": "MiningMain/ConverterMain .main compose toolContainer from ../Tools/toolShell.module.css",
+   "evidence": "MiningMain.module.css:2; ConverterMain.module.css:2"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 144,
+   "claim": "Mining dropped its @media (max-width:640px) .main padding:16px",
+   "evidence": "grep @media MiningMain.module.css → none"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 146,
+   "claim": "AlmanacView.module.css .container composes-only from toolShell",
+   "evidence": "AlmanacView.module.css:11-13"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 150,
+   "claim": ".main.main { max-width: 960px } Mining, 700px Converter",
+   "evidence": "MiningMain.module.css:12; ConverterMain.module.css:9"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 153,
+   "claim": "a declaration beside composes ties (0,1,0); production emits toolShell after tools",
+   "evidence": "toolShell.module.css:7-9; rules/ui.md:24"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 157,
+   "claim": "composedOverrides.test.ts pins the rule (§ Critical Constraints)",
+   "evidence": "src/styles/__tests__/composedOverrides.test.ts; .claude/rules/ui.md:24"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 158,
+   "claim": "EmergencyConsole/AlmanacView .container keep the 600px default",
+   "evidence": "EmergencyConsole.module.css:1-6; AlmanacView.module.css:11-13"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 162,
+   "claim": "root wraps in full-width .shell (width:100%)",
+   "evidence": "AlmanacView.tsx:146; AlmanacView.module.css:7-9"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 163,
+   "claim": "eyebrow+sub-nav inside .container; Halving/Cycle re-wrapped in a second .container",
+   "evidence": "AlmanacView.tsx:129-130,147-173"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 164,
+   "claim": "useChainTip() is the single per-mount data source for the two clock faces",
+   "evidence": "AlmanacView.tsx:65,129-130"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 166,
+   "claim": ".faceStack mobile display:flex; column; gap:16px; no width",
+   "evidence": "AlmanacView.module.css:19-23"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 167,
+   "claim": "defense renders <CbDefenseTool/> bare",
+   "evidence": "AlmanacView.tsx:131"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 169,
+   "claim": ".faceStack ≥768px grid 280px minmax(0,1fr); gap 20px; max-width 1240px; margin 0 auto; padding 0 16p",
+   "evidence": "AlmanacView.module.css:24-34"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 170,
+   "claim": "mirrors AppShell.module.css .shell grid 280px 1fr",
+   "evidence": "AppShell.module.css .shell grid (comment AlmanacView.module.css:18)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 171,
+   "claim": ".facePanel order:-1; grid-column:1 at ≥768px",
+   "evidence": "AlmanacView.module.css:40-46"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 174,
+   "claim": "Sats panel alone takes .facePanelInset (padding 0 16px below 768px)",
+   "evidence": "AlmanacView.tsx:142; AlmanacView.module.css:53-58"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 178,
+   "claim": "Mining's panel pads itself (16px)",
+   "evidence": "MiningInputsPanel.module.css:2"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 180,
+   "claim": "from 768px the grid's own 16px padding applies",
+   "evidence": "AlmanacView.module.css:32"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 181,
+   "claim": "decisionWiring I21 finds the Converter fallback by literal prefix",
+   "evidence": "decisionWiring.test.ts:306; AlmanacView.tsx:142"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 184,
+   "claim": "mining = <MiningInputsPanel/> then <MiningMain/>",
+   "evidence": "AlmanacView.tsx:135"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 188,
+   "claim": "sats = <ConverterMain/> then <ConverterSidebar/>",
+   "evidence": "AlmanacView.tsx:142"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 189,
+   "claim": "converter only tab with [data-active-tab=converter] .main order:1 / .sidebar order:2 at ≤767px",
+   "evidence": "AppShell.module.css:136,148-149"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 190,
+   "claim": "MiningInputsPanel / ConverterSidebar props-free named exports",
+   "evidence": "MiningInputsPanel.tsx:11; ConverterSidebar.tsx:8"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 192,
+   "claim": "each mounted inside a plain <div className={styles.facePanel}>",
+   "evidence": "AlmanacView.tsx:135,142"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 196,
+   "claim": "Both mount points (liqsim tab and defense face) render <CbDefenseTool/>",
+   "evidence": "AppShell.tsx:485; AlmanacView.tsx:131"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 200,
+   "claim": "the ONE gate is hasCbLoan ? <EmergencyConsole/> : null",
+   "evidence": "CbDefenseTool.tsx:13-14"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 200,
+   "claim": "LiqSimulator and withEmergencyLabel are deleted",
+   "evidence": "grep -rn 'withEmergencyLabel|LiqSimulator' src (non-test) → only a comment in simulation/ltv.ts:5"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 201,
+   "claim": "tab is always Emergency/Emerg",
+   "evidence": "AppShell.tsx:74"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 202,
+   "claim": "Mining/Power Law buttons set face (no disabled/soon)",
+   "evidence": "AlmanacView.tsx:111-112,167"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 203,
+   "claim": "Sats button '丰 Sats' always visible, mirroring converter tab's label",
+   "evidence": "AlmanacView.tsx:113; AppShell.tsx:71"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 204,
+   "claim": "defense button renders only when hasCbLoan",
+   "evidence": "AlmanacView.tsx:114"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 206,
+   "claim": "guard useEffect falls back to 'halving' if defense showing and hasCbLoan flips false",
+   "evidence": "AlmanacView.tsx:76-78"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 207,
+   "claim": ".subnav overflow-x:auto + hidden scrollbar + flex:none buttons",
+   "evidence": "AlmanacView.module.css:79-90"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 210,
+   "claim": "cycleModel/HalvingClock/CycleClock import nothing from the risk core",
+   "evidence": "cycleModel.ts (no imports); HalvingClock.tsx:1-3; CycleClock.tsx:1-5"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 211,
+   "claim": "emergencyModel imports nothing from cycleModel/power-law",
+   "evidence": "emergencyModel.ts:9,12 import only runCoinbaseLoan, ltv"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 214,
+   "claim": "if (f === 'powerlaw') return <PowerLawFace />; same component as the full-mode tab",
+   "evidence": "AlmanacView.tsx:136; AppShell.tsx:482"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 215,
+   "claim": "Mining and Sats keep .faceStack/.facePanel",
+   "evidence": "AlmanacView.tsx:135,142"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 216,
+   "claim": "PowerLawSidebar, PowerLawMain and useMempoolData are deleted",
+   "evidence": "ls src/components/PowerLaw (no Main/Sidebar); powerLawWiring.test.ts:177-188"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 227,
+   "claim": "Ledger face is READ-ONLY + CSV copy/download; writes nothing",
+   "evidence": "LedgerFace.tsx:53-60 only reads; ledgerCsv.ts:10"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 230,
+   "claim": "face union includes 'ledger', still local useState default halving",
+   "evidence": "AlmanacView.tsx:55,62"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 232,
+   "claim": "Ledger pill glyph ▤ renders only when ledgerFaceAvailable(monthlyLog)",
+   "evidence": "AlmanacView.tsx:72,115"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 233,
+   "claim": "ledgerFaceAvailable = monthlyLog.length > 0",
+   "evidence": "ledgerCsv.ts:15-17"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 234,
+   "claim": "fallback useEffect sends face → halving if log empties",
+   "evidence": "AlmanacView.tsx:81-83"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 235,
+   "claim": "AlmanacView has a monthlyLog selector; LedgerFace reads the store itself",
+   "evidence": "AlmanacView.tsx:71; LedgerFace.tsx:53-58"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 236,
+   "claim": "Ledger rendered BARE (own container)",
+   "evidence": "AlmanacView.tsx:132"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 237,
+   "claim": "src/lib/ledgerCsv.ts PURE: ledgerFaceAvailable + buildLedgerCsv(entries,{hasCbLoan,showMining,coldBy",
+   "evidence": "ledgerCsv.ts:15,92-97,120"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 239,
+   "claim": "CSV columns Mo, Date, Income→BTC, Paydown, BTC bought, Strike bal, Strike col, [→ Cold], Strike LTV,",
+   "evidence": "ledgerCsv.ts:127-131"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 240,
+   "claim": "Mo=entry.month, Date=entry.date; raw decimals; missing → empty",
+   "evidence": "ledgerCsv.ts:106-108,133-141"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 242,
+   "claim": "RFC-4180 csvCell; CRLF, no trailing newline, NO totals row",
+   "evidence": "ledgerCsv.ts:101-104,150-152"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 243,
+   "claim": "sort single-key a.month - b.month",
+   "evidence": "ledgerCsv.ts:124"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 244,
+   "claim": "unrecorded btcHeld renders '—' and exports empty",
+   "evidence": "LedgerFace.tsx:36-38; ledgerCsv.ts:106-108"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 245,
+   "claim": "coldMovedByMonth(dayLog, advisorStartDate) = net cold deposits − withdrawals per month",
+   "evidence": "ledgerCsv.ts:26-35"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 246,
+   "claim": "hasColdColumn only when a month with a row moved non-zero",
+   "evidence": "ledgerCsv.ts:43-46"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 247,
+   "claim": "→ Cold is a flow summed in totals; never stored on the entry",
+   "evidence": "LedgerFace.tsx:110-111,229-233; ledgerCsv.ts:21"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 248,
+   "claim": "COLD_EPS = 5e-9 shared by column gate, totals, footnote",
+   "evidence": "ledgerCsv.ts:39,45,67,84"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 250,
+   "claim": "coldTotals(entries, coldByMonth) → {logged, unlogged}; total row-scoped",
+   "evidence": "ledgerCsv.ts:56-69"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 253,
+   "claim": "coldFootnote ‡ line below the table, ‡ on the total; no ‡ without column",
+   "evidence": "ledgerCsv.ts:83-90; LedgerFace.tsx:233,249"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 254,
+   "claim": "fmtColdBtc 5 dp widening to 8 dp; exact 0 → '0.00000'",
+   "evidence": "ledgerCsv.ts:75-78"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 255,
+   "claim": "per-month cells use coldCell (residue → '—'); TOTAL always a number",
+   "evidence": "LedgerFace.tsx:42-44,231-232"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 256,
+   "claim": "CSV has no totals row or footnote",
+   "evidence": "ledgerCsv.ts:146-152"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 258,
+   "claim": "LedgerFace.tsx (+ .module.css) chrome; .actionBtn mirrored from SharingPage",
+   "evidence": "LedgerFace.module.css:41; SharingPage.module.css:41"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 260,
+   "claim": "Copy CSV via navigator.clipboard.writeText try/catch, 'Copied ✓'/'Copy failed'",
+   "evidence": "LedgerFace.tsx:77,114"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 261,
+   "claim": "Download via Blob→<a download> mirroring downloadPlanBackup; personal-bloc-ledger-${todayLocalISO()}",
+   "evidence": "LedgerFace.tsx:85-92; exportPlan.ts:50"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 263,
+   "claim": "Totals row in <tfoot>: flows summed, stocks latest",
+   "evidence": "LedgerFace.tsx:101-108,217-240"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 264,
+   "claim": "ndpPaid/strikeMinPaid → † on Paydown + one footnote line",
+   "evidence": "LedgerFace.tsx:100,153,167,247"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 265,
+   "claim": ".tableWrap overflow-x:auto scroll container",
+   "evidence": "LedgerFace.module.css:50; LedgerFace.tsx:134"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 266,
+   "claim": "data-gesture-exempt marker gone; face switching tap-only",
+   "evidence": "grep data-gesture-exempt src → none; AlmanacView.tsx:45-49"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 268,
+   "claim": ".footnote moved out of .tableWrap (sibling below)",
+   "evidence": "LedgerFace.tsx:245-249"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 271,
+   "claim": "numeric cells var(--mono) + tabular-nums right-aligned; headers 0.08em",
+   "evidence": "LedgerFace.module.css:66,74-79"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 274,
+   "claim": "BTC cells get a ₿ prefix in --text-faint (btcPre)",
+   "evidence": "LedgerFace.tsx:38,170; LedgerFace.module.css:25"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 276,
+   "claim": "Strike LTV LTV_AMBER_AT 0.10 / LTV_RED_AT 0.13 (<0.10 green, 0.10–0.13 amber, >0.13 red)",
+   "evidence": "LedgerFace.tsx:25-26,46-49"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 278,
+   "claim": "CB LTV via LEVEL_COLOR[cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac)]",
+   "evidence": "LedgerFace.tsx:73"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 279,
+   "claim": "57% CB LTV under default 75% trigger renders green",
+   "evidence": "cbMetrics.test.ts:137"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 281,
+   "claim": "Strike meter fills to STRIKE_METER_CEIL 0.15; CB meter to CB_LLTV (0.86)",
+   "evidence": "LedgerFace.tsx:28,183,199; runCoinbaseLoan.ts:2"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 283,
+   "claim": ".closeRule = two 1px --line rules 3px apart",
+   "evidence": "LedgerFace.module.css:164-170"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 285,
+   "claim": "1px --line-2 row rules; hover --bg-hover at ≥768px only",
+   "evidence": "LedgerFace.module.css:82,126-127"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 286,
+   "claim": "Provisional → Month cell muted italic; confirmed===false → color-mix amber 9%",
+   "evidence": "LedgerFace.module.css:114-122"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 288,
+   "claim": "Mobile <768px Month column sticky with --bg-card + right-edge fade scrim",
+   "evidence": "LedgerFace.module.css:94-109"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 290,
+   "claim": "ledgerRowIn stagger 15ms/row, 200ms ease-out, off under prefers-reduced-motion",
+   "evidence": "LedgerFace.tsx:159; LedgerFace.module.css:206-213"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 293,
+   "claim": "CB_ACT_LTV_FACTOR (0.93) + cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac) live in cbMetrics.ts",
+   "evidence": "cbMetrics.ts:99,107-108"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 294,
+   "claim": "safetyView deriveSafetyView + scaleSafetyView both call cbBarLevel",
+   "evidence": "safetyView.ts:222,332"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 296,
+   "claim": "LEVEL_COLOR {safe:--green, watch:--amber, act:--red} in safetyView.ts",
+   "evidence": "safetyView.ts:34-38"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 297,
+   "claim": "LEVEL_COLOR imported by SafetyDashboard and LedgerFace",
+   "evidence": "SafetyDashboard.tsx:5-6; LedgerFace.tsx:7"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 298,
+   "claim": "src/lib/__tests__/ledgerCsv.test.ts exists",
+   "evidence": "ls src/lib/__tests__/ledgerCsv.test.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 299,
+   "claim": "cbBarLevel case in cbMetrics.test.ts (57%→green, boundaries, 0.93 pin)",
+   "evidence": "cbMetrics.test.ts:134-141"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 300,
+   "claim": "No component-render harness in the repo",
+   "evidence": "package.json: no @testing-library/jsdom/happy-dom"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 306,
+   "claim": "Scenario face over src/simulation/scenarioDiff.ts",
+   "evidence": "ls src/simulation/scenarioDiff.ts; ScenarioFace.tsx:5"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 307,
+   "claim": "only store write setPinnedScenario (pinnedScenario field); overlay is useState<ScenarioOverlay>",
+   "evidence": "ScenarioFace.tsx:44-46; types.ts:129-130"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 312,
+   "claim": "renderFace wraps Scenario in the hub .container; no guard useEffect",
+   "evidence": "AlmanacView.tsx:134,74-94"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 315,
+   "claim": "ScenarioFace value selectors useShallow(selectSafetyViewInputs) + s.pinnedScenario; setPinnedScenari",
+   "evidence": "ScenarioFace.tsx:43-45"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 317,
+   "claim": "PIN row: Pinned {todayLocalISO label} · relativeAge + Re-pin/Clear",
+   "evidence": "ScenarioFace.tsx:51,84-87"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 318,
+   "claim": "DRIFT line diffScenarios(pinned.inputs, current) → 'N of 3 worse'",
+   "evidence": "ScenarioFace.tsx:57,97"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 319,
+   "claim": "one NumberInput per lever btcPrice/Strike debt/collateral/credit line + CB pair iff hasCbLoan",
+   "evidence": "ScenarioFace.tsx:28-35,112-113"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 320,
+   "claim": "value = overlay[k] ?? current[k]; Reset → {}",
+   "evidence": "ScenarioFace.tsx:109,119"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 321,
+   "claim": "WHAT-IF diffScenarios(current, applyOverlay(current, overlay)) → Credit used / Strike LTV / CB LTV",
+   "evidence": "ScenarioFace.tsx:59-66"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 322,
+   "claim": "LEVEL_COLOR-tinted sides; secondary crash-LTV + CB-liq-frac; verdict from worsenedCount",
+   "evidence": "ScenarioFace.tsx:68-70,133-143"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 325,
+   "claim": "engine pinned by scenarioDiff.test.ts",
+   "evidence": "ls src/simulation/__tests__/scenarioDiff.test.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 329,
+   "claim": "Cycling face (♻ Cycling) over src/simulation/cyclingSim.ts",
+   "evidence": "AlmanacView.tsx:118; CyclingFace.tsx imports cyclingSim"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 335,
+   "claim": "invariants in cyclingSim.test.ts",
+   "evidence": "ls src/simulation/__tests__/cyclingSim.test.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 337,
+   "claim": "Cycling face ZERO store writes; overlay value = overlay[k] ?? live; 'Reset to live'",
+   "evidence": "grep st.set/s.set CyclingFace.tsx → none; CyclingFace.tsx:233,649"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 340,
+   "claim": "GATED on hasCbLoan with fallback useEffect",
+   "evidence": "AlmanacView.tsx:87-89,118"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 342,
+   "claim": "face-nav e2e specs tap pills by NAME",
+   "evidence": "e2e/controlDock.spec.ts:37 getByRole('button',{name:/◆ Decision/})"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 343,
+   "claim": "CyclingFace.tsx (+ .module.css) with 960px .face",
+   "evidence": "CyclingFace.module.css:4-8"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 346,
+   "claim": "milestones table from 768px, switch table under it",
+   "evidence": "cyclingFaceView.ts:757 MS_TABLE; MilestoneSwitchTable.tsx"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 348,
+   "claim": "isAnimationActive={false} throughout",
+   "evidence": "CyclingFace.tsx:965,970,987,993,1008,1010"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 350,
+   "claim": "the view imports the power law + risk constants; engine has heard of neither",
+   "evidence": "CyclingFace.tsx:8,13-15; cyclingSim.ts imports no powerLaw"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 352,
+   "claim": "the MonthBreakdown shape (view imports powerLaw)",
+   "evidence": "MonthBreakdown.tsx:4"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 353,
+   "claim": "cap defaults to face-local 70%, not cbLtvTriggerPct; preset chip one tap away",
+   "evidence": "CyclingFace.tsx:82,233,1074"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 361,
+   "claim": "engine tests pass cbLtvCapPct explicitly",
+   "evidence": "grep -c cbLtvCapPct cyclingSim.test.ts → 82"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 362,
+   "claim": "engine refinance headroom-capped only with defendCbLtv; raw default FALSE",
+   "evidence": "cyclingSim.ts:247,869"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 363,
+   "claim": "both faces pass defendCbLtv TRUE",
+   "evidence": "CyclingFace.tsx:329; OwnershipFace.tsx:333"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 365,
+   "claim": "Almanac face pager removed; data-gesture-exempt markers deleted",
+   "evidence": "AlmanacView.tsx:45-49; grep data-gesture-exempt src → none"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 369,
+   "claim": "Strike cap: face-local 44px range 50–68 step 1",
+   "evidence": "cyclingFaceView.ts:928; OwnershipFace.module.css:465; CyclingFace.module.css:231"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 369,
+   "claim": "Mining/Living consume ui/SliderInput",
+   "evidence": "MiningInputsPanel.tsx:6; MiningProjectionTable.tsx:5; LivingInputsPanel.tsx:4"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 370,
+   "claim": "readout '66.5% — max' when engine clamps 67/68",
+   "evidence": "cyclingFaceView.test.ts:756-757; cyclingFaceView.ts:934"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 372,
+   "claim": "DEFAULT_STRIKE_CAP_PCT = 60; DEFAULT_STRIKE_CAP_ON = true",
+   "evidence": "cyclingFaceView.ts:920,925"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 375,
+   "claim": "strikeCapReading(sim, effectiveCapPct) → off|idle|defended|short|yielded|called|cured|sold",
+   "evidence": "cyclingFaceView.ts:948,976-993"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 376,
+   "claim": "precedence sold > cured > called > yielded > short > defended > idle",
+   "evidence": "cyclingFaceView.ts:986-993"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 378,
+   "claim": "rendered by strikeCapNote; modelled call reads policy card's call sentence",
+   "evidence": "cyclingFaceView.ts:1024-1052"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 379,
+   "claim": "'keep Coinbase alive' only when Coinbase survived; else liquidated branch",
+   "evidence": "cyclingFaceView.test.ts:763-786"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 382,
+   "claim": "zone colours reuse cbBarLevel + LEVEL_COLOR banded against CB_LLTV",
+   "evidence": "CyclingFace.tsx:455; cyclingFaceView.ts:721 cbZoneLevel"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 386,
+   "claim": "connectors getCurrentBtcHeld, advisorActualBlocBalance, creditLine",
+   "evidence": "CyclingFace.tsx:203,206-207"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 387,
+   "claim": "Coinbase via planRun's planCbCollateralOf / planCbLoanBalanceOf",
+   "evidence": "CyclingFace.tsx:54,210,214"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 388,
+   "claim": "accruedCbBalance(...) as EmergencyConsole crosses it",
+   "evidence": "CyclingFace.tsx:259; EmergencyConsole.tsx:98"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 389,
+   "claim": "income/expenses/blocApr/cbAprPct/btcPrice; strikeMinFromIncome; STRIKE_MAX_DRAW_LTV; STRIKE_MARGIN_C",
+   "evidence": "CyclingFace.tsx:14-15,197-215"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 391,
+   "claim": "no direct CoinGecko fetch in the face",
+   "evidence": "grep 'fetch(|coingecko' CyclingFace.tsx → none"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 393,
+   "claim": "both cycling faces carry useMorphoRateOnDemand (same-origin /api/morpho-rate)",
+   "evidence": "CyclingFace.tsx:52,304; OwnershipFace.tsx:56; useMorphoRate.ts:78"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 393,
+   "claim": "never on mount, never on a timer; fires on Check live rate / Refetch",
+   "evidence": "useMorphoRate.ts:63-94; CyclingFace.tsx:1150-1156"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 394,
+   "claim": "writes to the session overlay, never the store",
+   "evidence": "CyclingFace.tsx:1146 set('cbAprPct', …) overlay setter"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 395,
+   "claim": "polling useMorphoRate confined to Settings and SafetyDashboard",
+   "evidence": "grep useMorphoRate( → SettingsMain.tsx:293, SafetyDashboard.tsx:41 only"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 397,
+   "claim": "powerLaw tests relational against a fixed UTC date",
+   "evidence": "powerLaw.test.ts:16 START = Date.UTC(2026,7,31); ratios/toBeCloseTo"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 403,
+   "claim": "pure helpers in src/components/Almanac/cyclingFaceView.ts, React-free, store-free",
+   "evidence": "cyclingFaceView.ts:1-13 (no react/store imports)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 406,
+   "claim": "applyPathStress(pricePath, fromMonth, factor): multiplies from fromMonth on",
+   "evidence": "cyclingFaceView.ts:38-42"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 407,
+   "claim": "identity (same reference) at factor 1 and non-positive/non-finite",
+   "evidence": "cyclingFaceView.ts:39"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 409,
+   "claim": "debtSplit(row) → {strikeUsd, coinbaseUsd, combinedUsd, shiftedUsd}; shiftedUsd = defenseDrawnUsd",
+   "evidence": "cyclingFaceView.ts:44-63"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 412,
+   "claim": "gross price-independent; net/yours = btcHeld − debt/price both sides (deriveOwnership)",
+   "evidence": "cyclingFaceView.ts:441-446; ownership.ts:22-23"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 413,
+   "claim": "override re-prices the ROW side only; base keeps its own price",
+   "evidence": "cyclingFaceView.ts:441-445"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 415,
+   "claim": "holdingsSplit(row) → strike/coinbase/cold/combined",
+   "evidence": "cyclingFaceView.ts:448-469"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 416,
+   "claim": "clampMonth(selected, rowCount)",
+   "evidence": "cyclingFaceView.ts:553-556"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 417,
+   "claim": "isAnchorHeld(lens, priceMode) / stressAnchorPrice(livePrice, anchor, held) / anchorDrift(...)",
+   "evidence": "cyclingFaceView.ts:668,684,702"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 419,
+   "claim": "coldBeyondRecord: price·(1−buffer) < support·0.55·(1−1e-9)",
+   "evidence": "cyclingFaceView.ts:564,587-589"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 422,
+   "claim": "mergeMilestoneRows(fixed, turns) / fmtTurnDate / nextTurnsText / fmtPhaseShift",
+   "evidence": "cyclingFaceView.ts:615,630,636,643"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 423,
+   "claim": "cyclingFaceView never imports powerLaw / cycleModel / cyclePath",
+   "evidence": "cyclingFaceView.ts:1-13 import list"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 425,
+   "claim": "msYearLabel / MS_TABLE / MS_TABLE_OWNERSHIP / MsView / MS_VIEWS_CYCLING/STRATEGY/OWNERSHIP",
+   "evidence": "cyclingFaceView.ts:750-786"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 427,
+   "claim": "'1 yr', '1.1 yr'; MS_TABLE '(min-width: 768px)'; Ownership's adds and (max-width: 919px)",
+   "evidence": "cyclingFaceView.ts:750-760"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 429,
+   "claim": "views partition columns less Year (₿·$·LTV; Ownership ₿·Gain·LTV)",
+   "evidence": "cyclingFaceView.ts:772-786"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 430,
+   "claim": "LTV recomputed locally, not via cbMetrics; same reasoning as shared ltvOf() in simulation/ltv.ts",
+   "evidence": "cyclingFaceView.ts:26-29; ltv.ts exports ltvOf"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 432,
+   "claim": "cyclingFaceView never imported by the risk core",
+   "evidence": "grep -rn cyclingFaceView src/simulation → only __tests__ files"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 437,
+   "claim": "monthIdx = clampMonth(selectedMonth, baseRowCount) derived during render",
+   "evidence": "CyclingFace.tsx:357"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 438,
+   "claim": "dock's month slider value is monthIdx",
+   "evidence": "CyclingFace.tsx:579; OwnershipFace.tsx:623"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 440,
+   "claim": "rows[selectedMonth] never appears in code (comments only)",
+   "evidence": "grep rows\\[selectedMonth\\] Almanac → comments only (CyclingFace.tsx:355 etc.)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 440,
+   "claim": "effect writes the clamped value back",
+   "evidence": "CyclingFace.tsx:429"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 442,
+   "claim": "pinned by clampMonth unit tests",
+   "evidence": "grep clampMonth src/components/Almanac/__tests__ → cyclingFaceView.test.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 444,
+   "claim": "stress range 0.35–2.2 (Cycling) / 0.2–2.2 (Ownership); 'as modeled' at 1",
+   "evidence": "CyclingFace.tsx:592,599; OwnershipFace.tsx:635,642"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 445,
+   "claim": "stressPath = applyPathStress(pricePath, monthIdx, lens)",
+   "evidence": "CyclingFace.tsx:361"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 448,
+   "claim": "engineInputs one memo with defendCbLtv: true shared by base and stress runs",
+   "evidence": "CyclingFace.tsx:312-336"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 449,
+   "claim": "lens reset effect mirrors the engine-inputs dep array",
+   "evidence": "CyclingFace.tsx:436-442"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 453,
+   "claim": "resetMirror.test.ts extracts both dep arrays; startDate the only omission",
+   "evidence": "resetMirror.test.ts:14,20-26,51"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 461,
+   "claim": "pricePath built from anchorPrice, not s.btcPrice",
+   "evidence": "stressAnchor.test.ts:94-115 (grep guard passes on base)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 462,
+   "claim": "useBtcPrice polls every 10s, pushes on 0.1% move or 60s",
+   "evidence": "useBtcPrice.ts:7-9"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 470,
+   "claim": "useStressLens(livePrice, priceMode) in src/components/Almanac/useStressLens.ts owns lens + anchor",
+   "evidence": "useStressLens.ts:31"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 475,
+   "claim": "plConvergencePath(anchorPrice …) → pricePath → engineInputs",
+   "evidence": "stressAnchor.test.ts:104-115"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 476,
+   "claim": "anchorDrift(livePrice, anchorPrice, held) reads spot",
+   "evidence": "cyclingFaceView.ts:702-706"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 484,
+   "claim": "store push gated on btcPriceMode === 'live'; held only in live mode",
+   "evidence": "useBtcPrice.ts:38; cyclingFaceView.ts:668-669"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 487,
+   "claim": "stressAnchorPrice falls back to livePrice while anchor is null",
+   "evidence": "cyclingFaceView.ts:684-686"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 494,
+   "claim": "anchorDrift guards Number.isFinite on both sides",
+   "evidence": "cyclingFaceView.ts:705"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 497,
+   "claim": "stressAnchor.test.ts (16) with mutation-tested grep guard vs plConvergencePath(s.btcPrice",
+   "evidence": "grep -cE '^\\s*(it|test)\\(' → 16; stressAnchor.test.ts:94-102"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 504,
+   "claim": "tile and Milestones read btcGained(selRow, rows[0]) / btcGained(r, rows[0])",
+   "evidence": "CyclingFace.tsx:403,497,1217"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 510,
+   "claim": "Strike interest renders sim.totalStrikeInterest with 'full horizon · N yrs'",
+   "evidence": "CyclingFace.tsx:552-554"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 512,
+   "claim": "Debt shifted appears only when the run defended",
+   "evidence": "CyclingFace.tsx:556-562"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 515,
+   "claim": "month and stress live in the control dock",
+   "evidence": "CyclingFace.tsx:42,579,599,1288"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 518,
+   "claim": "Ownership .dockScrub composes Cycling's .scrub; own .scrub 28px native range; dock 44px",
+   "evidence": "OwnershipFace.module.css:172-182; CyclingFace.module.css:226-231"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 520,
+   "claim": "ui/SliderInput consumed by MiningInputsPanel/MiningProjectionTable/LivingInputsPanel",
+   "evidence": "MiningInputsPanel.tsx:6; MiningProjectionTable.tsx:5; LivingInputsPanel.tsx:4"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 522,
+   "claim": "mode: cycle / hold / clearStrike / clearBoth",
+   "evidence": "cyclingSim.ts:363"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 523,
+   "claim": "support switch modeled as opt-in supportPolicy input on cycle mode",
+   "evidence": "cyclingSim.ts:159"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 528,
+   "claim": "seizure test asserts at liqMonth + 1; breaching row pushed before seizure",
+   "evidence": "cyclingFaceView.test.ts:251-280"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 536,
+   "claim": "priority Coinbase survival > Strike cap > Coinbase cap",
+   "evidence": "cyclingSim.ts:1495-1497 comment"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 539,
+   "claim": "defense: Strike draw pays CB down to stop; refinance sweeps only up to CB headroom",
+   "evidence": "cyclingSim.ts:1380,1442-1470"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 543,
+   "claim": "fallback top-up moves collateral into CB pool",
+   "evidence": "cyclingSim.ts:1533-1561"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 545,
+   "claim": "src/simulation/cbDefense.ts leaf imports only ./ltv (zero-import)",
+   "evidence": "cbDefense.ts:27; grep '^import' ltv.ts → none"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 546,
+   "claim": "strikeDrawCapacity(collBtc, drawn, price, maxDrawLtv, creditLine = ∞) = min(line, coll×price×ltv) − ",
+   "evidence": "cbDefense.ts:34-44"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 547,
+   "claim": "defendCbLtv(input) → paydown, capacity, draw, shortfall, post-defense LTVs",
+   "evidence": "cbDefense.ts:60-75,95-130"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 549,
+   "claim": "both LTVs route through shared ltvOf; skLtvAfter ∞ with no collateral",
+   "evidence": "cbDefense.ts:123,127"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 552,
+   "claim": "nothing renders skLtvAfter yet",
+   "evidence": "grep skLtvAfter src (non-test) → cbDefense.ts only"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 553,
+   "claim": "topUpToCbLtv → requiredBtc/fromColdBtc/fromStrikeBtc/topUpBtc/shortfallBtc/fullyDefended/cbLtvAfter",
+   "evidence": "cbDefense.ts:159-170,180-219"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 555,
+   "claim": "cold first, then Strike above marginLtv × (1 − TOPUP_MARGIN_BUFFER)",
+   "evidence": "cbDefense.ts:186,192"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 559,
+   "claim": "TOPUP_MARGIN_BUFFER is 0.05 and exported",
+   "evidence": "cbDefense.ts:88"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 563,
+   "claim": "cbDefense.test.ts shortfall case",
+   "evidence": "cbDefense.test.ts:59-63"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 564,
+   "claim": "runCyclingSim defendCbLtv?: boolean default FALSE; faces pass TRUE",
+   "evidence": "cyclingSim.ts:247,869; CyclingFace.tsx:329; OwnershipFace.tsx:333"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 566,
+   "claim": "sequence refinance → debt shift → top-up → cold sweep",
+   "evidence": "cyclingSim.ts:1380,1447,1533,1661"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 569,
+   "claim": "row fields defenseDrawnUsd/cbLtvPreDefense/defenseShortfallUsd/defended/topUp*/strikeToCbBtc/coldRet",
+   "evidence": "cyclingSim.ts field declarations (grep each → 1)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 571,
+   "claim": "result firstDefenseMonth … totalTopUpFromStrikeBtc + openingColdBtc",
+   "evidence": "cyclingSim.ts declarations; 612"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 573,
+   "claim": "defense draw is a Strike draw; no CB origination fee; interest next month",
+   "evidence": "cyclingSim.ts:1469-1470"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 577,
+   "claim": "openingColdBtc?: number default 0",
+   "evidence": "cyclingSim.ts:178,921-924"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 582,
+   "claim": "seed added to never-draw baselineBtc",
+   "evidence": "cyclingSim.ts:1771-1774"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 587,
+   "claim": "under the policy the emergency CB top-up is doom-gated; off → not",
+   "evidence": "cyclingSim.ts:959,1533"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 593,
+   "claim": "'CB LTV stop' / 'STOP X%' / 'Coinbase LTV stop' copy; internal cbLtvCapPct",
+   "evidence": "CyclingFace.tsx:957,1069; OwnershipFace.tsx:1061"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 596,
+   "claim": "verdict defense note appends '₿X from cold storage, ₿Y from the Strike pledge'",
+   "evidence": "CyclingFace.tsx:772-775"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 598,
+   "claim": "CB LTV tile 'defended from X%' else 'stop X% · liq 86%' (defendedFromSub)",
+   "evidence": "cyclingFaceView.ts:130-136; CyclingFace.tsx:536"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 600,
+   "claim": "unhedged month = topUpExhaustedMonth if top-up fired else defenseExhaustedMonth; policy → firstUnhel",
+   "evidence": "cyclingFaceView.ts:148-154"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 604,
+   "claim": "venue debt line 'Debt · $X Strike · $Y Coinbase [· $Z shifted this month]' via debtSplit",
+   "evidence": "CyclingFace.tsx:870-871"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 606,
+   "claim": "plBandAt in powerLaw.ts; amber below-support note, range never clamped",
+   "evidence": "powerLaw.ts:85; CyclingFace.tsx:822"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 608,
+   "claim": "cbDefense.test.ts + defendCbLtv / sweep cascade blocks in cyclingSim.test.ts + plBandAt cases",
+   "evidence": "ls tests; powerLaw.test.ts:63-75"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 624,
+   "claim": "cbDefense: topUpStrikeLtv, strikeCollateralAboveLtv(coll, bal, price, boundLtv)",
+   "evidence": "cbDefense.ts:226,324"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 628,
+   "claim": "CB_SURVIVAL_BUFFER = 0.05, its own constant",
+   "evidence": "cbDefense.ts:349"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 630,
+   "claim": "cbSurvivalCollateralBtc(debt, coll, price, lltv, buffer = CB_SURVIVAL_BUFFER); cbDoomedThisMonth(inp",
+   "evidence": "cbDefense.ts:366-368,420"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 632,
+   "claim": "topUpToCbLtv strikeFloorLtv?: bound = min(marginBound, floor); absent ≡ pre-floor",
+   "evidence": "cbDefense.ts:192-197"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 636,
+   "claim": "runCyclingSim strikeLtvCapPct? 0/undefined = off",
+   "evidence": "cyclingSim.ts:271"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 637,
+   "claim": "effectiveStrikeCapPct(raw, marginLtv) exported; clamps 0.70 × 0.95 → 66.5",
+   "evidence": "cyclingSim.ts:674; cyclingFaceView.test.ts:756-757"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 641,
+   "claim": "sequence: debt shift → Strike reserve → survival guard → CB top-up → Strike top-up → cold sweep",
+   "evidence": "cyclingSim.ts:1447,1488-1593,1661"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 647,
+   "claim": "CB top-up handed coldBtc − reserve AND strikeFloorLtv at the cap",
+   "evidence": "cyclingSim.ts:1539,1543"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 649,
+   "claim": "fixture B (test A1) catches deleting either half",
+   "evidence": "cyclingSim.test.ts:1120"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 650,
+   "claim": "Strike top-up UNGATED on defenseShortfallUsd",
+   "evidence": "cyclingSim.ts:1570-1575"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 653,
+   "claim": "survival guard: floor stands only while coldBtc >= survivalBtc; records firstSurvivalYieldMonth",
+   "evidence": "cyclingSim.ts:1503-1519"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 657,
+   "claim": "guard gated on defenseShortfallUsd > 0",
+   "evidence": "cyclingSim.ts:1504"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 659,
+   "claim": "need = cbSurvivalCollateralBtc(cbDebt, cbColl, price, CB_LLTV, CB_SURVIVAL_BUFFER, cap)",
+   "evidence": "cyclingSim.ts:1509"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 667,
+   "claim": "futility check stands guard down when cbDoomedThisMonth",
+   "evidence": "cyclingSim.ts:1505"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 673,
+   "claim": "row strikeTopUpBtc/strikeReserveBtc/strikeTopUpShortfallBtc/strikeReserveCutBtc; result fields",
+   "evidence": "cyclingSim.ts declarations (grep each → 1)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 675,
+   "claim": "Strike top-up joins coldRetrievedBtc",
+   "evidence": "cyclingSim.ts:1584-1585"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 677,
+   "claim": "cbSurvivalGuard / cbFutilityCheck test-only, default ON",
+   "evidence": "cyclingSim.ts:875-876"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 679,
+   "claim": "no face may pass either; grep test enforces",
+   "evidence": "cyclingSim.test.ts:1362-1368"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 684,
+   "claim": "grids: synthetic 5,760 526→0→0; face-world 360 24→14→14; reachability 2,806 158→94→94",
+   "evidence": "cyclingSim.test.ts:1274,1277,1301-1302,1328-1329"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 686,
+   "claim": "face-world yields 108→59, worse 29→13, futile 21→5, calls 80→97→82",
+   "evidence": "cyclingSim.test.ts:1281-1283"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 687,
+   "claim": "reachability yields 704→395, worse 96→44, futile 70→18, calls 858→968→920",
+   "evidence": "cyclingSim.test.ts:1331-1333"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 692,
+   "claim": "harm rate 96/455 → 44/146",
+   "evidence": "cyclingSim.test.ts:1331-1332 (strikeWorse/died)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 701,
+   "claim": "policy sweep keeps CB need at support + bear buffer (built, policy only)",
+   "evidence": "cyclingSim.ts:952 support-anchored policy block"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 704,
+   "claim": "keepForMargin = strikeBal / (strikeMarginLtv × stressed)",
+   "evidence": "cyclingSim.ts:1346"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 710,
+   "claim": "strikeMarginMonth is a flag; only Coinbase's liqMonth seizes (policy-off)",
+   "evidence": "cyclingSim.ts declarations; 1596-1600 policy-only call"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 716,
+   "claim": "Support path: Strike cap is a no-op (pinned)",
+   "evidence": "cyclingSim.test.ts:1305-1315 (A4)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 720,
+   "claim": "test list: A1 fixture B, A4, A6 fixture D, grep test for both flags, 36-combo grid",
+   "evidence": "cyclingSim.test.ts:1063,1120,1305,1341,1362"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 722,
+   "claim": "reproduction both ways (43 / null)",
+   "evidence": "cyclingSim.test.ts:995,1039"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 731,
+   "claim": "env-gated report -t 'cold rules' / 'repayment'",
+   "evidence": "supportPolicyReport.test.ts:620,724"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 734,
+   "claim": "both switches resolve as policy !== null && …",
+   "evidence": "cyclingSim.ts:959,963"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 740,
+   "claim": "doomGateCbTopUp default ON under policy; false test-only",
+   "evidence": "cyclingSim.ts:959"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 746,
+   "claim": "one helper cbDoomedNow(price, m) feeds survival guard, D and top-up-first gate",
+   "evidence": "cyclingSim.ts:1025,1405,1505,1533"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 756,
+   "claim": "strikeFirstAfterLiquidation default ON under policy",
+   "evidence": "cyclingSim.ts:963"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 770,
+   "claim": "C (cold before the debt shift) retired; input deleted",
+   "evidence": "supportPolicyReport.test.ts:620 'C retired'; no such input in cyclingSim.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 795,
+   "claim": "every playbook switch policy-only (policy !== null && …)",
+   "evidence": "cyclingSim.ts:960-962"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 798,
+   "claim": "strikeReleaseRules TEST-ONLY default ON",
+   "evidence": "cyclingSim.ts:960"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 799,
+   "claim": "strictly under 50% after via STRIKE_RELEASE_EPS; strikeHoldUntil",
+   "evidence": "cbDefense.ts:239; cyclingSim.ts:982,1591"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 800,
+   "claim": "strikeReleasableBtc (cbDefense) one definition; releasableNow(m, price)",
+   "evidence": "cbDefense.ts:264; cyclingSim.ts:1017"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 802,
+   "claim": "passed to both top-up sites (strikeReleaseCapBtc) and doom questions (strikeReleasableBtc)",
+   "evidence": "cyclingSim.ts:1028,1544"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 806,
+   "claim": "collateral going IN starts the hold (cap top-up, cure's cold)",
+   "evidence": "cyclingSim.ts:1591,1617"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 808,
+   "claim": "topUpBeforeShift TEST-ONLY default ON",
+   "evidence": "cyclingSim.ts:961"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 809,
+   "claim": "gate ceilingLiquidationMultiple(cbStop, CB_LLTV) ≤ k < 1 − SUPPORT_EPS; ≈0.698 at 60%, ≈0.52 at 45%",
+   "evidence": "cbDefense.ts:283-287; crashPlaybook.ts:152; planPolicy.ts:23"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 816,
+   "claim": "top-up-first month's cbLtvPreDefense is the LTV before the playbook (??=)",
+   "evidence": "cyclingSim.ts:1460"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 821,
+   "claim": "topUpFirstAnyDepth TEST-ONLY default OFF",
+   "evidence": "cyclingSim.ts:962"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 827,
+   "claim": "SHIFT_DUST_USD ($0.005); dust → defenseDrawnUsd 0, need stays paydownNeededUsd",
+   "evidence": "cbDefense.ts:297; cyclingSim.ts:1464-1467"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 830,
+   "claim": "firstUnheldMonth: playbook ran and CB over cap × (1 + 1e-9)",
+   "evidence": "cyclingSim.ts:1564-1565"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 831,
+   "claim": "faces read firstUnheldMonth under policy; else topUpExhausted/defenseExhausted",
+   "evidence": "cyclingFaceView.ts:148-154"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 833,
+   "claim": "strikeRepaidUsd / cbRepaidUsd; sum ≡ restoreUsd + payDownUsd pinned toBeCloseTo",
+   "evidence": "cyclingSimPolicy.test.ts:1665"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 836,
+   "claim": "crashPlaybook() in src/simulation/crashPlaybook.ts consumed by Runs 2 and 3",
+   "evidence": "crashPlaybook.ts; EmergencyConsole.tsx; usePlanCardInputs.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 838,
+   "claim": "parity test engine ≡ crashPlaybook with Strike cap off",
+   "evidence": "cyclingSimPolicy.test.ts:1694"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 844,
+   "claim": "report prints 'STOP — invariant broken'",
+   "evidence": "supportPolicyReport.test.ts:937,940"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 849,
+   "claim": "deficitMode notice is non-cycle only",
+   "evidence": "ownershipFaceView.ts:135"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 852,
+   "claim": "CyclingRow.unfundedUsd: drawing max(0, shortfall − income), stopped/non-cycle max(0, expenses − inco",
+   "evidence": "cyclingSim.ts:1193,1208,1292,1640"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 858,
+   "claim": "CyclingResult.totalUnfundedUsd and firstUnfundedMonth",
+   "evidence": "cyclingSim.ts declarations"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 859,
+   "claim": "modeConstraints(mode, firstDrawMonth, income, expenses, totalUnfundedUsd) 5th arg required; cycleUnf",
+   "evidence": "ownershipFaceView.ts:126-138"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 862,
+   "claim": "unfundedNote(first, total, baselineUnfundedUsd) in ownershipFaceView, one sentence for 3 faces",
+   "evidence": "ownershipFaceView.ts:146-153; Cycling/Ownership/Unified call it"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 863,
+   "claim": "sits in each face's .constraints block",
+   "evidence": "CyclingFace.tsx:1180; OwnershipFace.tsx:1152; UnifiedFace.tsx:735"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 864,
+   "claim": "on CyclingFace beside the credit-exhausted notice",
+   "evidence": "CyclingFace.tsx:391,1183"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 865,
+   "claim": "cause-neutral sentence text + baseline measured gap sentences",
+   "evidence": "ownershipFaceView.ts:148-152"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 868,
+   "claim": "under the policy constraints box shows policyUnpaidNote(reading)",
+   "evidence": "CyclingFace.tsx:389; OwnershipFace.tsx:483; UnifiedFace.tsx:373"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 871,
+   "claim": "every face reads it from the same sim as firstDrawMonth",
+   "evidence": "CyclingFace.tsx:380; OwnershipFace.tsx:479-480; UnifiedFace.tsx:358-359"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 872,
+   "claim": "CyclingFace destructures cycleUnfunded only; no degenerateCap",
+   "evidence": "CyclingFace.tsx:379-380"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 874,
+   "claim": "baselineUnfundedUsd measured",
+   "evidence": "cyclingSim.ts declaration; 1826"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 876,
+   "claim": "verdictVsNeverDraw compares allInEquity with baselineAllInEquity",
+   "evidence": "cyclingFaceView.ts:862-863"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 878,
+   "claim": "$46,000 over 24 months on flat $100k at 45% stop; $2,000 on REPRO's path (pinned)",
+   "evidence": "cyclingSim.test.ts:1388-1403"
+  }
+ ]
+}

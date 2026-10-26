@@ -1,0 +1,2417 @@
+{
+ "key": "FS-2",
+ "doc": "docs/claude/file-structure.md",
+ "lines": "853-1241, 1242-1506",
+ "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+ "counts": {
+  "TRUE": 378,
+  "STALE": 5,
+  "FALSE": 1,
+  "HISTORY": 17,
+  "UNCHECKABLE": 14
+ },
+ "records": [
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 989,
+   "claim": "futures.worker is 'a precache entry (8 since)' — the precache held 8 entries once the futures worker landed",
+   "verdict": "STALE",
+   "evidence": "git show 0228baf (the line's origin) wrote 'the precache, which is **8 entries** since the futures worker (7 before)'. The base build at c7f709e: /tmp/hardening-1/base-gate/build.log:64 'precache  14 entries (2174.56 KiB)' (summary.txt head=c7f709e…); build.log:38 dist/assets/futures.worker-BGr-Pw6U.js — the worker is still a precache entry, the count moved",
+   "correction": {
+    "before": "(8 since)",
+    "after": "(14 at c7f709e)"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1327,
+   "claim": "PassphraseInput adopted at ALL 16 RENDERED masked fields",
+   "verdict": "STALE",
+   "evidence": "grep -rn '<PassphraseInput' src (non-test) by file: NostrAuthGate 5, RecoveryKeyCeremony 3, ViewerLoginFlow 3, ViewerUnlockGate 2, OwnerKeySetup 2, RevealRecoveryKey 1, SharingPage 1, LocalUnlockGate 1 = 18; LocalUnlockGate is rendered (AppShell.tsx:43 import). The 'all rendered masked fields' part holds (type=\"password\" only in the two unrendered gates)",
+   "correction": {
+    "before": "ALL 16 RENDERED",
+    "after": "ALL 18 RENDERED"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1328,
+   "claim": "NostrAuthGate's masked fields: remediation encrypt · ncryptsec unlock · PIN · Confirm PIN (4)",
+   "verdict": "STALE",
+   "evidence": "NostrAuthGate.tsx has 5 PassphraseInputs: :608 remediation encrypt (bare-nsec-pass), :663 the saved-key PIN unlock (unlockPinMode, '#6: a wrapped key already lives on this device'), :790 ncryptsec unlock, :844 PIN, :846 Confirm PIN — the saved-key unlock PIN is not listed",
+   "correction": {
+    "before": "NostrAuthGate (remediation encrypt · ncryptsec unlock · PIN · Confirm PIN)",
+    "after": "NostrAuthGate (remediation encrypt · saved-key PIN unlock · ncryptsec unlock · PIN · Confirm PIN)"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1331,
+   "claim": "the list of hosts ends at SharingPage (PIN) — LocalUnlockGate not named",
+   "verdict": "STALE",
+   "evidence": "LocalUnlockGate.tsx:75-81 <PassphraseInput className={styles.input} inputMode=\"numeric\" placeholder=\"PIN\"> — rendered (AppShell.tsx:43), not in the doc's list",
+   "correction": {
+    "before": "SharingPage (PIN).",
+    "after": "SharingPage (PIN), LocalUnlockGate (PIN)."
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1336,
+   "claim": "'One default beats 16 chances to forget one' — the count of masked fields",
+   "verdict": "STALE",
+   "evidence": "same count as L1327: 18 <PassphraseInput> sites rendered (grep by file above)",
+   "correction": {
+    "before": "beats 16 chances",
+    "after": "beats 18 chances"
+   }
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1434,
+   "claim": "(AlmanacView mounts the adjacent faces during a gesture, null at rest — no heavy hooks on a peek) — present tense",
+   "verdict": "FALSE",
+   "evidence": "AlmanacView.tsx renders no SwipeStrip: grep -n 'SwipeStrip\\|renderPane' AlmanacView.tsx → only :46 '…the horizontal swipe pager (SwipeStrip) was REMOVED'; the only SwipeStrip callers are Calendar.tsx:151 and MonthlyLogOverlay.tsx:426, neither using the live arg. The same entry says so at L1415 and L1428-1429, so this parenthetical contradicts the code and its own row (a doc lag, not a code regression)",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1248,
+   "claim": "LiqSimulator.tsx/.module.css, liqSimulatorView.ts and its test — DELETED in Run 4",
+   "verdict": "HISTORY",
+   "evidence": "ls src/components/Tools: CbDefenseTool.tsx, EmergencyConsole.*, crashPlaybookView.ts, toolShell.module.css, __tests__ — none of them present (confirms the note)",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1292,
+   "claim": "Run 3 deleted CB_PAYDOWN_LABEL / IF_YOU_SHIFT_DEBT and playbookDepthFor",
+   "verdict": "HISTORY",
+   "evidence": "grep -rn 'CB_PAYDOWN_LABEL\\|IF_YOU_SHIFT_DEBT\\|playbookDepthFor' src (non-test) → none (confirms)",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1399,
+   "claim": "the old inputFocused / onFocusCapture-onBlurCapture wiring is DELETED",
+   "verdict": "HISTORY",
+   "evidence": "grep inputFocused DraggableSheet.tsx → none (confirms)",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1143,
+   "claim": "planReanchorLine replaced in Run 4 by planReanchorWords",
+   "verdict": "HISTORY",
+   "evidence": "planMonthView.ts has no planReanchorLine export; planReanchorWords at :737 (confirms)",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1417,
+   "claim": "SwipeStrip props listed as {onPage,canPage,renderPane,onSwipeStart?,shouldStart?,disabled?}",
+   "verdict": "TRUE",
+   "evidence": "SwipeStrip.tsx:44 also takes labelledBy (not listed) — the listed props all hold; the list is not exhaustive. Recorded for the owner, counted TRUE",
+   "correction": null
+  }
+ ],
+ "historyLines": [
+  871,
+  926,
+  1057,
+  1061,
+  1075,
+  1206,
+  1244,
+  1248,
+  1292,
+  1301,
+  1369,
+  1392,
+  1399,
+  1143,
+  1415,
+  1477,
+  1504
+ ],
+ "uncheckableLines": [
+  859,
+  983,
+  985,
+  999,
+  1007,
+  1030,
+  1172,
+  1236,
+  1335,
+  1339,
+  1358,
+  1396,
+  1412,
+  1444
+ ],
+ "trueClaims": [
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 853,
+   "claim": "Almanac/ = src/components/Almanac (DecisionFace etc. live there)",
+   "evidence": "ls src/components/Almanac: 54 entries incl. DecisionFace.tsx"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 854,
+   "claim": "DecisionFace is the TWELFTH face",
+   "evidence": "AlmanacView.tsx:55 Face union has 12 keys, 'decision' last"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 854,
+   "claim": "DecisionFace.module.css composes the parents'",
+   "evidence": "DecisionFace.module.css:6-15 composes from ./CyclingFace.module.css"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 855,
+   "claim": "Coinbase-loan line, schedule Copy · Download .txt · Print",
+   "evidence": "DecisionFace.tsx:35 coinbaseLoanLine; :846-849 Copy/Download .txt/Print buttons"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 857,
+   "claim": "composes NO sentence (I31), pinned by decisionWiring's literal scan",
+   "evidence": "__tests__/decisionWiring.test.ts:319 describe 'I31 — the face composes no sentence'"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 858,
+   "claim": "chart is memoised same-file DecisionChart sub-component",
+   "evidence": "DecisionFace.tsx:231 const DecisionChart = memo(function DecisionChart"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 860,
+   "claim": "ENGINE_CONTEXT = five engine constants (mode, two caps, Strike margin and draw lines)",
+   "evidence": "planRun.ts:33-36 PLAN_ENGINE_CONTEXT {mode,cbLtvCapPct,strikeLtvCapPct,strikeMarginLtv,strikeMaxDraw"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 861,
+   "claim": "engineInputs spreads it; seeding gate hands it to seedsFromMove",
+   "evidence": "planRun.ts:127 ...PLAN_ENGINE_CONTEXT; DecisionFace.tsx:422 seedsFromMove(…{...PLAN_ENGINE_CONTEXT"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 863,
+   "claim": "it is planRun.ts's PLAN_ENGINE_CONTEXT",
+   "evidence": "DecisionFace.tsx:15 imports PLAN_ENGINE_CONTEXT from planRun"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 864,
+   "claim": "face builds through planRun's placementInputOf / engineInputsOf",
+   "evidence": "DecisionFace.tsx:392 placementInputOf(; :434 engineInputsOf("
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 865,
+   "claim": "THIS MONTH runs the same builders (invariant 2)",
+   "evidence": "planRun.ts:212 placementInputOf, :232 engineInputsOf inside planMonthRun"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 866,
+   "claim": "Coinbase through planCbCollateralOf / planCbLoanBalanceOf; none with loan off",
+   "evidence": "DecisionFace.tsx:319,322; planRun.ts:48-52 hasCbLoan ? … : 0"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 867,
+   "claim": "minimum as strikeMinFromIncome (D-R2-7)",
+   "evidence": "DecisionFace.tsx:325 strikeMinFromIncome: st.blocMinPaymentSource === 'income'"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 867,
+   "claim": "Strike's hold through strikeDepositOf → strikeHoldAt",
+   "evidence": "DecisionFace.tsx:324 strikeDepositOf(st); :375 strikeHoldAt(s.strikeDepositISO, todayISO)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 868,
+   "claim": "moveWhatIf (a policy or line what-if) switches the card's first line",
+   "evidence": "DecisionFace.tsx:513-515 moveWhatIf → whatIf; decisionView.ts:453 planOfRecordLine(ctx.whatIf)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 869,
+   "claim": "the face's LAST child is <ControlDock>",
+   "evidence": "DecisionFace.tsx:936-937 ControlDock last in root div (print portal goes to body)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 870,
+   "claim": "month and stress live only in the dock; Path/Line/Policy remote controls (same overlay)",
+   "evidence": "DecisionFace.tsx:640-641 comment + dockContent month/stress; :710 live month/stress"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 872,
+   "claim": "the card's three notes read under the chart",
+   "evidence": "DecisionFace.tsx:767-777 manualNote, stressNote, BELOW_SUPPORT_NOTE under the chart"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 872,
+   "claim": "PathPicker is ONE picker for What-if card and dock's Path panel",
+   "evidence": "DecisionFace.tsx:116 function PathPicker; used :681 (dock) and :871 (card)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 873,
+   "claim": "the dock's Line is disabled={s.viewerMode} (R1)",
+   "evidence": "DecisionFace.tsx:696 aria-label=\"Credit line (what-if)\" disabled={s.viewerMode}"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 874,
+   "claim": "consoleRuns = s.hasCbLoan",
+   "evidence": "DecisionFace.tsx:337 const consoleRuns = s.hasCbLoan"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 875,
+   "claim": "crash rows' console link, crash note on screen and printout, THE MOVE read consoleRuns",
+   "evidence": "DecisionFace.tsx:829-832 crashNote(consoleRuns); :536 consoleRuns in ctx; :577 scheduleToText(…,cons"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 876,
+   "claim": "the face reads no cbPaymentStrategy",
+   "evidence": "grep cbPaymentStrategy src/components/Almanac/DecisionFace.tsx → none"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 877,
+   "claim": "placement memo passes goalNetBtc and depends on it",
+   "evidence": "DecisionFace.tsx:405 goalNetBtc: s.goalNetBtc; :408 deps include s.goalNetBtc"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 879,
+   "claim": "cold card (ColdStorageCard from coldCardView) under the outcome strip, showTotal={false}",
+   "evidence": "DecisionFace.tsx:853-866 statGrid then <ColdStorageCard view={coldView} showTotal={false} />"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 881,
+   "claim": "at the run's own buffer PLAN_COLD_BUFFER_PCT",
+   "evidence": "DecisionFace.tsx:619 coldCardView(sim, policySettings, PLAN_COLD_BUFFER_PCT"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 882,
+   "claim": "ACTION_FIELDS is the field → action table",
+   "evidence": "decisionView.ts:91 export const ACTION_FIELDS"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 884,
+   "claim": "a completeness sweep enumerates ACTION_FIELDS",
+   "evidence": "decisionView.test.ts:85 I13 every ACTION_FIELDS entry…; :149 toEqual(ENGINE_KINDS)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 885,
+   "claim": "todayActions reads the PLAN, rowActions a row",
+   "evidence": "decisionView.ts:222 todayActions(plan: PlacementPlan); :190 rowActions(row: CyclingRow"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 886,
+   "claim": "planSchedule · planOutcome · coinbaseLoanLine · scheduleToText exported",
+   "evidence": "decisionView.ts:246,276,291,315"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 887,
+   "claim": "moveCard(ctx) is THE MOVE's copy as data with tones",
+   "evidence": "decisionView.ts:452 moveCard(ctx: MoveCardContext): MoveCardCopy; :352 MoveLine {tone}"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 889,
+   "claim": "the cliff is cbMetrics().liqPrice, reads plan.opening",
+   "evidence": "decisionView.ts:579 cbMetrics(ctx.cbDebt, plan.opening.cbCollateralBtc, …)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 891,
+   "claim": "state-line block is an EXHAUSTIVE switch with a never default",
+   "evidence": "decisionView.ts:512 switch (plan.state); :550 const never: never = plan.state"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 893,
+   "claim": "ONE has-a-Coinbase-loan predicate hasCbLoan && shownUsd(cbDebt)",
+   "evidence": "decisionView.ts:474 const hasLoan = ctx.hasCbLoan && shownUsd(ctx.cbDebt)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 895,
+   "claim": "'unavailable' prints the plan-of-record line and one sentence",
+   "evidence": "decisionView.ts:453 planOfRecord line; :466-469 UNAVAILABLE_LINE then return"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 899,
+   "claim": "PATH_INVARIANT_LINE closes cards rendering the policy",
+   "evidence": "decisionView.ts:366 export; :598 lines.push(line('pathInvariant'…))"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 900,
+   "claim": "MoveLine.action — Try $L / Back to $X button",
+   "evidence": "decisionView.ts:689 Back to ${fmtUSD}; :706 Try ${fmtUSD}"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 901,
+   "claim": "BREAKER_LOADING_LINE + breakerReading(seed, loading)",
+   "evidence": "decisionView.ts:370; :717 breakerReading(seed, loading)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 902,
+   "claim": "crashNote; scheduleToText takes a REQUIRED consoleRuns",
+   "evidence": "decisionView.ts:315-316 scheduleToText(rows, header, move, disclaimer, consoleRuns: boolean)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 903,
+   "claim": "consoleLinkLabel · decisionDisclaimer exported",
+   "evidence": "decisionView.ts:345, :737"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 904,
+   "claim": "pathNoun / pathSublabel / pathNote; DecisionPath = PathKind | two worst",
+   "evidence": "decisionView.ts:757,763,809; :753 DecisionPath = PathKind | 'worstStitched' | 'worstModeled'"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 905,
+   "claim": "pathNote's crown sentence names the rule from worstBy",
+   "evidence": "decisionView.ts:826 CROWN_CLAUSE[n.worstBy]"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 906,
+   "claim": "scheduleHeader · outcomeTiles · scheduleFileName · manualPriceNote · stressNote",
+   "evidence": "decisionView.ts:833,857,892,729,900"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 907,
+   "claim": "BELOW_SUPPORT_NOTE · moveCardText · DECISION_FRAMING",
+   "evidence": "decisionView.ts:909,895,361"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 908,
+   "claim": "Today row and coinbaseLoanLine's today require sim.policyApplied",
+   "evidence": "decisionView.ts:252-254 sim.policyApplied ? …; :298 movesToday = sim.policyApplied && …"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 910,
+   "claim": "SCHEDULE_KEEP_HEADER 'Strike keep' + SCHEDULE_KEEP_KEY",
+   "evidence": "decisionView.ts:915-916"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 911,
+   "claim": "ON_SUPPORT_NOTE (the legend note)",
+   "evidence": "decisionView.ts:920; DecisionFace.tsx:762"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 912,
+   "claim": "cliff line takes the dust floor and fmtBelowPct; private alertLine follows",
+   "evidence": "decisionView.ts:576-583 fmtBelowPct; :621 function alertLine (not exported)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 914,
+   "claim": "seedsFromMove(seeded, PolicyRunContext) asks supportPolicyResolution",
+   "evidence": "decisionView.ts:609-610 seeded && supportPolicyResolution(ctx).policyApplied"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 916,
+   "claim": "PLAN_OF_RECORD_LINE text",
+   "evidence": "decisionView.ts:374 exact string matches"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 917,
+   "claim": "PLAN_WHAT_IF_LINE / planOfRecordLine(whatIf); MoveCardContext gains whatIf",
+   "evidence": "decisionView.ts:376-377; :453 ctx.whatIf"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 919,
+   "claim": "ACTION_FIELDS gains payMinimum (strikeMinPaidUsd → \"Pay Strike's minimum, $X, from income.\")",
+   "evidence": "decisionView.ts:99-100"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 920,
+   "claim": "buy drops ≈ ₿ under dust floor; refinance never names a $0 fee",
+   "evidence": "decisionView.ts:112 fmtBtc3 never below dust; :131-133 shownUsd(r.refinancedFeeUsd)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 922,
+   "claim": "UsdFmt; texts, rowActions, planSchedule take a formatter, fmtUSD default",
+   "evidence": "decisionView.ts:76 UsdFmt; :190-191 usd = fmtUSD; :246 usd = fmtUSD"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 923,
+   "claim": "the face passes none",
+   "evidence": "DecisionFace.tsx:570 planSchedule(sim, placement)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 924,
+   "claim": "planMonthSummary passes fmtUSDCents",
+   "evidence": "planMonthView.ts:768 planSchedule(sim, plan, fmtUSDCents)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 927,
+   "claim": "console's gate words '(it runs once your Coinbase loan is switched on)' (CONSOLE_GATE)",
+   "evidence": "decisionView.ts:338,342"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 929,
+   "claim": "at-or-past alert is crashPlaybookView's atTriggerLine, one copy with CB Loan tab's banner",
+   "evidence": "decisionView.ts:15,630; CoinbaseLoanMain.tsx:109 atTriggerLine(cbLtvTriggerPct, true)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 930,
+   "claim": "suggestedLineWords(…) → { covers, text }",
+   "evidence": "decisionView.ts:675-681"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 931,
+   "claim": "the Smart BLOC sidebar reads it too",
+   "evidence": "InputsPanel.tsx:9,62 suggestedLineWords"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 933,
+   "claim": "ACTION_FIELDS gains strikeToCold with '(small — can wait)' under 0.01 ₿",
+   "evidence": "decisionView.ts:125-127; placement.ts:47 MOVE_THRESHOLD_BTC = 0.01"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 935,
+   "claim": "moveCard at plan.standDown — why/aligned lines; no line words, what-if stays",
+   "evidence": "decisionView.ts:503-504 GOAL_STAND_DOWN_WORDS; :543; :685-700 whatIf first, standDown → []"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 939,
+   "claim": "buildChartSeries; support via supportAtDates for history",
+   "evidence": "decisionChartView.ts:58,68"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 941,
+   "claim": "history stride-downsampled to ≤ 800 keeping first and last",
+   "evidence": "decisionChartView.ts:32 MAX_HISTORY_POINTS = 800; :49-55 downsample"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 942,
+   "claim": "cliffPath(rows) = cbSeizurePrice per row; Worst (modeled) cushion reads it too",
+   "evidence": "decisionChartView.ts:44-45; planSearch.ts:59 cbSeizurePrice(row) in minCushionOf"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 943,
+   "claim": "cliff null with no loan, no collateral, on/after liquidation row",
+   "evidence": "cbMetrics.ts:62-64; cyclingSim.ts:1702,1731 postLiquidation: liqMonth !== null"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 946,
+   "claim": "chartDomain explicit positive log domain ×0.8 / ×1.25; null ⇒ placeholder",
+   "evidence": "decisionChartView.ts:126-137"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 947,
+   "claim": "xExtent; date ticks moved to lib/chartZoom.ts as timeTicks",
+   "evidence": "decisionChartView.ts:141; lib/chartZoom.ts:282 export function timeTicks"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 950,
+   "claim": "pathOnSupport via sameSeries months 1…horizon",
+   "evidence": "decisionChartView.ts:165-168"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 952,
+   "claim": "ownershipFaceView exports chartOwnershipRows, ownershipGained, ownershipHero, modeConstraints…",
+   "evidence": "ownershipFaceView.ts:45,18,91,126,146,167,194,232"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 953,
+   "claim": "deriveOwnership, 3-arg",
+   "evidence": "ownershipFaceView.ts:47 deriveOwnership(r.btcHeld, r.debt, r.price)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 955,
+   "claim": "strikeLimitTail stand-down words",
+   "evidence": "ownershipFaceView.ts:218-227 exact sentence"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 958,
+   "claim": "OwnershipFace renders it",
+   "evidence": "OwnershipFace.tsx:813 strikeLimitTail(cap, selRow, fmtK)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 959,
+   "claim": "tested in ownershipFaceView.test.ts and goalViews.test.ts (STAND LIMIT)",
+   "evidence": "__tests__/ownershipFaceView.test.ts exists; goalViews.test.ts:616 STAND LIMIT"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 960,
+   "claim": "supportPolicyInputs is the faces' only §2 crossing for support (buildSupportPath/supportPolicyFor)",
+   "evidence": "faces import buildSupportPath/supportPolicyFor only from ./supportPolicyInputs (Cycling:36, Ownershi"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 961,
+   "claim": "buildSupportPath = plBandAt('floor', start, m)",
+   "evidence": "supportPolicyInputs.ts:21-23"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 962,
+   "claim": "supportPolicyFor(settings, path, bills, strikeLiqPct, mode) → input or undefined",
+   "evidence": "supportPolicyInputs.ts:34-40"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 964,
+   "claim": "supportAtDates(dates) = plFloor per date",
+   "evidence": "supportPolicyInputs.ts:71-72"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 966,
+   "claim": "breakerFromHistory(history, today, rearm) → {state,lastMonthEndISO}|null",
+   "evidence": "supportPolicyInputs.ts:111-113"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 968,
+   "claim": "through the engine's own nextRearmableBreakerState",
+   "evidence": "supportPolicyInputs.ts:4,143"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 970,
+   "claim": "close within 7 days; junk carries the state",
+   "evidence": "supportPolicyInputs.ts:86 CLOSE_MAX_GAP_DAYS = 7; :140 continue (carry)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 971,
+   "claim": "holdMonthsFrom(throughISO, startDate)",
+   "evidence": "supportPolicyInputs.ts:154"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 972,
+   "claim": "does NOT import Tools/crashPlaybookView",
+   "evidence": "supportPolicyInputs.ts:1-8 imports: powerLaw, cyclingSim, supportPolicy, strikeCredit, cyclingFaceVi"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 974,
+   "claim": "face and usePlanMonth read the date through strikeDepositOf",
+   "evidence": "DecisionFace.tsx:324; usePlanMonth.ts:49"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 975,
+   "claim": "History typed structurally (HistoryPoint); imports no hook",
+   "evidence": "supportPolicyInputs.ts:76 interface HistoryPoint; no hook imports"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 976,
+   "claim": "futuresRun is the only module importing pricePaths AND monteCarlo",
+   "evidence": "grep from '…(pricePaths|monteCarlo)': only futuresRun.ts imports both (UnifiedFace only pricePaths)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 977,
+   "claim": "pinned by a source test (W WALL)",
+   "evidence": "futuresFace.test.ts:267 describe 'the wiring', :316-321 WALL"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 978,
+   "claim": "FuturesJob { inputs, anchorPrice, startISO, months, count?, seed? }",
+   "evidence": "futuresRun.ts:15-25"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 979,
+   "claim": "futuresFor(job) = runFutures over priceFutures, with startISO",
+   "evidence": "futuresRun.ts:42-44"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 980,
+   "claim": "one-entry cache keyed by anchor·start·horizon·count·seed, never the inputs",
+   "evidence": "futuresRun.ts:27-35 key = anchorPrice|startISO|months|count|seed"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 984,
+   "claim": "futuresAnchor on 1% grid in log price; junk passes",
+   "evidence": "futuresRun.ts:52-55"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 987,
+   "claim": "worker: futuresFor off main thread; declare const self: DedicatedWorkerGlobalScope; local contract",
+   "evidence": "futures.worker.ts:10,12,14"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 989,
+   "claim": "compiled by tsconfig.worker.json and excluded from tsconfig.app.json",
+   "evidence": "tsconfig.worker.json:18 include; tsconfig.app.json:22 exclude"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 990,
+   "claim": "runFuturesJob(job) → Promise<FuturesSummary|null>",
+   "evidence": "futuresClient.ts:88"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 991,
+   "claim": "one lazy module worker new Worker(new URL('./futures.worker.ts', …), {type:'module'})",
+   "evidence": "futuresClient.ts:21"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 992,
+   "claim": "typeof Worker check; error/messageerror/20 s timeout → in-thread via futuresFor",
+   "evidence": "futuresClient.ts:16 JOB_TIMEOUT_MS = 20_000; :50; :61-62; :30-31"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 994,
+   "claim": "LATEST ONLY: one running, one waiting; replaced waiting settles null",
+   "evidence": "futuresClient.ts:27-28; :90 waiting.settle(null)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 996,
+   "claim": "resetFuturesClientForTests(factory?)",
+   "evidence": "futuresClient.ts:97"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 997,
+   "claim": "useFutures(job|null) → {summary, running}, keyed by JSON.stringify",
+   "evidence": "useFutures.ts:21-22"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1000,
+   "claim": "runs after FUTURES_DEBOUNCE_MS (300); stale dropped; last summary stays",
+   "evidence": "futuresView.ts:20 =300; useFutures.ts:31-37"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1002,
+   "claim": "no word built in futuresView says 'future'",
+   "evidence": "futuresView.ts string literals: only 'simulations' (grep of literals)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1004,
+   "claim": "futuresReadout four numbers: You own · In your cold storage · Beats never borrowing · Coinbase seize",
+   "evidence": "futuresView.ts:135-170"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1005,
+   "claim": "Beats never borrowing sub adds '· N% tie' with ties",
+   "evidence": "futuresView.ts:165-166"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1006,
+   "claim": "coin subs 'where 8 of 10 simulations end · half end above x ₿' with no-break space",
+   "evidence": "futuresView.ts:55 \\u00a0₿; :156-158"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1008,
+   "claim": "a 'none' range names no middle; else the chance alone and its note",
+   "evidence": "futuresView.ts:154-158; :143-150 countsSeizures note"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1009,
+   "claim": "futuresCardLine sentence shapes and 'none of them'",
+   "evidence": "futuresView.ts:177-185"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1012,
+   "claim": "seizedShares → {total, early}; 'all' first; null ≤ a year; both one decimal when alike",
+   "evidence": "futuresView.ts:111-120"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1017,
+   "claim": "whenText: first-year share then half-of-seizures month",
+   "evidence": "futuresView.ts:126-132"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1019,
+   "claim": "horizonWords 'the next year' / 'the next 5 years'",
+   "evidence": "futuresView.ts:74-77"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1019,
+   "claim": "monthYear via fixed month table, never toLocaleDateString",
+   "evidence": "futuresView.ts:58 MONTHS; :80-84"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1020,
+   "claim": "futuresTitle 'Across 1,000 simulations · 5 yr'",
+   "evidence": "futuresView.ts:97-99; pricePaths.ts:59 FUTURES_COUNT = 1000"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1021,
+   "claim": "shareText never 0%/100%; one decimal <10% and >99%",
+   "evidence": "futuresView.ts:88-94"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1022,
+   "claim": "rangeText · horizonText exported",
+   "evidence": "futuresView.ts:61,68"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1022,
+   "claim": "FUTURES_TIP names no count; says not the four Price paths",
+   "evidence": "futuresView.ts:36-45"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1024,
+   "claim": "FUTURES_TIP_LABEL 'About the simulations'; FUTURES_RUNNING; FUTURES_DEBOUNCE_MS",
+   "evidence": "futuresView.ts:48,51,20"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1026,
+   "claim": "FuturesCard on the Strategy face",
+   "evidence": "UnifiedFace.tsx:52,789 <FuturesCard"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1026,
+   "claim": "FuturesCard reads no store or engine, writes no word (source test)",
+   "evidence": "FuturesCard.tsx:1-3 imports InfoTip/futuresView type/css; futuresFace.test.ts:302 LAYOUT-ONLY"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1028,
+   "claim": "<section> named by its title, aria-busy while running",
+   "evidence": "FuturesCard.tsx:24"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1029,
+   "claim": "two-column grid, four from 768 px",
+   "evidence": "FuturesCard.module.css:27-34"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1029,
+   "claim": ".value clamp(12px, 3.8vw, 17px), nowrap",
+   "evidence": "FuturesCard.module.css:54,57"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1033,
+   "claim": "supportPolicyView: payDownPushed clamp",
+   "evidence": "supportPolicyView.ts:70,100"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1033,
+   "claim": "defaults C1 (45 · 2.0 / 3.0 · 12)",
+   "evidence": "lib/planPolicy.ts:22-29"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1034,
+   "claim": "ranges: buy zone to 2.5×, pay down to 5.0×, room to 48 months",
+   "evidence": "lib/planPolicy.ts:35-37"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1035,
+   "claim": "both re-exported from lib/planPolicy",
+   "evidence": "supportPolicyView.ts:10,46-49,56"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1036,
+   "claim": "DEFAULT_SUPPORT_POLICY_SETTINGS = {enabled:true, ...PLAN_POLICY_DEFAULTS}; RANGES same object",
+   "evidence": "supportPolicyView.ts:46-49; :56"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1037,
+   "claim": "ZONE_LABEL / ZONE_LETTER / ZONE_COLOR; policyReading → headline/details/neverDrawsNote",
+   "evidence": "supportPolicyView.ts:106,114,127,317,525,553,580"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1038,
+   "claim": "policyPauseReason; policyUnpaidNote; policyAlert; policyStopSentence; billsRemainderTail",
+   "evidence": "supportPolicyView.ts:681,508,574,776,653"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1039,
+   "claim": "DUST_USD/shownUsd defined in utils/format, re-exported here",
+   "evidence": "utils/format.ts:47-48; supportPolicyView.ts:9,148"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1040,
+   "claim": "drawPauseClause; zoneStrip/zoneStripLabel; policyLimitPct; coldShown",
+   "evidence": "supportPolicyView.ts:753,793,828,808,816"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1041,
+   "claim": "settingReadouts, policyIgnoredNote, policyTip, defenseLineNote, policyTileSub, policyColdNote, polic",
+   "evidence": "supportPolicyView.ts:906,851,991,935,948,955,963"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1043,
+   "claim": "PolicyReading.cliff (cbSeizurePrice, only under its price) → cliff line after Coinbase line",
+   "evidence": "supportPolicyView.ts:365-369; :556-557 cbLine then cliffLine"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1044,
+   "claim": "fmtBelowPct F11 wording, shared with THE MOVE",
+   "evidence": "supportPolicyView.ts:378-382; decisionView.ts:582"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1045,
+   "claim": "no belief, no store, no React; never imports cyclingFaceView (which imports it)",
+   "evidence": "supportPolicyView.ts:1-10 imports; cyclingFaceView.ts:13 from './supportPolicyView'"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1047,
+   "claim": "PolicyCardState / policyCardState(mode, enabled, applied) four states",
+   "evidence": "supportPolicyView.ts:859-865"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1048,
+   "claim": "ONE branch read by card and dock's Policy panel",
+   "evidence": "SupportPolicyCard.tsx:186,206; DecisionFace.tsx:709 policyCardState"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1050,
+   "claim": "PLAN_RULE_LABEL six labels, ONE copy (sliders → Settings, cards, Advisor)",
+   "evidence": "supportPolicyView.ts:876; SupportPolicyCard.tsx:118-165; YourPlanSection.tsx:3; AdvisorSidebar.tsx:4"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1052,
+   "claim": "planRuleRows(settings, expenses) → {key,label,value}[]; held limit shows line",
+   "evidence": "supportPolicyView.ts:887-898"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1054,
+   "claim": "GOAL_STAND_DOWN_WORDS one phrase: MOVE, cold card, Why this plan?, Settings",
+   "evidence": "supportPolicyView.ts:645; decisionView.ts:504; planMonthView.ts:784; YourPlanSection.tsx:25"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1055,
+   "claim": "policyColdNote(s); policyColdGoalNote(goal) null without one",
+   "evidence": "supportPolicyView.ts:955,963"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1058,
+   "claim": "the card lists them one a line (coldCardView)",
+   "evidence": "coldCardView.ts:4,58; ColdStorageCard.tsx <li> per rule"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1059,
+   "claim": "PLAN_CB_LTV_CAP_PCT (70), PLAN_STRIKE_CAP_PCT / _EFF, PLAN_CLAMP",
+   "evidence": "planClamp.ts exports; planPolicy.ts:70 PLAN_CB_DEFENSE_PCT = 70"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1062,
+   "claim": "PLAN_ENGINE_CONTEXT and builders read these names",
+   "evidence": "planRun.ts:9 imports PLAN_CB_LTV_CAP_PCT, PLAN_STRIKE_CAP_PCT, PLAN_CLAMP"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1064,
+   "claim": "Settings' 'Your plan' reads effective stops through PLAN_CLAMP",
+   "evidence": "YourPlanSection.tsx:147 effectivePolicySettings(raw, PLAN_CLAMP)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1065,
+   "claim": "PLAN_CB_LTV_CAP_PCT reads lib/planPolicy's PLAN_CB_DEFENSE_PCT",
+   "evidence": "planClamp.ts: PLAN_CB_LTV_CAP_PCT = PLAN_CB_DEFENSE_PCT"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1067,
+   "claim": "usePlanPolicy = useStore(useShallow((st) => planPolicyOf(st)))",
+   "evidence": "usePlanPolicy.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1070,
+   "claim": "every face builds policyRaw = {...DEFAULT…, ...plan, ...overlay.supportPolicy}",
+   "evidence": "DecisionFace.tsx:352-355; CyclingFace.tsx:268; OwnershipFace.tsx:274; UnifiedFace.tsx:239"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1071,
+   "claim": "Settings' Your plan and usePlanMonth read it",
+   "evidence": "YourPlanSection.tsx:142; usePlanMonth.ts:57"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1073,
+   "claim": "planRun PURE: no store, no React, no clock",
+   "evidence": "planRun.ts imports (no store/react); grep Date.now/new Date() → none"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1075,
+   "claim": "PLAN_COLD_BUFFER_PCT 30 / PLAN_CYCLE_MONTHS 1 / PLAN_RUN_MONTHS 12",
+   "evidence": "planRun.ts:38-41"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1077,
+   "claim": "Decision face and planMonthRun build through BOTH",
+   "evidence": "planRun.ts:212,232; DecisionFace.tsx:392,434"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1079,
+   "claim": "planCbCollateralOf / planCbLoanBalanceOf: none with loan off",
+   "evidence": "planRun.ts:48-52"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1080,
+   "claim": "seed's $60,000 on 1.48 ₿",
+   "evidence": "store/slices/cbLoanSlice.ts:24-25"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1081,
+   "claim": "ONLY deriveCbCollateral caller under Almanac/SimpleMode/Daily — GATE",
+   "evidence": "grep deriveCbCollateral: only planRun.ts:49; planRunWiring.test.ts:130 GATE"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1082,
+   "claim": "planMonthRun: MOVE at today's price & S₀, months 0..12 flat",
+   "evidence": "planRun.ts:206-252 pricePath = 13×f.price"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1083,
+   "claim": "planBreakerCacheOf via validOpeningBreaker, yyyy-mm-dd, stored object or null",
+   "evidence": "planRun.ts:260-265"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1085,
+   "claim": "cbOverLimitAtMonthEnd — headroom past the dust floor",
+   "evidence": "planRun.ts:272-274"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1089,
+   "claim": "firstMonthUnderLimit",
+   "evidence": "planRun.ts:278"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1089,
+   "claim": "planPolicySettingsOf(plan) read by planMonthRun and Advisor sidebar",
+   "evidence": "planRun.ts:199,208; AdvisorSidebar.tsx:47"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1093,
+   "claim": "PlacementFacts REQUIRES goalNetBtc; placementInputOf passes it",
+   "evidence": "planRun.ts:73 goalNetBtc: number | null (required)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1095,
+   "claim": "planMonthView is pure; THIS MONTH/Daily sentences built here",
+   "evidence": "planMonthView.ts imports format/decisionView only"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1097,
+   "claim": "planStatus",
+   "evidence": "planMonthView.ts:230"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1101,
+   "claim": "refused policy reads policyIgnoredNote",
+   "evidence": "planMonthView.ts:7 imports policyIgnoredNote"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1102,
+   "claim": "planMonthActions: MOVE legs then schedule rows",
+   "evidence": "planMonthView.ts:172-173 planSchedule(sim, plan)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1103,
+   "claim": "one WORDS Record per ActionKind",
+   "evidence": "planMonthView.ts:10 ActionKind; :90 strikeToCold entry in Record"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1106,
+   "claim": "venueSegments / venuesOf / planRowDot",
+   "evidence": "planMonthView.ts:48,51,133"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1109,
+   "claim": "planAfter; planMeterAria; monthTrack",
+   "evidence": "planMonthView.ts:375,365,417"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1115,
+   "claim": "loggedMonthRows / loggedMonthAfter / loggedMonthStatus",
+   "evidence": "planMonthView.ts:443,454,478"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1116,
+   "claim": "planBreakerSource(fresh, cache, loading); planBreakerLine",
+   "evidence": "planMonthView.ts:494,504"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1118,
+   "claim": "fmtDayOrdinal; planMinimumOwed / planMinimumLine / planInterestRollsLine; planNdpLine",
+   "evidence": "planMonthView.ts:525,534,540,545,554"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1120,
+   "claim": "planLedgerParts; planLedgerTargets",
+   "evidence": "planMonthView.ts:565,579"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1122,
+   "claim": "planNextMonthLine, planSavingsLine, planPriceLine, planSignoffLine / planSignoffSub",
+   "evidence": "planMonthView.ts:706,719,700,468,473"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1123,
+   "claim": "planSwitchNote; planMonthSummary uses the Decision face's sentences",
+   "evidence": "planMonthView.ts:756,764-768"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1124,
+   "claim": "PLAN_CRASH_TITLE",
+   "evidence": "planMonthView.ts:435"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1125,
+   "claim": "WORDS sweeps every sentence over 600 runs; zero rule reads $0.00",
+   "evidence": "planMonthView.test.ts:96-113 (600 runs); :66-69,98 NO_ZERO_USD"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1127,
+   "claim": "every figure through fmtUSDCents — no fmtUSD import",
+   "evidence": "planMonthView.ts:9 import { fmtUSDCents, fmtLtvPct, toCents }"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1128,
+   "claim": "PLAN_AT_TODAYS_PRICE",
+   "evidence": "planMonthView.ts:66"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1130,
+   "claim": "planBars / planBarsCaption",
+   "evidence": "planMonthView.ts:658,681"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1134,
+   "claim": "store's planBars.test.ts is the showPlan*Bar toggles",
+   "evidence": "store/__tests__/planBars.test.ts:17 showPlanIncomeBar…"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1135,
+   "claim": "planNdpEstimateUsd / planNdpBalance: Strike balance, else 15% of line, to the cent",
+   "evidence": "planMonthView.ts:688-696"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1137,
+   "claim": "getNdpStatus rounds its estimate to a whole dollar",
+   "evidence": "simulation/runAdvisor.ts:34 Math.round(balance*(apr/100/12))"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1138,
+   "claim": "planLogRows: month k = run's month k − currentMonth + 1, to 12",
+   "evidence": "planMonthView.ts:617-621"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1140,
+   "claim": "planStrikePaidUsd",
+   "evidence": "planMonthView.ts:592"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1142,
+   "claim": "PLAN_PATHS_LINK",
+   "evidence": "planMonthView.ts:730"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1144,
+   "claim": "planReanchorWords(avg, expenses) → {line, update, keep}, BL26 words, toCents(avg)",
+   "evidence": "planMonthView.ts:736-745"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1147,
+   "claim": "planMoveBringsCbWithin(plan): seeded && !over",
+   "evidence": "planMonthView.ts:751-752"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1148,
+   "claim": "THIS MONTH and Daily hand it to the Safety card",
+   "evidence": "SimpleModeView.tsx:147; DailyModeView.tsx:244"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1150,
+   "claim": "Strike→cold row month-end, 'small, can wait' under 0.01 ₿",
+   "evidence": "planMonthView.ts:71,90"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1151,
+   "claim": "planMonthSummary adds stand-down sentence from row.goalStandDown",
+   "evidence": "planMonthView.ts:784"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1153,
+   "claim": "usePlanMonth: Coinbase through planCbCollateralOf / planCbLoanBalanceOf",
+   "evidence": "usePlanMonth.ts:45,47"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1154,
+   "claim": "saved plan via usePlanPolicy",
+   "evidence": "usePlanMonth.ts:57"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1155,
+   "claim": "hold from strikeDepositOf → strikeHoldAt; breaker cache planBreakerCacheOf",
+   "evidence": "usePlanMonth.ts:49,76,54"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1156,
+   "claim": "runs planMonthRun",
+   "evidence": "usePlanMonth.ts:83"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1157,
+   "claim": "Today per render via todayLocalISO(); accrual re-keys on it",
+   "evidence": "usePlanMonth.ts:61,77-80"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1158,
+   "claim": "ONLY write is the breaker cache, in an effect",
+   "evidence": "usePlanMonth.ts:70-71 useEffect setBreakerCache"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1160,
+   "claim": "read by usePlanCardInputs (THIS MONTH, Advisor) and Daily's plan card",
+   "evidence": "usePlanCardInputs.ts:34; AdvisorMain.tsx:55; DailyModeView.tsx:139"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1162,
+   "claim": "SupportPolicyCard shared by Cycling, Ownership, Strategy, Decision",
+   "evidence": "CyclingFace:1129, OwnershipFace:1146, UnifiedFace:727, DecisionFace:911"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1163,
+   "claim": "props {sim, monthIdx, raw, settings, onChange, onReset, mode, expenses}",
+   "evidence": "SupportPolicyCard.tsx:194-195"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1164,
+   "claim": "no belief, no store; structural test pins imports",
+   "evidence": "supportPolicyWiring.test.ts:156-163 'imports no belief and no store'"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1165,
+   "claim": "states from policyCardState: off (+ Turn on)",
+   "evidence": "SupportPolicyCard.tsx:77 Turn on; :206"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1167,
+   "claim": "collapsed <details> Settings with six SliderInputs; no re-arm control",
+   "evidence": "SupportPolicyCard.tsx:258 <details>; 6 SliderInput :117-164; grep rearm → none"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1168,
+   "claim": "SupportPolicySliders: six sliders, Turn policy off / Back to your plan, layout stack|grid",
+   "evidence": "SupportPolicyCard.tsx:101,109-110,174-175"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1170,
+   "claim": "rendered by disclosure and SupportPolicyControls (dock Policy panel)",
+   "evidence": "SupportPolicyCard.tsx:183; DecisionFace.tsx:701"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1175,
+   "claim": "resetLabel = 'Back to your plan', offSwitch = true",
+   "evidence": "SupportPolicyCard.tsx:110"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1176,
+   "claim": "Settings passes 'Back to the defaults (C1)' and offSwitch={false}",
+   "evidence": "YourPlanSection.tsx:160"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1178,
+   "claim": "futuresLine / futuresRunning; never for notCycle; .futures / .futuresStale",
+   "evidence": "SupportPolicyCard.tsx:44-46,212,255; .module.css:187,195"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1181,
+   "claim": "sliders' labels are PLAN_RULE_LABEL (SIX-ONCE)",
+   "evidence": "SupportPolicyCard.tsx:118-165; controlDockWiring.test.ts:332 SIX-ONCE"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1183,
+   "claim": "coldCardView(sim, settings, coldBufferPct, labels) → {total,totalSub,parts,moves,rules}|null",
+   "evidence": "coldCardView.ts:23-35,45"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1185,
+   "claim": "null exactly when !coldShown",
+   "evidence": "coldCardView.ts:54"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1186,
+   "claim": "sentences from coldOriginsParts, coldMovesSentence, policyColdNote, policyColdGoalNote, policyReserv",
+   "evidence": "coldCardView.ts:2-4"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1187,
+   "claim": "rules only while the policy applies",
+   "evidence": "coldCardView.ts:56 if (sim.policyApplied)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1188,
+   "claim": "COLD_CARD_TITLE / COLD_RULES_TITLE / NOTHING_MOVES_TO_COLD",
+   "evidence": "coldCardView.ts:18-21"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1190,
+   "claim": "tested in coldCard.test.tsx (COLD VIEW, COLD CARD, COLD FACES) and goalViews (STAND COLD)",
+   "evidence": "coldCard.test.tsx:32,100,137; goalViews.test.ts:646"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1192,
+   "claim": "ColdStorageCard css composes Cycling's shell from CyclingFace.module.css",
+   "evidence": "ColdStorageCard.module.css:4-12"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1194,
+   "claim": "showTotal — false on Decision",
+   "evidence": "DecisionFace.tsx:866"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1195,
+   "claim": "rules folded in <details> 'How the plan uses cold storage ›'",
+   "evidence": "ColdStorageCard.tsx <details>/<summary>; .module.css:41 ::after ' ›'"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1196,
+   "claim": "face adds info (Cycling's InfoTip) and children (Cycling, Strategy)",
+   "evidence": "CyclingFace.tsx:884-886 info=; UnifiedFace.tsx:699 children"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1197,
+   "claim": "<section aria-label='Cold storage'>",
+   "evidence": "ColdStorageCard.tsx section aria-label={COLD_CARD_TITLE}"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1199,
+   "claim": "ControlDock on the four engine faces",
+   "evidence": "CyclingFace:1288, DecisionFace:937, OwnershipFace:1256, UnifiedFace:1055"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1202,
+   "claim": "sticky to the window's bottom edge",
+   "evidence": "ControlDock.module.css:6-7 position: sticky; bottom: 0"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1202,
+   "claim": "ONE markup at a time via useMediaQuery('(min-width: 1024px)')",
+   "evidence": "ControlDock.tsx:49 WIDE, :53"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1204,
+   "claim": "inset 14 px, capped at 34vh",
+   "evidence": "ControlDock.module.css:64-68"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1205,
+   "claim": "from 1024 bar floating 12 px up; panel above via order: -1",
+   "evidence": "ControlDock.module.css:80,131"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1206,
+   "claim": "bar gap 12px, chip padding 6px 8px",
+   "evidence": "ControlDock.module.css:95,108"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1208,
+   "claim": "Escape folds the panel from the document, never a typed value's; returns focus to chip",
+   "evidence": "ControlDock.tsx:67-74"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1209,
+   "claim": "under 1024 folds only from inside the dock and focuses the tab",
+   "evidence": "ControlDock.tsx:82-89"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1211,
+   "claim": "aria-controls only while open",
+   "evidence": "ControlDock.tsx:97,118"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1211,
+   "claim": "z-index 30, under InfoTip's 40",
+   "evidence": "ControlDock.module.css:8; InfoTip.module.css:42"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1212,
+   "claim": "never position: fixed",
+   "evidence": "ControlDock.module.css:2,6"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1213,
+   "claim": "DockTabView · monthTabValue / monthReadout · stressPct / stressTabValue / stressTone (true minus)",
+   "evidence": "controlDockView.ts:18,26,31,36-38,42,47"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1214,
+   "claim": "PATH_TAB_VALUE: Support/Fair from PL_BAND_LABEL, Resist. · 4-yr · Stitched · Worst",
+   "evidence": "controlDockView.ts:54-60"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1216,
+   "claim": "lineTabValue rounded to one decimal first ($99,950 → $100k)",
+   "evidence": "controlDockView.ts:65-67"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1216,
+   "claim": "policyTabValue",
+   "evidence": "controlDockView.ts:71"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1217,
+   "claim": "decisionDockTabs five in order",
+   "evidence": "controlDockView.ts:90-104"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1217,
+   "claim": "parentDockTabs four: Month · Stress · Path · Policy",
+   "evidence": "controlDockView.ts:113-120"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1218,
+   "claim": "strategyDockTabs those four then the Lens",
+   "evidence": "controlDockView.ts:123-124"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1219,
+   "claim": "LensView / LENS_TAB_VALUE (Position · Flywheel)",
+   "evidence": "controlDockView.ts:107,110"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1219,
+   "claim": "one private constructor per shared tab used by all three builders",
+   "evidence": "controlDockView.ts:79-86 monthTab/stressTab/pathTab/policyTab"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1222,
+   "claim": "MilestoneSwitchTable used by the three parents via useMediaQuery(MS_TABLE)",
+   "evidence": "CyclingFace.tsx:493, UnifiedFace.tsx:404, OwnershipFace.tsx:502"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1224,
+   "claim": "under 768 px, and Ownership's side column from 920 px",
+   "evidence": "cyclingFaceView.ts:757 MS_TABLE (min-width:768px); :760 MS_TABLE_OWNERSHIP (768–919px)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1226,
+   "claim": "role='group' switch; aria-pressed buttons named by aria-label alone",
+   "evidence": "MilestoneSwitchTable.tsx:67-72 (no title on the button)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1228,
+   "claim": "open view is its own state — first on open",
+   "evidence": "MilestoneSwitchTable.tsx:62 useState(live[0]?.key)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1232,
+   "claim": "a view shows only the columns some row carries",
+   "evidence": "MilestoneSwitchTable.tsx:60-61"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1230,
+   "claim": "symbol cell role='img' with spoken name",
+   "evidence": "MilestoneSwitchTable.tsx:109"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1234,
+   "claim": "one <tbody> a year; turn's line colSpan; onPick tbody is the button (Enter, Space)",
+   "evidence": "MilestoneSwitchTable.tsx:84-96,123"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1236,
+   "claim": "figures and year clamp(10px, 3.2vw, 12.5px); nowrap",
+   "evidence": "MilestoneSwitchTable.module.css:52,56,64,66"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1238,
+   "claim": ".on.on lit (--surface-2, year --btc) doubled; LIT pins order",
+   "evidence": "MilestoneSwitchTable.module.css:102-105; e2e/milestones.spec.ts:286 LIT"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1240,
+   "claim": ".post 0.55",
+   "evidence": "MilestoneSwitchTable.module.css:107"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1243,
+   "claim": "CbDefenseTool: hasCbLoan ? EmergencyConsole : null; zero props",
+   "evidence": "CbDefenseTool.tsx: function CbDefenseTool() { … hasCbLoan ? <EmergencyConsole /> : null }"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1245,
+   "claim": "shared by liqsim tab (AppShell) and Almanac defense face",
+   "evidence": "AppShell.tsx:485; AlmanacView.tsx:131"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1252,
+   "claim": "EmergencyConsole READ-ONLY (no dayLog writes)",
+   "evidence": "EmergencyConsole.tsx: only useStore selectors, no setters/actions"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1253,
+   "claim": "store reads above the early return",
+   "evidence": "EmergencyConsole.tsx:67-82 useStore; :89 early return"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1254,
+   "claim": "cbDebt via accruedCbBalance; support via plBandsAt",
+   "evidence": "EmergencyConsole.tsx:98,103"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1255,
+   "claim": "card = waitingCard(...) ?? playbookCard(crashPlaybook(input), input, hold) on playbookInputFromLive",
+   "evidence": "EmergencyConsole.tsx:110-115"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1256,
+   "claim": "at the EFFECTIVE price (simulated while simulating)",
+   "evidence": "EmergencyConsole.tsx:93 price = simPrice ?? livePrice"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1258,
+   "claim": "Last resorts Sell to pay down · Outside cash, both collapsed",
+   "evidence": "EmergencyConsole.tsx:232,239; openWall init null :83"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1259,
+   "claim": "7-item session-only checklist",
+   "evidence": "EmergencyConsole.tsx:50-58 (7 items); :86 useState"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1261,
+   "claim": "console and THIS MONTH line both build through crashPlaybookView",
+   "evidence": "EmergencyConsole.tsx:110; usePlanCardInputs.ts:67-72"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1262,
+   "claim": "PURE: no power law, cycle model, store or React (a layering test)",
+   "evidence": "crashPlaybookView.test.ts:599-603"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1264,
+   "claim": "strikeHoldAt(depositISO, todayISO): in hold iff ≤ 60 days; yyyy-mm-dd only",
+   "evidence": "crashPlaybookView.ts:124-134"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1266,
+   "claim": "strikeDepositOf(st): journal's latestStrikeDepositISO or viewerStrikeDepositISO",
+   "evidence": "crashPlaybookView.ts:117-121"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1268,
+   "claim": "every hold reader reads through these two",
+   "evidence": "DecisionFace.tsx:324,375; EmergencyConsole.tsx:82,109; usePlanMonth.ts:49,76; usePlanCardInputs via "
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1270,
+   "claim": "strikeHoldFrom — no screen calls it",
+   "evidence": "grep strikeHoldFrom src (non-test): only its definition"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1271,
+   "claim": "isCrashDay: hasCbLoan && at or past trigger; CB Loan tab reads it",
+   "evidence": "crashPlaybookView.ts:66-71; CoinbaseLoanMain.tsx:6"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1274,
+   "claim": "CONSOLE_LINK",
+   "evidence": "crashPlaybookView.ts:77"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1275,
+   "claim": "atTriggerLine(triggerPct, consoleRuns)",
+   "evidence": "crashPlaybookView.ts:81"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1277,
+   "claim": "cbTabCrashDayLine(triggerPct, triggerPriceUsd); no price under shownUsd",
+   "evidence": "crashPlaybookView.ts:90-93"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1279,
+   "claim": "playbookInputFromLive: cold under a satoshi → 0; stop via effectivePolicyStops through clampPlanPoli",
+   "evidence": "crashPlaybookView.ts:157-196"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1284,
+   "claim": "fmtStepBtc / fmtStepUsd floored to printed precision",
+   "evidence": "crashPlaybookView.ts:202-215"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1285,
+   "claim": "fmtStepUsdCents floored to the cent, no step under $1",
+   "evidence": "crashPlaybookView.ts:220-223"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1287,
+   "claim": "listSteps(result, stepUsd) takes the step formatter, whole by default",
+   "evidence": "crashPlaybookView.ts:293"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1288,
+   "claim": "fmtMultiplePair widens 2 → 6 dp",
+   "evidence": "crashPlaybookView.ts:228-235"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1289,
+   "claim": "waitingCard (target < LTV < trigger, under 86%)",
+   "evidence": "crashPlaybookView.ts:270-272"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1290,
+   "claim": "playbookCard; monthPlaybookLine via listSteps / gapKind / outcomeKind",
+   "evidence": "crashPlaybookView.ts:329,457-463"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1294,
+   "claim": "no inline min; exactly one effectivePolicyStops call (source guards)",
+   "evidence": "grep Math.min crashPlaybookView.ts → none; crashPlaybookView.test.ts:122 count 1"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1296,
+   "claim": "pinned by crashPlaybookView.test, emergencyConsoleWiring.test, monthlyPlaybookWiring.test",
+   "evidence": "ls src/components/Tools/__tests__"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1297,
+   "claim": "Advisor/__tests__/planEdgesWiring GATE and CBTAB",
+   "evidence": "planEdgesWiring.test.ts:16,21,63"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1299,
+   "claim": ".toolContainer 600px centered + overflow; composed by EmergencyConsole, Mining, Converter + AlmanacV",
+   "evidence": "toolShell.module.css:10-17; 4 composes sites"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1303,
+   "claim": ".main.main max-width: Mining 960, Converter 700",
+   "evidence": "MiningMain.module.css:12; ConverterMain.module.css:9"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1304,
+   "claim": "composedOverrides.test.ts",
+   "evidence": "src/styles/__tests__/composedOverrides.test.ts exists"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1307,
+   "claim": "SliderInput stacked: label → value → slider → min/max",
+   "evidence": "SliderInput.tsx:40-81"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1308,
+   "claim": "NumberInput prefix/suffix/decimals props",
+   "evidence": "NumberInput.tsx:16-18"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1308,
+   "claim": "ariaLabel? — input's accessible name; visible label is a span",
+   "evidence": "NumberInput.tsx:25,91,104"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1310,
+   "claim": "Settings' 'Total in cold storage' passes it",
+   "evidence": "SettingsMain.tsx:810 ariaLabel={COLD_FIELD_LABEL}; coldStorageView.ts:16"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1310,
+   "claim": "save (required) 'button' | 'leave' | 'live'",
+   "evidence": "NumberInput.tsx:12 save: NumberSave; numberInputModel.ts:28"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1311,
+   "claim": "'Save — dated today' and Cancel under the field while it holds typing",
+   "evidence": "NumberInput.tsx:122-123; numberInputModel.ts:31"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1312,
+   "claim": "leaving, Enter and Save commit through numberCommit; typed gates it",
+   "evidence": "NumberInput.tsx:36,42,115"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1313,
+   "claim": "focused 'leave' field saves on window blur / page hidden via writeTyped",
+   "evidence": "NumberInput.tsx:74-86"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1316,
+   "claim": ".inputWrapHeld amber edge, .saveRow, .saveBtn, .cancelBtn",
+   "evidence": "NumberInput.module.css:27-30,73,78,90"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1318,
+   "claim": "NumberSave, numberCommit rules (nothing unless typed; clamped; never shown figure, dated aside)",
+   "evidence": "numberInputModel.ts:59-67"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1320,
+   "claim": "keystrokeWrite only 'live'; leaveCommits 'button' keeps typing; awaySaves only 'leave'",
+   "evidence": "numberInputModel.ts:70-91"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1322,
+   "claim": "SAVE_DATED, fmtNumberField",
+   "evidence": "numberInputModel.ts:31,55"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1323,
+   "claim": "pinned by numberInputModel.test.ts (SITES; AWAY) + numberField.spec / numberFieldAway.spec",
+   "evidence": "numberInputModel.test.ts:124,165; e2e/numberField*.spec.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1328,
+   "claim": "RecoveryKeyCeremony 3, ViewerLoginFlow 3, OwnerKeySetup 2, ViewerUnlockGate 2, RevealRecoveryKey 1, ",
+   "evidence": "grep <PassphraseInput per file"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1331,
+   "claim": "AppUnlockGate/StoreMigrationGate unrendered; type=password grep shows exactly those two",
+   "evidence": "grep imports of them → none; grep type=\"password\" → AppUnlockGate.tsx:55, StoreMigrationGate.tsx:75"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1334,
+   "claim": "four iOS suppressions baked in",
+   "evidence": "PassphraseInput.tsx:61-64"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1337,
+   "claim": "toggle onPointerDown + preventDefault + tabIndex={-1}",
+   "evidence": "PassphraseInput.tsx:73-76"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1340,
+   "claim": "Show/Hide text; SecretKeyCard 'Tap to reveal'",
+   "evidence": "PassphraseInput.tsx:84; SecretKeyCard.tsx:36"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1342,
+   "claim": "hosts use 3 input classes (.input/.pinInput/.dateInput)",
+   "evidence": "grep className on <PassphraseInput: styles.input, styles.pinInput, styles.dateInput"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1343,
+   "claim": "inputMode='numeric' passthrough",
+   "evidence": "PassphraseInput.tsx:30,53"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1344,
+   "claim": ".wrap flex:1 1 auto; min-width:0, not width:100%",
+   "evidence": "PassphraseInput.module.css:8-11"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1348,
+   "claim": "input width/box-sizing/padding-right inline",
+   "evidence": "PassphraseInput.tsx:68"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1350,
+   "claim": "ScenarioPills / GrowthPresetPills / LtvTypePills / Toggle exist",
+   "evidence": "ls src/components/ui"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1354,
+   "claim": "DraggableSheet props {open,onDismiss,dirty?,labelledBy?,maxHeight?='92vh',scrollRef?,children}",
+   "evidence": "DraggableSheet.tsx:31,39-50"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1355,
+   "claim": "createPortal→body",
+   "evidence": "DraggableSheet.tsx:2, return createPortal"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1355,
+   "claim": ".root wraps sibling .backdrop + .sheet (relative, z-index 1)",
+   "evidence": "DraggableSheet.tsx JSX; .module.css:6,16,23-25"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1359,
+   "claim": "handleScrimTap on backdrop onClick; sheet stopPropagation",
+   "evidence": "DraggableSheet.tsx JSX backdrop onClick={handleScrimTap}; sheet onClick stopPropagation"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1360,
+   "claim": "adopters EventSheet/ReviewSheet/AlmanacConsentSheet; no own .scrim/.sheet/.grab",
+   "evidence": "grep <DraggableSheet; grep ^.scrim|.sheet|.grab in their css → none"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1362,
+   "claim": "usePointerDrag axis 'y', slop 8, arm 24, commit h×0.45 live, velocity 900",
+   "evidence": "DraggableSheet.tsx:34-36,94-96,211-214"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1364,
+   "claim": "onMove writes transform/opacity directly; dirty → rubberBand 25%; upward scroll or rubberBand 24",
+   "evidence": "DraggableSheet.tsx:159-179"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1366,
+   "claim": "backdrop opacity = 1 − clamp(ty/h)",
+   "evidence": "DraggableSheet.tsx:176-178"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1367,
+   "claim": "shared applyMove/applyArmHaptic/finishGesture",
+   "evidence": "DraggableSheet.tsx:159,182,192"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1370,
+   "claim": ".sheet no touch-action; overscroll-behavior-y:contain",
+   "evidence": "DraggableSheet.module.css:38-42"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1371,
+   "claim": "one scoped non-passive touchmove listener; resolveScrollClaim",
+   "evidence": "DraggableSheet.tsx:6, touchmove {passive:false}, :262"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1374,
+   "claim": "dyClaim = y − claimStartY two-way release",
+   "evidence": "DraggableSheet.tsx:261"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1377,
+   "claim": "touch takeover via createGesture/advance; touchDrivingRef; endTouchDrive",
+   "evidence": "DraggableSheet.tsx:85,201-207,270-303"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1380,
+   "claim": "dismiss = committed && dy>0 && !dirty → exit then onDismiss",
+   "evidence": "DraggableSheet.tsx:195-197,144-155"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1382,
+   "claim": "entry translateY 280ms --ease-decelerate; spring back --ease-spring/--motion-settle",
+   "evidence": "DraggableSheet.tsx:32,119,131"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1385,
+   "claim": "one haptics.warn() on first arm when dirty; clean → haptics.tick(); direction-gated",
+   "evidence": "DraggableSheet.tsx:182-189"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1389,
+   "claim": "dirty via onUserInput → onChangeCapture on the sheet",
+   "evidence": "DraggableSheet.tsx:48-50, onChangeCapture={onUserInput}"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1393,
+   "claim": "data-dirty + data-testid='draggable-sheet'",
+   "evidence": "DraggableSheet.tsx JSX"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1396,
+   "claim": "focus guard: press on focused field → return; elsewhere blur()",
+   "evidence": "DraggableSheet.tsx:225-231"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1400,
+   "claim": "REDUCED-MOTION via useReducedMotion; no continuous translation",
+   "evidence": "DraggableSheet.tsx:4,66,161"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1402,
+   "claim": "role=dialog/aria-modal/aria-labelledby on sheet; grabber aria-hidden",
+   "evidence": "DraggableSheet.tsx JSX"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1404,
+   "claim": "adopters keep their own if(!open) return null",
+   "evidence": "EventSheet.tsx:247; ReviewSheet.tsx:71; AlmanacConsentSheet.tsx:18"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1406,
+   "claim": "EventSheet + ReviewSheet hold touched (reset on open), dirty=touched",
+   "evidence": "EventSheet.tsx:115,125,492; ReviewSheet.tsx:68-75"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1409,
+   "claim": "neither sheet's onClicks mutate a staged financial value",
+   "evidence": "onClick setters in EventSheet: target/direction/pledge toggles only"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1414,
+   "claim": "SwipeStrip used by Calendar + MonthlyLogOverlay",
+   "evidence": "Calendar.tsx:151; MonthlyLogOverlay.tsx:426"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1416,
+   "claim": "Almanac face switching is tap-only (pager removed)",
+   "evidence": "AlmanacView.tsx:46; no SwipeStrip in AlmanacView"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1417,
+   "claim": "props onPage, canPage, renderPane, onSwipeStart?, shouldStart?, disabled?",
+   "evidence": "SwipeStrip.tsx:19-36"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1418,
+   "claim": "300% strip at rest translateX(-33.3%); axis 'x'; touch-action pan-y",
+   "evidence": "SwipeStrip.tsx:10,68; SwipeStrip.module.css"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1419,
+   "claim": "commitThreshold 0.35×width, commitVelocity 800",
+   "evidence": "SwipeStrip.tsx:40-41,72"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1420,
+   "claim": "rubberBand 20 at a !canPage boundary",
+   "evidence": "SwipeStrip.tsx:81"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1422,
+   "claim": "snap/spring both --ease-spring-soft",
+   "evidence": "SwipeStrip.tsx:91,105"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1423,
+   "claim": "one haptics.tick on commit only",
+   "evidence": "SwipeStrip.tsx:96"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1424,
+   "claim": "onSwipeStart on first move",
+   "evidence": "SwipeStrip.tsx:76-77"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1426,
+   "claim": "shouldStart gate on onPointerDown",
+   "evidence": "SwipeStrip.tsx:120"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1428,
+   "claim": "currently no shouldStart consumer",
+   "evidence": "grep shouldStart= src → none"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1430,
+   "claim": "renderPane(offset, live); live = dragging; offset 0 always live",
+   "evidence": "SwipeStrip.tsx:27,54,122-124"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1441,
+   "claim": "EdgeBackGesture props {onBack, renderUnder?, disabled?, children}",
+   "evidence": "EdgeBackGesture.tsx:31-42"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1441,
+   "claim": "20px left-edge .zone, touch-action pan-y, z-index above content",
+   "evidence": "EdgeBackGesture.module.css:38-45"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1445,
+   "claim": "usePointerDrag axis 'x', slop 8, arm 24, commit ½ width, velocity 700",
+   "evidence": "EdgeBackGesture.tsx:38,72-75"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1446,
+   "claim": "leftward rubberBand 16",
+   "evidence": "EdgeBackGesture.tsx:79"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1447,
+   "claim": "under-layer scale .92→1, dim .4→0",
+   "evidence": "EdgeBackGesture.tsx:66-67"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1448,
+   "claim": "commit → off-right --ease-standard then onBack; else --ease-spring",
+   "evidence": "EdgeBackGesture.tsx:104,108,112"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1450,
+   "claim": "after exit onBack also setPage(0,'none') + setDragging(false)",
+   "evidence": "EdgeBackGesture.tsx:108"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1454,
+   "claim": "no haptics on back-nav",
+   "evidence": "grep haptics EdgeBackGesture.tsx → none"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1456,
+   "claim": "AppShell passes viewerMode-branched renderSimpleUnder",
+   "evidence": "AppShell.tsx:349-350,413"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1458,
+   "claim": "tap forwarding: pointerEvents none + elementFromPoint click",
+   "evidence": "EdgeBackGesture.tsx:85-95"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1461,
+   "claim": "zone aria-hidden",
+   "evidence": "EdgeBackGesture.tsx:16 (zone aria-hidden)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1462,
+   "claim": "mounts only on AppShell Branch H/I — 2 sites",
+   "evidence": "grep <EdgeBackGesture: AppShell.tsx:394 (Branch H), :413 (Branch I)"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1464,
+   "claim": "blurFocused() before committed onBack and before forwarded tap",
+   "evidence": "EdgeBackGesture.tsx:59,93,102"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1466,
+   "claim": "pinned: numberInputModel.test.ts GESTURE + e2e/numberFieldSwipe.spec.ts",
+   "evidence": "numberInputModel.test.ts:154; e2e/numberFieldSwipe.spec.ts"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1468,
+   "claim": "EdgeBackGesture.module.css .wrap overflow-x:clip, .under, .dim, .page, .zone",
+   "evidence": "EdgeBackGesture.module.css:5-45"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1469,
+   "claim": "SwipeStrip.module.css .viewport/.strip 300%/.pane 1/3",
+   "evidence": "SwipeStrip.module.css"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1470,
+   "claim": "Snackbar portal, above safe-area, --surface-3, 5s, role=status",
+   "evidence": "Snackbar.tsx:2,16,32; .module.css:7,24"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1473,
+   "claim": "DraggableSheet.module.css .root fixed; .backdrop absolute rgba(0,0,0,.65)",
+   "evidence": "DraggableSheet.module.css:6-19"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1476,
+   "claim": ".grab 36×5 radius 3 → --text-muted under [data-tracking]",
+   "evidence": "DraggableSheet.module.css:45-57"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1478,
+   "claim": "ChartZoomFrame div.area: touch-action by mode, data-testid chart-zoom + data-zoomed/mode/dragging/qu",
+   "evidence": "ChartZoomFrame.tsx:18-20; useChartZoom.ts:441"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1481,
+   "claim": "div.plot data-testid chart-zoom-plot > div.box; div.note role=status",
+   "evidence": "ChartZoomFrame.tsx:22-30"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1482,
+   "claim": "ChartZoomToolbar Zoom · Pan · + · − · Reset, inline SVG, aria-pressed",
+   "evidence": "ChartZoomFrame.tsx:42-63"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1484,
+   "claim": "no media query touches .toolbar",
+   "evidence": "ChartZoomFrame.module.css: only @media at :90 for .area cursors"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1486,
+   "claim": ".plot, .box, .note pointer-events: none",
+   "evidence": "ChartZoomFrame.module.css:59,66,76"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1487,
+   "claim": "exports PlotProbe for <Customized component={zoom.probe}/>",
+   "evidence": "ChartZoomFrame.tsx:72-75"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1489,
+   "claim": "plain buttons; zoom writes nothing",
+   "evidence": "ChartZoomFrame.tsx:37-40 docblock; buttons call zoom.* only"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1491,
+   "claim": "InfoTip hover for mouse only via native pointerenter/leave",
+   "evidence": "InfoTip.tsx:60-63"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1492,
+   "claim": "second press, Escape or outside pointerdown closes",
+   "evidence": "InfoTip.tsx:42-49; infoTipModel nextTipState"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1493,
+   "claim": "useLayoutEffect slides it inside 16px gutters (tipShift), again on resize",
+   "evidence": "InfoTip.tsx:1,70"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1494,
+   "claim": "unmounted when closed",
+   "evidence": "InfoTip.tsx:35,97 open &&"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1490,
+   "claim": "§ Cold-storage sweep → InfoTip exists",
+   "evidence": "docs/claude/engines.md:337 heading; InfoTip para at ~:428"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1495,
+   "claim": "infoTipModel ZERO imports; TIP_GUTTER_PX 16; tipShift; nextTipState",
+   "evidence": "infoTipModel.ts (0 import lines):17,24,39"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1496,
+   "claim": "tipShift too wide ⇒ pin left; non-finite ⇒ 0",
+   "evidence": "infoTipModel.ts:25-29"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1496,
+   "claim": "TipState closed|hover|pinned × hoverIn|hoverOut|press|dismiss",
+   "evidence": "infoTipModel.ts:34,37"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1497,
+   "claim": "pinned by infoTipModel.test.ts + infoTipWiring.test.ts",
+   "evidence": "ls src/components/ui/__tests__"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1500,
+   "claim": "InputsPanel .scrollArea + pinned .recommendations",
+   "evidence": "InputsPanel.tsx:76,231; .module.css:90 flex-shrink:0 outside the scroll area"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1501,
+   "claim": "'Your plan's suggested line' — placement's suggestedLineUsd",
+   "evidence": "InputsPanel.tsx:5,59,239"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1502,
+   "claim": "on planCbLoanBalanceOf / planCbCollateralOf, accrued, at today's price",
+   "evidence": "InputsPanel.tsx:42-43,58-60"
+  },
+  {
+   "doc": "docs/claude/file-structure.md",
+   "line": 1503,
+   "claim": "decisionView's suggestedLineWords under it",
+   "evidence": "InputsPanel.tsx:62"
+  }
+ ]
+}

@@ -1,0 +1,2305 @@
+{
+ "key": "AL-2",
+ "doc": "docs/claude/almanac.md",
+ "lines": "883-1211, 1212-1504, 1505-1666",
+ "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+ "counts": {
+  "TRUE": 319,
+  "STALE": 0,
+  "FALSE": 1,
+  "HISTORY": 33,
+  "UNCHECKABLE": 33
+ },
+ "records": [
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1333,
+   "claim": "Call tones: `capWarn` / `capTone` / Ownership's cap note map `sold` → red, `cured` → amber.",
+   "verdict": "FALSE",
+   "evidence": "capTone (UnifiedFace.tsx:352-353: sold→styles.stateBad, cured→styles.stateWarn) and Ownership's cap note (OwnershipFace.tsx:729: sold→var(--red), else var(--amber)) hold. Cycling's capWarn does not: CyclingFace.tsx:376-377 `const capWarn = capReading.state === 'called' || ... || capReading.state === 'sold' || capReading.state === 'cured';` is a boolean, and CyclingFace.tsx:1188 renders `{capWarn && <div>{strikeCapNote(capReading)}</div>}` with no colour, inside .constraints (CyclingFace.module.css:387-395, color: var(--text-muted) on an amber box), so a sold call shows the same as a cured one, not red. Unchanged since 852ea4a (Run 2b), per `git log -S` — the doc has been loose since it was written; either the doc or Cycling's constraints box is wrong.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1513,
+   "claim": "in `SETTINGS_FIELDS` (39 → 45)",
+   "verdict": "HISTORY",
+   "evidence": "This is Run 1's change and it is left alone. Today SETTINGS_FIELDS has 46 entries (settingsFields.ts:12-35; BL14 added 'planGoalNetBtc' at :30), so a reader who takes 45 as the current count is off by one.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1514,
+   "claim": "`VIEWER_SETTINGS_FIELDS` 34 → 40",
+   "verdict": "HISTORY",
+   "evidence": "This is Run 1's change and it is left alone. Today VIEWER_SETTINGS_FIELDS = SETTINGS_FIELDS (46) minus VIEWER_SNAPSHOT_STRIP (5) = 41 (settingsFields.ts:40-42).",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 907,
+   "claim": "Opt-in re-arm, `breakerRearmMonths` — NO default; the owner picks it from A5's re-arm table",
+   "verdict": "UNCHECKABLE",
+   "evidence": "The engine part holds: there is no engine default (cyclingSim.ts:797-798, rearm ?? null). The owner's pick is now in the code: DEFAULT_BREAKER_REARM_MONTHS = 6 (supportPolicyView.ts:53), and every face and the plan pass it (supportPolicyInputs.ts:55). Line 1221 says the same thing. Nothing needs editing.",
+   "correction": null
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1646,
+   "claim": "the `simpleModePlan` helpers ... go with them (deriveForMonth, composeMonthSummary, isOperatingMonth, displaySettledLtv, isLtvFigureStressed). Done",
+   "verdict": "HISTORY",
+   "evidence": "Confirmed gone: the five names appear only in a comment at simpleModePlan.ts:4-5; nothing imports them (grep -rn simpleModePlan src | grep import).",
+   "correction": null
+  }
+ ],
+ "trueClaims": [
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 890,
+   "claim": "supportPolicy.ts is the pure leaf",
+   "evidence": "supportPolicy.ts:21 — only import is ./ltv"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 890,
+   "claim": "runCyclingSim gains supportPolicy?: SupportPolicyInputs",
+   "evidence": "cyclingSim.ts:812 PolicyRunContext picks 'supportPolicy'; SupportPolicyInputs exported"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 891,
+   "claim": "absent or invalid policy => byte-identical (G1 golden)",
+   "evidence": "cyclingSimPolicy.test.ts:113,134"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 891,
+   "claim": "cycle mode only, other modes ignored with reason 'mode'",
+   "evidence": "cyclingSim.ts:768"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 893,
+   "claim": "engine fixtures' 60% => liquidated 30.2% below support",
+   "evidence": "supportPolicyPaths.ts:51; 1-0.60/0.86=0.302"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 894,
+   "claim": "faces' 45% since Policy v2 => 47.7% below",
+   "evidence": "planPolicy.ts:23; 1-0.45/0.86=0.477"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 895,
+   "claim": "Strike stop default 50% at support",
+   "evidence": "planPolicy.ts:24; supportPolicyPaths.ts:52"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 896,
+   "claim": "cbStop=min(stop,CB cap), strikeStop=min(stop,Strike cap) when cap on",
+   "evidence": "cyclingSim.ts:685-693 effectivePolicyStops"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 899,
+   "claim": "coldStoreBufferPct ignored under the policy (policy sweep replaces it)",
+   "evidence": "cyclingSim.ts:1676-1679 policy sweep uses cbKeepCollateralBtc, not coldFloorLtv"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 900,
+   "claim": "paused < 1 with float guard SUPPORT_EPS 1e-9",
+   "evidence": "supportPolicy.ts:27,42"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 901,
+   "claim": "accumulate <= accumulateBelow, hold <= payDownAbove, payDown above",
+   "evidence": "supportPolicy.ts:43-45"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 901,
+   "claim": "fixtures 1.5/2.0, faces 2.0/3.0",
+   "evidence": "supportPolicyPaths.ts:53-54; planPolicy.ts:25-26"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 902,
+   "claim": "no latch on zones",
+   "evidence": "supportPolicy.ts:39 policyZone is stateless"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 904,
+   "claim": "breaker: 2 consecutive month-ends below 0.9xS => broken, latched",
+   "evidence": "supportPolicy.ts:29-30,202-209"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 905,
+   "claim": "broken: no new debt, refinance, migration or sweep",
+   "evidence": "cyclingSim.ts:1141,1369,1320,1676 zone gates"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 906,
+   "claim": "broken: surplus pays down then buys",
+   "evidence": "cyclingSim.ts:1272 payDown||broken -> allocatePayDown, rest buys"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 906,
+   "claim": "month 0 never feeds the breaker",
+   "evidence": "cyclingSim.ts:1072 if (m > 0)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 907,
+   "claim": "breakerRearmMonths has no engine default; absent => latched",
+   "evidence": "cyclingSim.ts:797-798,808 rearm ?? null"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 908,
+   "claim": "re-arm on Nth consecutive month-end at/above support, that month acts",
+   "evidence": "supportPolicy.ts:236-237"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 910,
+   "claim": "below-support month resets the count; later break latches again",
+   "evidence": "supportPolicy.ts:234-236"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 910,
+   "claim": "not an integer >= 1 => ignored with 'rearm'",
+   "evidence": "cyclingSim.ts:798"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 911,
+   "claim": "modelBrokenMonth first break; firstRearmMonth, breakCount report rest",
+   "evidence": "cyclingSim.ts:1076-1080"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 913,
+   "claim": "nextRearmableBreakerState wraps nextBreakerState",
+   "evidence": "supportPolicy.ts:234"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 914,
+   "claim": "cyclingSim imports only the wrapper; a guard test enforces both",
+   "evidence": "cyclingSim.ts:10; cyclingSimPolicy.test.ts:773,777"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 915,
+   "claim": "payDown/broken retires Strike then Coinbase to zero (0.005 residual)",
+   "evidence": "cyclingSim.ts:1272-1278; supportPolicy.ts:244-251"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 917,
+   "claim": "sweep keep = max((cbDebt+buffer)/(S*cbStop), cbDebt/(cap*price))",
+   "evidence": "supportPolicy.ts:58-65,93-99"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 919,
+   "claim": "restore: over-ceiling leg repaid by its excess, Coinbase before Strike",
+   "evidence": "cyclingSim.ts:1254-1265"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 921,
+   "claim": "strikeFirstAfterLiquidation default on; payDown/broken skip CB restore",
+   "evidence": "cyclingSim.ts:963,1254-1257"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 923,
+   "claim": "paused/accumulate/hold after liq: min(surplus, cbExcess+skExcess), Strike first",
+   "evidence": "cyclingSim.ts:1240-1250"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 928,
+   "claim": "cash reserve spent on bills then a Strike cure; never refilled",
+   "evidence": "cyclingSim.ts:980,1213-1216,1606"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 929,
+   "claim": "openingCash - toBills - toCure === cashLeft",
+   "evidence": "cyclingSimPolicy.test.ts:84"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 933,
+   "claim": "step 1: interest, then Morpho seizure on the way down at >=86%",
+   "evidence": "cyclingSim.ts:1103-1124"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 934,
+   "claim": "step 2: breaker (m>=1) then the zone",
+   "evidence": "cyclingSim.ts:1070-1082"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 936,
+   "claim": "draw: available=max(0,min(skRoom,skCeil,cbAbsorb)); cbAbsorb formula",
+   "evidence": "cyclingSim.ts:1141-1148"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 939,
+   "claim": "conduit clause pin: accumulate row Strike <= one month's interest on a bill",
+   "evidence": "cyclingSimPolicy.test.ts:282-286"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 941,
+   "claim": "step 4: Strike interest; bills income->cash->unfunded; min from income",
+   "evidence": "cyclingSim.ts:1205-1230"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 944,
+   "claim": "at the goal the pay-down runs in any zone, rest kept as goalHeldUsd",
+   "evidence": "cyclingSim.ts:1272,1284-1286"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 945,
+   "claim": "drawing month: income pays minimum after unfunded part, before buy",
+   "evidence": "cyclingSim.ts:1178-1185"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 946,
+   "claim": "step 5 keep = max(line,bal)/(strikeStop*S)",
+   "evidence": "supportPolicy.ts:77-85"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 949,
+   "claim": "retrieve only at <= retrieve LTV before and < max-draw after",
+   "evidence": "cyclingSim.ts:1324-1325"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 949,
+   "claim": "STRIKE_RETRIEVE_MAX_LTV 40%; max draw 50%",
+   "evidence": "strikeCredit.ts:3,11"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 950,
+   "claim": "60-day hold after any cold->Strike move: strikeHoldUntil = m + 2",
+   "evidence": "cyclingSim.ts:1591,1617"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 950,
+   "claim": "no migration while paused/broken (except the stand-down)",
+   "evidence": "cyclingSim.ts:1320"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 951,
+   "claim": "stand-down: goalStandsDown read after step 4; keep 0; straight to cold",
+   "evidence": "cyclingSim.ts:1319,1323,1328-1334"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 953,
+   "claim": "stand-down: hold, release rules and cadence still apply",
+   "evidence": "cyclingSim.ts:1320-1325"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 954,
+   "claim": "engines.md § The plan's goal amount -> 'The stand-down' exists",
+   "evidence": "engines.md:668,699"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 955,
+   "claim": "step 6 refinance accumulate/hold only, ceiling-capped, fee-inclusive",
+   "evidence": "cyclingSim.ts:1369-1383"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 958,
+   "claim": "step 7 order: top up first, shift, reserve, guard, CB top-up, Strike top-up",
+   "evidence": "cyclingSim.ts:1400-1590 block order"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 960,
+   "claim": "step 8 resolveStrikeCall: cash, cold, sale to 65%; >=85% immediate",
+   "evidence": "supportPolicy.ts:142-188; strikeCredit.ts:7"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 962,
+   "claim": "a cure's cold joins coldRetrievedBtc",
+   "evidence": "cyclingSim.ts:1613"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 963,
+   "claim": "each cold coin saves 0.65/0.35=1.857 coins",
+   "evidence": "supportPolicy.ts:136-137"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 964,
+   "claim": "Strike call not gated on liqMonth",
+   "evidence": "cyclingSim.ts:1601"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 966,
+   "claim": "step 9 keep = cbKeepCollateralBtc; not paused/broken except stand-down",
+   "evidence": "cyclingSim.ts:1676-1679"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 970,
+   "claim": "stand-down sweep keep 0 in any zone, past a seizure",
+   "evidence": "cyclingSim.ts:1676 goalStandDown || ...; supportPolicy.ts:98"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 972,
+   "claim": "M1: strikeMarginMonth read after step 8",
+   "evidence": "cyclingSim.ts:1699-1701"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 974,
+   "claim": "modelStrikeLiquidation:false restores flag-only (test-only)",
+   "evidence": "cyclingSim.ts:805,1601; cyclingSim.test.ts:1362"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 977,
+   "claim": "immediate sale <= DUST_BTC is 'none'",
+   "evidence": "supportPolicy.ts:160"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 979,
+   "claim": "G4 asserts every modelled call moves something",
+   "evidence": "cyclingSimPolicy.test.ts:799-805"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 980,
+   "claim": "creditExhaustedMonth = Strike's own capacity < the bill",
+   "evidence": "cyclingSim.ts:1146,1149"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 982,
+   "claim": "ceiling cut sets firstCeilingThrottleMonth; both gated liqMonth===null",
+   "evidence": "cyclingSim.ts:1148-1151"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 985,
+   "claim": "creditExhaustedNote names the month only; CyclingFace renders it",
+   "evidence": "cyclingFaceView.ts:891-895; CyclingFace.tsx:391,1184"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 991,
+   "claim": "Ownership verdict 'Strike's line first falls short...' text",
+   "evidence": "OwnershipFace.tsx:567-571"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 993,
+   "claim": "cyclingSim imports ./supportPolicy, a leaf importing only ./ltv",
+   "evidence": "cyclingSim.ts:8-12; supportPolicy.ts:21"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 994,
+   "claim": "supportPath built by the view (supportPolicyInputs.ts)",
+   "evidence": "supportPolicyInputs.ts:21-23"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 996,
+   "claim": "four additive CyclingRow fields, two optional opening inputs",
+   "evidence": "cyclingSim.ts:1724 row push; :974,982"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 997,
+   "claim": "sum(sweptToColdBtc + strikeToColdBtc) = coldFromCb + coldFromStrike",
+   "evidence": "cyclingSim.ts:1003-1013,1333"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 999,
+   "claim": "sweepToCold returns what it moved and both call sites accumulate",
+   "evidence": "cyclingSim.ts:1679,1688"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1000,
+   "claim": "footings pinned on both arms",
+   "evidence": "cyclingSimPolicy.test.ts:1792-1810"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1002,
+   "claim": "sum refinancedUsd = totalRefinancedUsd; fee = totalCbFees",
+   "evidence": "cyclingSim.ts:1384-1387; cyclingSimPolicy.test.ts:1804-1805"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1004,
+   "claim": "strikeKeepBtc finite keep else null; 0 at the stand-down",
+   "evidence": "cyclingSim.ts:1323-1324"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1006,
+   "claim": "junk openingBreaker/hold reads as absent (validOpeningBreaker/validHold)",
+   "evidence": "cyclingSim.ts:843-854"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1008,
+   "claim": "Decision face and planMonthRun set the opening inputs",
+   "evidence": "DecisionFace.tsx:449; planRun.ts:143-144,245"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1008,
+   "claim": "openingBreaker/hold/strikeMinFromIncome not in the forbidden grep",
+   "evidence": "cyclingSim.test.ts:1362 pattern"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1011,
+   "claim": "planBreakerCache read through validOpeningBreaker (planBreakerCacheOf)",
+   "evidence": "planRun.ts:260-264"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1012,
+   "claim": "Strike hold from strikeDepositOf through strikeHoldAt",
+   "evidence": "usePlanMonth.ts:49,76"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1014,
+   "claim": "seeded break: openingBroken true, brokenMonth null",
+   "evidence": "cyclingSim.ts:614-615,976; supportPolicyView.ts:336"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1016,
+   "claim": "one hadBreak predicate read by policyHeadline and policyDetails",
+   "evidence": "supportPolicyView.ts:405,527,559"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1018,
+   "claim": "memory from breakerFromHistory and holdMonthsFrom",
+   "evidence": "usePlanMonth.ts:65; DecisionFace.tsx imports both"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1021,
+   "claim": "decisionMemory.test.ts exists",
+   "evidence": "src/simulation/__tests__/decisionMemory.test.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1022,
+   "claim": "SupportPolicyInputs/CyclingRow/CyclingResult/PolicyIgnoredReason in cyclingSim.ts",
+   "evidence": "cyclingSim.ts:103,629,636"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1024,
+   "claim": "month 0 carries opening zone and headrooms, no action",
+   "evidence": "cyclingSim.ts:1066-1082,1731-1733"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1024,
+   "claim": "CB cap <= 0 => 'cbStop'",
+   "evidence": "cyclingSim.ts:780"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1025,
+   "claim": "ledgers foot to 1e-8; last-month seizure excluded",
+   "evidence": "cyclingSimPolicy.test.ts:78-85"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1027,
+   "claim": "incomePath: finite >= 0 replaces income; baseline uses same path",
+   "evidence": "cyclingSim.ts:945-950,1781"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1028,
+   "claim": "survival-guard grep covers incomePath, modelStrikeLiquidation, seizeOnTheWayDown",
+   "evidence": "cyclingSim.test.ts:1360-1362"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1058,
+   "claim": "supportPolicy.test.ts: zones+epsilon, sweep, sale, resolveStrikeCall a-f, breaker, re-arm, pay-down",
+   "evidence": "supportPolicy.test.ts:15-288"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1059,
+   "claim": "case f: an emptied Strike is 'none'",
+   "evidence": "supportPolicy.test.ts:158"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1061,
+   "claim": "cyclingSimPolicy.test.ts carries G1-G4",
+   "evidence": "cyclingSimPolicy.test.ts:113,299,336,784"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1061,
+   "claim": "supportPolicyPaths.ts: shared fixture + P1-P9 builders, not a test file",
+   "evidence": "supportPolicyPaths.ts:36,74-162"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1062,
+   "claim": "P9's dip placed at its no-crash twin's measured peak",
+   "evidence": "cyclingSimPolicy.test.ts:924"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1063,
+   "claim": "G1 golden: policy-absent engine at 2125cc2, P2 phase 0/-4 and P9-OFF",
+   "evidence": "goldens/supportPolicyG1.golden.json meta; cyclingSimPolicy.test.ts:116"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1066,
+   "claim": "G1 feeds the stored price path, never recomputed",
+   "evidence": "cyclingSimPolicy.test.ts:32-35"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1068,
+   "claim": "supportPolicyReport: describe.runIf(SP_REPORT); verbose command",
+   "evidence": "supportPolicyReport.test.ts:21,345"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1078,
+   "claim": "seizeOnTheWayDown policy-only, default on; false test-only; in forbidden grep",
+   "evidence": "cyclingSim.ts:345,971; cyclingSim.test.ts:1362"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1082,
+   "claim": "from month 1, after interest, read at this month's price; cbLiquidationPrice",
+   "evidence": "cyclingSim.ts:1103-1117"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1085,
+   "claim": "seizes CB_LIF*CB_LLTV ~0.898 of pool; debt exactly 0",
+   "evidence": "runCoinbaseLoan.ts:2,4; cyclingSim.ts:1120-1122"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1086,
+   "claim": "survivor month: no draw/refinance/migration/defense/sweep; breach cannot refire",
+   "evidence": "cyclingSim.ts:1155,1369,1320,1676,1703"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1088,
+   "claim": "Strike call still runs after a seizure",
+   "evidence": "cyclingSim.ts:1601"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1089,
+   "claim": "seizedOnTheWayDown / seizurePriceUsd semantics",
+   "evidence": "cyclingSim.ts:540-544,1118-1119,1748"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1091,
+   "claim": "month-end liquidation row pushed pre-seizure; on the way down the survivor",
+   "evidence": "cyclingSim.ts:1724 push then :1747 seizure"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1093,
+   "claim": "month 0 and policy-off keep the month-end reading",
+   "evidence": "cyclingSim.ts:1103 m>0; :971"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1095,
+   "claim": "reachGrid()[0] is the tests' month-0 seizure fixture",
+   "evidence": "supportPolicyView.test.ts:684; ownershipFaceView.test.ts:273"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1096,
+   "claim": "F9: covered pool => debt exactly 0; short pool keeps deficiency",
+   "evidence": "cyclingSim.ts:1759-1760"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1104,
+   "claim": "doom gate reached only with seizeOnTheWayDown:false; futility runs policy off",
+   "evidence": "cyclingSim.ts:296-297,872"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1106,
+   "claim": "kill criterion I1 in seizeOnTheWayDown.test.ts",
+   "evidence": "seizeOnTheWayDown.test.ts:268"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1109,
+   "claim": "cbLiquidationPrice lives in runCoinbaseLoan.ts; liqPriceOf delegates",
+   "evidence": "runCoinbaseLoan.ts:13; cbMetrics.ts:16-17"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1110,
+   "claim": "cbMetrics uses Math.pow; runCoinbaseLoan is in the G1 walk",
+   "evidence": "cbMetrics.ts:75; cyclingSimPolicy.test.ts:155"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1112,
+   "claim": "a source test pins one expression",
+   "evidence": "seizeOnTheWayDown.test.ts:310-318"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1113,
+   "claim": "supportPolicyResolution(PolicyRunContext) shares resolveRunPolicy",
+   "evidence": "cyclingSim.ts:812-836"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1115,
+   "claim": "empty price path runs as [0]; support path one month long",
+   "evidence": "cyclingSim.ts:822,861"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1115,
+   "claim": "resolveSupportPolicy has no other caller",
+   "evidence": "cyclingSim.ts:819; seizeOnTheWayDown.test.ts:454"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1116,
+   "claim": "its answers pinned (F10/I7)",
+   "evidence": "seizeOnTheWayDown.test.ts:391"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1117,
+   "claim": "C1 defaults 45/50/2.0/3.0/12/0",
+   "evidence": "planPolicy.ts:22-29"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1120,
+   "claim": "DEFAULT_SUPPORT_POLICY_SETTINGS = {enabled:true, ...PLAN_POLICY_DEFAULTS}",
+   "evidence": "supportPolicyView.ts:46-49"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1121,
+   "claim": "D2 ranges: buy to 2.5x, pay down 5.0x, room 48 months",
+   "evidence": "planPolicy.ts:35-37"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1122,
+   "claim": "D3: console and Playbook follow policyCbStopAtSupportPct",
+   "evidence": "EmergencyConsole.tsx:73; crashPlaybookView.ts:149,162"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1124,
+   "claim": "depth 0.45/0.86 ~0.52x; 0.47x at 40%",
+   "evidence": "arithmetic"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1125,
+   "claim": "policyFor = 60 * 1.5/2.0 * 12; faces' = policyFor(support, V2_DEFAULTS)",
+   "evidence": "supportPolicyPaths.ts:45-69"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1126,
+   "claim": "supportPolicyView.test uses FIXTURE_SETTINGS",
+   "evidence": "supportPolicyView.test.ts:39"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1132,
+   "claim": "Coinbase restored to 70% survives a further 18.6% fall",
+   "evidence": "1-0.70/0.86=0.186"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1134,
+   "claim": "lineFirstInputs: month 1 at 0.80x support, CB 80%, Strike full at 45%",
+   "evidence": "supportPolicyPaths.ts:238-245"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1135,
+   "claim": "k2 0.72: 86.7% bare, 75.9% with 0.5 BTC; k2 0.5 seized",
+   "evidence": "cyclingSimPolicy.test.ts:1173,1180,1190"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1138,
+   "claim": "F5a afterLiquidation: liq month itself on the way down, strictly after at month-end",
+   "evidence": "supportPolicyView.ts:357-358"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1140,
+   "claim": "F5b rowActions: way-down line first with price above dust; month-end last",
+   "evidence": "decisionView.ts:172,190-205"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1143,
+   "claim": "F5c liquidationVerdict strings; outranks every verdict",
+   "evidence": "ownershipFaceView.ts:167-183; OwnershipFace.tsx:562-563"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1146,
+   "claim": "F5d playbookNote liquidation outcome strings",
+   "evidence": "cyclingFaceView.ts:105-107"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1150,
+   "claim": "every surface reads one per-row cbSeizurePrice",
+   "evidence": "cbMetrics.ts:59-65"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1152,
+   "claim": "PolicyReading.cliff set only under the row's price",
+   "evidence": "supportPolicyView.ts:366-370"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1153,
+   "claim": "cliff line text after the Coinbase line; 'today's price' at month 0",
+   "evidence": "supportPolicyView.ts:470-473,555-556"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1154,
+   "claim": "no cliff line policy off/ignored, no loan, post-liquidation, dust",
+   "evidence": "supportPolicyView.ts:554; cbMetrics.ts:62-64"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1158,
+   "claim": "fmtBelowPct one definition; 'less than 1%' / 'more than 99%'",
+   "evidence": "supportPolicyView.ts:378-382; decisionView.ts:582"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1161,
+   "claim": "R9 floor lives in cbSeizurePrice ($0.50); 60c on 2 BTC = 35c",
+   "evidence": "cbMetrics.ts:64; format.ts:47"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1162,
+   "claim": "cliffPath/card/charts inherit; THE MOVE uses shownUsd(m.liqPrice)",
+   "evidence": "DecisionFace.tsx:553; decisionView.ts:580"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1164,
+   "claim": "chartCliffUsd(row) only rounds cbSeizurePrice",
+   "evidence": "cyclingFaceView.ts:1058-1061"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1165,
+   "claim": "chartOwnershipRows(rows, cbStopEffPct?) — no cbLiqLtv",
+   "evidence": "ownershipFaceView.ts:45; grep cbLiqLtv src -> none"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1166,
+   "claim": "series style red 1.25 dash '1 3' connectNulls false",
+   "evidence": "OwnershipFace.tsx:948; UnifiedFace.tsx:884; CyclingFace.tsx:992"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1167,
+   "claim": "'Price & liq' on Ownership/Strategy; Cycling 'BTC price path' gains Legend",
+   "evidence": "OwnershipFace.tsx:880; UnifiedFace.tsx:818; CyclingFace.tsx:979-986"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1170,
+   "claim": "R10 hasCliff = chartRows.some(r.cliff !== null)",
+   "evidence": "CyclingFace.tsx:479,991"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1173,
+   "claim": "D7 Ownership tile/safety line read cbLiquidationPrice",
+   "evidence": "OwnershipFace.tsx:459-462"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1175,
+   "claim": "B3 cliff line with dust floor + fmtBelowPct; one 'alert' line right after",
+   "evidence": "decisionView.ts:580-584"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1177,
+   "claim": "alert texts (plain set-a-price-alert / warn at-or-past) + consoleTail",
+   "evidence": "decisionView.ts:621-639"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1183,
+   "claim": "atTriggerLine(t, consoleRuns) in crashPlaybookView, shared with CB Loan tab",
+   "evidence": "crashPlaybookView.ts:81-84; CoinbaseLoanMain.tsx:109"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1183,
+   "claim": "clause ' (it runs once your Coinbase loan is switched on)'",
+   "evidence": "decisionView.ts:342; crashPlaybookView.ts:83"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1185,
+   "claim": "trigger counts only finite, > 0, above the cliff",
+   "evidence": "decisionView.ts:624"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1187,
+   "claim": "R11 no alert when cliff >= 99.5% below",
+   "evidence": "decisionView.ts:625; decisionView.test.ts:1001"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1188,
+   "claim": "seedsFromMove = seeded && supportPolicyResolution(ctx).policyApplied",
+   "evidence": "decisionView.ts:600-602"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1190,
+   "claim": "PLAN_ENGINE_CONTEXT in planRun.ts; THIS MONTH passes the same gate",
+   "evidence": "planRun.ts:14,33-36,230"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1192,
+   "claim": "gate reads context + supportPolicy, paths[0], bills",
+   "evidence": "DecisionFace.tsx:422"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1193,
+   "claim": "'strikeLadder' when liquidation LTV <= the 70% call",
+   "evidence": "cyclingSim.ts:788-792"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1196,
+   "claim": "firstOpenPastLltvMonth: one condition opensPastLltv serves it and the rule",
+   "evidence": "cyclingSim.ts:1112-1115"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1203,
+   "claim": "openPastLltvNote text and gates (never with policy applied)",
+   "evidence": "cyclingFaceView.ts:1072-1080"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1207,
+   "claim": "D13: Cycling/Ownership amber note after verdict; Strategy warn state line",
+   "evidence": "CyclingFace.tsx:765; OwnershipFace.tsx:725; UnifiedFace.tsx:598"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1209,
+   "claim": "B6 four '$X of debt survives' prints guarded by shownUsd",
+   "evidence": "CyclingFace.tsx:736; UnifiedFace.tsx:594,903; ownershipFaceView.ts:181"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1216,
+   "claim": "policy ON by default; DEFAULT_SUPPORT_POLICY_SETTINGS frozen",
+   "evidence": "supportPolicyView.ts:46-49"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1218,
+   "claim": "engine fixtures' policyFor keeps 60 * 1.5/2.0 * 12",
+   "evidence": "supportPolicyPaths.ts:45-58"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1219,
+   "claim": "face setting = session what-if: Overlay.supportPolicy over usePlanPolicy()",
+   "evidence": "CyclingFace.tsx:268-271"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1220,
+   "claim": "no face writes the plan; Settings 'Your plan' the only editor",
+   "evidence": "planPolicy.test.ts:206-209"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1220,
+   "claim": "'Back to your plan' drops what-if; 'Reset to live' clears overlay",
+   "evidence": "SupportPolicyCard.tsx:110; CyclingFace.tsx:649"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1221,
+   "claim": "re-arm 6 is a constant, DEFAULT_BREAKER_REARM_MONTHS",
+   "evidence": "supportPolicyView.ts:53"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1223,
+   "claim": "cycle mode only: other modes get no policy",
+   "evidence": "supportPolicyInputs.ts:41"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1224,
+   "claim": "effectivePolicySettings clamps, pushes payDown >= +0.1, uses effectivePolicyStops",
+   "evidence": "supportPolicyView.ts:79-104"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1227,
+   "claim": "readouts: settingReadouts/policyTileSub/defenseLineNote/policyTip effective",
+   "evidence": "supportPolicyView.ts:906-949,991"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1230,
+   "claim": "supportPolicyInputs.ts faces' only §2 crossing; buildSupportPath = plBandAt('floor')",
+   "evidence": "supportPolicyInputs.ts:21-23"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1231,
+   "claim": "supportPolicyFor undefined off/not cycle; cash = months*bills; re-arm key omitted",
+   "evidence": "supportPolicyInputs.ts:41-55"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1233,
+   "claim": "never sets a test-only input; pinned",
+   "evidence": "supportPolicyInputs.ts:32; supportPolicyInputs.test.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1234,
+   "claim": "futuresRun the only importer of both pricePaths and monteCarlo",
+   "evidence": "futuresRun.ts:1-2; others import types/const only"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1237,
+   "claim": "policyRaw memo spread, deps [plan, overlay.supportPolicy] on 3 faces",
+   "evidence": "CyclingFace.tsx:268; OwnershipFace.tsx:274; UnifiedFace.tsx:240"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1240,
+   "claim": "supportPath/supportPolicy memos via buildSupportPath(startDate, months)",
+   "evidence": "CyclingFace.tsx:278-281"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1241,
+   "claim": "supportPolicy in engineInputs and lens-reset deps",
+   "evidence": "resetMirror.test.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1244,
+   "claim": "stress run spreads same engineInputs; supportPath never stressed",
+   "evidence": "supportPolicyWiring.test.ts:52,57"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1246,
+   "claim": "supportAtMonth = supportPath[monthIdx]; no plBandAt('floor' in a face",
+   "evidence": "CyclingFace.tsx:414; supportPolicyWiring.test.ts:64-66"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1247,
+   "claim": "Cycling passes literal 'cycle', selects strikeLiquidationLtvPct",
+   "evidence": "CyclingFace.tsx:205,280"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1251,
+   "claim": "notCycle / off texts and Turn on",
+   "evidence": "SupportPolicyCard.tsx:71-77"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1253,
+   "claim": "ignored => policyIgnoredNote + Turn policy off",
+   "evidence": "SupportPolicyCard.tsx:86-88"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1255,
+   "claim": "on: <details> Settings collapsed, six SliderInputs, no re-arm control",
+   "evidence": "SupportPolicyCard.tsx:117-174,258"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1258,
+   "claim": "futures line placement, never 'notCycle', dims via aria-busy",
+   "evidence": "SupportPolicyCard.tsx:52,212,255"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1262,
+   "claim": "futures sentences (1,000 simulations; seizes x% — y% within first year, half by)",
+   "evidence": "futuresView.ts:126-132,177-185"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1267,
+   "claim": "zone strip: min-width 0, gaps 0 past 96 months, 2px marker, role=img",
+   "evidence": "SupportPolicyCard.tsx:63,233-245; .module.css:57-63"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1270,
+   "claim": "ZONE_COLOR one map (green/text-muted/btc/amber/red)",
+   "evidence": "supportPolicyView.ts:127-133"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1270,
+   "claim": "ZONE_COLOR read by strip, legend, Milestones Zone, switch table",
+   "evidence": "SupportPolicyCard.tsx:241,247; CyclingFace.tsx:512,1234"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1274,
+   "claim": "supportPolicyView pure; never imports cyclingFaceView",
+   "evidence": "supportPolicyView.ts:1-10"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1276,
+   "claim": "headline precedence latched>sold>re-armed>over>cold>cured>zone",
+   "evidence": "supportPolicyView.ts:525-551"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1277,
+   "claim": "tones: re-armed warn, latched bad; buy/pay down good, hold quiet",
+   "evidence": "supportPolicyView.ts:386-388,528-530"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1278,
+   "claim": "detail order: CB room, cliff, Strike room, breaker, call, cash, unpaid, cold",
+   "evidence": "supportPolicyView.ts:553-564"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1280,
+   "claim": "afterLiquidation strict at month-end; includes L on the way down",
+   "evidence": "supportPolicyView.ts:357-358"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1284,
+   "claim": "overSentence(leg, roomUsd, 'first'|'afterCoinbase'|'afterStrike')",
+   "evidence": "supportPolicyView.ts:439-443"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1285,
+   "claim": "CB over after liq text; 'after Strike' only while strikeOwes",
+   "evidence": "supportPolicyView.ts:448-454"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1287,
+   "claim": "strikeOwes = shownUsd(row.strikeBalance)",
+   "evidence": "supportPolicyView.ts:359"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1288,
+   "claim": "reach cell 0: Strike $0 in month 6, CB over until month 10",
+   "evidence": "supportPolicyView.test.ts:681-735"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1290,
+   "claim": "CB not over: '...liquidated in month L — the policy borrows nothing more'",
+   "evidence": "supportPolicyView.ts:454"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1291,
+   "claim": "Strike over after liq 'first'; not over omitted; before liq 'after Coinbase'",
+   "evidence": "supportPolicyView.ts:476-480"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1294,
+   "claim": "accumulate after liq headline quiet 'borrows nothing more'",
+   "evidence": "supportPolicyView.ts:540-542"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1298,
+   "claim": "breaker sentence states the re-arm rule; latch says 'stays that way'",
+   "evidence": "supportPolicyView.ts:419-423"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1300,
+   "claim": "neverDraws kinds liquidated>goal/goalMixed>ceiling/line>zone>belowSupport",
+   "evidence": "supportPolicyView.ts:299-314"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1301,
+   "claim": "month-0 liquidated text 'Coinbase starts this scenario past...'",
+   "evidence": "supportPolicyView.ts:587"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1304,
+   "claim": "exhaustive neverDraws test over A5 paths and grid cells",
+   "evidence": "supportPolicyView.test.ts:523"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1306,
+   "claim": "repaidTail strings, no order word",
+   "evidence": "supportPolicyView.ts:663-672"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1310,
+   "claim": "policyPauseReason null at bills <= 0",
+   "evidence": "supportPolicyView.ts:682"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1312,
+   "claim": "zoneStrip counts equal engine monthsInZone",
+   "evidence": "supportPolicyView.ts:793-801; supportPolicyView.test.ts:856"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1313,
+   "claim": "policyLimitPct = stop / multiple",
+   "evidence": "supportPolicyView.ts:808-811"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1317,
+   "claim": "DUST_USD/shownUsd in utils/format.ts, re-exported, source guard",
+   "evidence": "format.ts:47-48; supportPolicyView.ts:148; test:1020-1021"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1319,
+   "claim": "Coinbase's seizure price in src/simulation reads it",
+   "evidence": "cbMetrics.ts:3"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1322,
+   "claim": "roomMonths null when bills <= 0",
+   "evidence": "supportPolicyView.ts:294"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1323,
+   "claim": "verdictVsNeverDraw compares allInEquity with baselineAllInEquity; allIn",
+   "evidence": "cyclingFaceView.ts:862-877"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1325,
+   "claim": "verdictBasisClause ', after unpaid bills' / ', after reserve cash'",
+   "evidence": "cyclingFaceView.ts:839-842"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1326,
+   "claim": "tile sub 'all-in vs never-draw: ±$X' (Cycling, Strategy)",
+   "evidence": "CyclingFace.tsx:542; UnifiedFace.tsx:471"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1328,
+   "claim": "goal clause ', counting the spare income kept at your goal'; tie 'even'",
+   "evidence": "cyclingFaceView.ts:830,869"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1331,
+   "claim": "policyAlert: Strategy state line, Ownership verdict list, first in Cycling constraints",
+   "evidence": "UnifiedFace.tsx:601; OwnershipFace.tsx:735; CyclingFace.tsx:1182"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1334,
+   "claim": "Ownership enters call branch on the reading: strikeCallVerdict(capReading)",
+   "evidence": "OwnershipFace.tsx:565"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1336,
+   "claim": "Ownership stopMonth verdict reads policyStopSentence",
+   "evidence": "OwnershipFace.tsx:578"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1337,
+   "claim": "liquidationVerdict outranks them",
+   "evidence": "OwnershipFace.tsx:562-563"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1339,
+   "claim": "cash flow order: opening note, noBillsNote first, ...",
+   "evidence": "OwnershipFace.tsx:993-995"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1346,
+   "claim": "stoppedCashFlowNote three shapes and texts",
+   "evidence": "cyclingFaceView.ts:391-404"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1351,
+   "claim": "noDrawCashFlowNote three shapes and texts",
+   "evidence": "cyclingFaceView.ts:413-425"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1356,
+   "claim": "liquidatedCashFlowNote three shapes and texts",
+   "evidence": "cyclingFaceView.ts:369-376"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1361,
+   "claim": "noBillsNote shapes (+ BL14 goal shape)",
+   "evidence": "cyclingFaceView.ts:347-362"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1368,
+   "claim": "incomeCoveredUsd = min(max(0,income), strikeShortfall)",
+   "evidence": "cyclingFaceView.ts:243"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1372,
+   "claim": "minimumPaidNote text, null under 50c",
+   "evidence": "cyclingFaceView.ts:327-330"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1374,
+   "claim": "drawingCashFlowNote full/partial/zero shapes and causes",
+   "evidence": "cyclingFaceView.ts:270-317"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1377,
+   "claim": "left-over clause dropped under dust; shownUsd gate",
+   "evidence": "cyclingFaceView.ts:285"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1391,
+   "claim": "no cash-flow sentence prints a sub-50c buy figure",
+   "evidence": "cyclingFaceView.ts:281 bought guard"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1404,
+   "claim": "'pays the bills again' only when nothing unpaid",
+   "evidence": "cyclingFaceView.ts:392-401"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1407,
+   "claim": "billsRemainderTail one tail, shared with policyPauseReason",
+   "evidence": "supportPolicyView.ts:653; cyclingFaceView.ts:280"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1408,
+   "claim": "Ownership '— the line pays $D of the bills.'; leveraged && shownUsd",
+   "evidence": "OwnershipFace.tsx:997-1002"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1412,
+   "claim": "constraints: policyUnpaidNote else unfundedNote(..., baselineUnfundedUsd)",
+   "evidence": "CyclingFace.tsx:389-390"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1413,
+   "claim": "Cycling creditExhaustedNote and throttle line",
+   "evidence": "CyclingFace.tsx:391-393"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1414,
+   "claim": "degenerate-cap notice -> neverDrawsNote (Ownership, Strategy)",
+   "evidence": "OwnershipFace.tsx:1155; UnifiedFace.tsx:738"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1415,
+   "claim": "rateStopNote(applied) one definition; Cycling & Ownership; texts",
+   "evidence": "cyclingFaceView.ts:189-195; CyclingFace.tsx:1168; OwnershipFace.tsx:1136"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1422,
+   "claim": "playbookNote text and outcomes",
+   "evidence": "cyclingFaceView.ts:83-112"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1427,
+   "claim": "GOAL_REFINANCE_CLAUSE text",
+   "evidence": "cyclingFaceView.ts:116-117"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1430,
+   "claim": "old note gated {!applied && defenseActive && (",
+   "evidence": "CyclingFace.tsx:768; OwnershipFace.tsx:743"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1431,
+   "claim": "defendedFromSub(row, applied)",
+   "evidence": "cyclingFaceView.ts:130-136"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1433,
+   "claim": "collateralMovedFlag ⇡ title on all three faces",
+   "evidence": "CyclingFace.tsx:1223; OwnershipFace.tsx:1204; UnifiedFace.tsx:1005"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1435,
+   "claim": "unheldMonth rule",
+   "evidence": "cyclingFaceView.ts:148-154"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1438,
+   "claim": "CB LTV tile sub -> policyTileSub (Cycling, Strategy)",
+   "evidence": "CyclingFace.tsx:536; UnifiedFace.tsx:460"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1442,
+   "claim": "aria-label applied ? 'Strike defense line' : 'Strike LTV cap' on all three",
+   "evidence": "grep -c -> 1 each in Cycling/Ownership/UnifiedFace"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1445,
+   "claim": "policyColdNote/policyColdGoalNote/policyReserveNote lines",
+   "evidence": "coldCardView.ts imports; supportPolicyView.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1448,
+   "claim": "coldShown also opens for a reserve",
+   "evidence": "supportPolicyView.ts:816-818"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1449,
+   "claim": "DISPLAY_DUST_BTC 0.0005; supportPolicy's private DUST_BTC 1e-12",
+   "evidence": "supportPolicyView.ts:153; supportPolicy.ts:33"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1451,
+   "claim": "headline 'in your own custody by {end}'",
+   "evidence": "coldCardView.ts:65"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1454,
+   "claim": "coldOriginsParts parts and wording",
+   "evidence": "cyclingFaceView.ts:490-505"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1457,
+   "claim": "coldMovesSentence shapes; NOTHING_MOVES_TO_COLD; one caller coldCardView",
+   "evidence": "cyclingFaceView.ts:513-518; coldCardView.ts:21,67"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1461,
+   "claim": "policyReserveNote clause drop and omission rules",
+   "evidence": "supportPolicyView.ts:979-988"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1471,
+   "claim": "Cycling slider behind coldBufferPct > 0",
+   "evidence": "CyclingFace.tsx:913"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1472,
+   "claim": "sweepOffReserveNote text",
+   "evidence": "cyclingFaceView.ts:541-544"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1477,
+   "claim": "'Policy limit' series --btc on Cycling, --coinbase on Strategy/Ownership",
+   "evidence": "CyclingFace.tsx:969; OwnershipFace.tsx:933; UnifiedFace.tsx:869"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1481,
+   "claim": "Milestones Zone column ZONE_LETTER/ZONE_COLOR/ZONE_LABEL",
+   "evidence": "CyclingFace.tsx:512"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1483,
+   "claim": "strikeCapReading gains sold/cured",
+   "evidence": "cyclingFaceView.ts:950-953"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1485,
+   "claim": "unfundedNote's third argument is required",
+   "evidence": "ownershipFaceView.ts:146"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1486,
+   "claim": "chartCliffUsd and openPastLltvNote in cyclingFaceView",
+   "evidence": "cyclingFaceView.ts:1058,1072"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1488,
+   "claim": "no test-only engine input anywhere under src/components/",
+   "evidence": "grep -rnE <the test's pattern> src/components -> 0"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1490,
+   "claim": "views read the result field seizedOnTheWayDown",
+   "evidence": "decisionView.ts:262; cyclingFaceView.ts:107"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1491,
+   "claim": "a component test reaches P7 only through a5Cases()",
+   "evidence": "supportPolicyView.test.ts:430,1034"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1492,
+   "claim": "resetMirror.test.ts and supportPolicyWiring.test.ts guards",
+   "evidence": "supportPolicyWiring.test.ts:46-216"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1511,
+   "claim": "six synced plan fields in SETTINGS_FIELDS",
+   "evidence": "settingsFields.ts:26-27"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1513,
+   "claim": "the six are plan events",
+   "evidence": "planPolicy.test.ts:49"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1514,
+   "claim": "in the trusted viewer fields; safe snapshot carries none",
+   "evidence": "settingsFields.ts:41-42"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1515,
+   "claim": "no off switch — no seventh field",
+   "evidence": "planPolicy.ts:22-29"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1517,
+   "claim": "lib/planPolicy.ts zero imports, PLAN FIELDS pins it",
+   "evidence": "planPolicy.test.ts:60-65"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1517,
+   "claim": "planPolicy holds defaults, ranges, field map, seed, clampPlanPolicy, planPolicyOf",
+   "evidence": "planPolicy.ts:22-83"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1518,
+   "claim": "supportPolicyView re-exports defaults (+enabled) and ranges",
+   "evidence": "supportPolicyView.ts:46-56"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1520,
+   "claim": "YourPlanSection owner-only; 🧭 row between Strike Strategy and Coinbase Loan",
+   "evidence": "SettingsMain.tsx:482-494,694"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1521,
+   "claim": "setPlanPolicy clamps, drops unchanged and enabled, one emitPlanSets",
+   "evidence": "planInputsSlice.ts:71-80"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1522,
+   "claim": "resetPlanPolicy emits all six; label 'Back to the defaults (C1)'",
+   "evidence": "planInputsSlice.ts:81; YourPlanSection.tsx:160"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1523,
+   "claim": "no other file names the setters; none names emitPlanSets (code)",
+   "evidence": "planPolicy.test.ts:195-209"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1525,
+   "claim": "the two seed resets",
+   "evidence": "viewerSlice.ts:86,119"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1527,
+   "claim": "faces' policyRaw from usePlanPolicy (read-only, useShallow)",
+   "evidence": "usePlanPolicy.ts:11-13"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1530,
+   "claim": "planClamp.ts (70 + Strike cap) read by planRun, Decision, Your plan",
+   "evidence": "planClamp.ts; planRun.ts:9; DecisionFace.tsx:23; YourPlanSection.tsx:6"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1533,
+   "claim": "console and crash line read policyCbStopAtSupportPct; field required",
+   "evidence": "crashPlaybookView.ts:151; EmergencyConsole.tsx:73; usePlanCardInputs.ts:45"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1535,
+   "claim": "the Outlook is gone",
+   "evidence": "no Outlook component; SimpleModeView.tsx:20 comment"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1538,
+   "claim": "planPolicyOf and the console clamp saved values",
+   "evidence": "planPolicy.ts:83; crashPlaybookView.ts:162"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1540,
+   "claim": "validatePlanBackup.ts checks keys",
+   "evidence": "src/lib/backup/validatePlanBackup.ts"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1541,
+   "claim": "compact.ts / fold.ts field-agnostic",
+   "evidence": "grep -c policy fold.ts compact.ts -> 0"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1543,
+   "claim": "each slider notch emits one plan event",
+   "evidence": "YourPlanSection.tsx:159 onChange={setPlanPolicy}"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1544,
+   "claim": "compaction keeps superseded events for 90 days",
+   "evidence": "compact.ts:7"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1547,
+   "claim": "history trimmed to 32 KiB",
+   "evidence": "compact.ts:20"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1556,
+   "claim": "planRun.ts placementInputOf/engineInputsOf for face and planMonthRun",
+   "evidence": "planRunWiring.test.ts:81-84"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1558,
+   "claim": "months 0..12 on a flat path at today's price",
+   "evidence": "planRun.ts:40-41"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1559,
+   "claim": "seeded from the move only when it is made",
+   "evidence": "planRun.ts:129-134"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1560,
+   "claim": "card month k = run month k - currentMonth + 1",
+   "evidence": "PlanMonthCard.tsx:143-144"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1562,
+   "claim": "MOVE's 96 cells, S0 on 12 and 60 months",
+   "evidence": "planRun.test.ts:56-68"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1564,
+   "claim": "each of THE MOVE's 15 facts read by the same expression",
+   "evidence": "planRunWiring.test.ts:87-99"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1566,
+   "claim": "both selectors read planGoalOf(st.planGoalNetBtc)",
+   "evidence": "DecisionFace.tsx:326; usePlanMonth.ts:51"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1569,
+   "claim": "usePlanMonth runs planMonthRun; today per render",
+   "evidence": "usePlanMonth.ts:61,83"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1574,
+   "claim": "planBreakerCache written only from a fresh fold, in an effect",
+   "evidence": "usePlanMonth.ts:69-72"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1575,
+   "claim": "cache via planBreakerCacheOf -> validOpeningBreaker",
+   "evidence": "planRun.ts:260-264"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1577,
+   "claim": "cached line text shows only once settled",
+   "evidence": "planMonthView.ts:504-511"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1578,
+   "claim": "'cached' carries settled",
+   "evidence": "planMonthView.ts:496"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1580,
+   "claim": "a fetch fails at the 15 s limit",
+   "evidence": "timeLimit.ts:10; useBtcHistory.ts:76"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1581,
+   "claim": "with neither, the month assumes not broken",
+   "evidence": "planMonthView.ts:513-514"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1584,
+   "claim": "Decision face never reads the cache",
+   "evidence": "grep planBreakerCache -> not in DecisionFace.tsx"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1587,
+   "claim": "plan readers read Coinbase via planCbCollateralOf/planCbLoanBalanceOf",
+   "evidence": "grep: 4 faces + usePlanMonth"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1589,
+   "claim": "fresh-install seed $60,000 on 1.48 BTC",
+   "evidence": "cbLoanSlice.ts:24-25"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1589,
+   "claim": "isCrashDay keeps store figures, behind the loan switch",
+   "evidence": "crashPlaybookView.ts:66-72"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1594,
+   "claim": "strikeMinFromIncome from blocMinPaymentSource on every run",
+   "evidence": "planRunWiring.test.ts:98"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1596,
+   "claim": "baseline pays its own Strike interest by the same rule",
+   "evidence": "cyclingSim.ts:1782-1797"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1600,
+   "claim": "card labels To do / After this month / To be within it today / Why this plan?",
+   "evidence": "planRunWiring.test.ts:382-386"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1606,
+   "claim": "Daily bars via planLedgerTargets",
+   "evidence": "DailyModeView.tsx imports planLedgerTargets"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1607,
+   "claim": "'Interest capitalized' for the current month",
+   "evidence": "DailyModeView.tsx:339"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1609,
+   "claim": "crash: PLAN_CRASH_TITLE + crashNote(true) foot; Daily title alone",
+   "evidence": "PlanMonthCard.tsx:225,244; DailyModeView.tsx:149"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1611,
+   "claim": "planGoalLine on both cards",
+   "evidence": "PlanMonthCard.tsx:172; DailyModeView.tsx:142"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1614,
+   "claim": "month 1 reads cbOverCeilingUsd at S0; 'Your limit: ...' text",
+   "evidence": "planMonthView.ts:255-269"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1617,
+   "claim": "cbOverLimitAtMonthEnd one rule past the dust floor",
+   "evidence": "planRun.ts:272-274"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1619,
+   "claim": "three over-limit bodies",
+   "evidence": "planMonthView.ts:214-221"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1622,
+   "claim": "refused policy -> policyIgnoredNote status",
+   "evidence": "planMonthView.ts:252-254"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1624,
+   "claim": "planAfter takes policyApplied",
+   "evidence": "planMonthView.ts:375-377"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1626,
+   "claim": "after liquidation 'Coinbase has been liquidated — borrowing has ended' red",
+   "evidence": "planMonthView.ts:246-249"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1629,
+   "claim": "I31: every 3+ word text is one of eleven labels",
+   "evidence": "planRunWiring.test.ts:382-396"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1631,
+   "claim": "Decision card first line and what-if line",
+   "evidence": "decisionView.ts:374,376"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1633,
+   "claim": "planSwitchNote dismissed per device, never to a viewer",
+   "evidence": "PlanMonthCard.tsx:135,183"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1634,
+   "claim": "venue colours Strike white, Coinbase blue, cold orange; split dot border-box",
+   "evidence": "planMonthView.ts:39-41,137"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1637,
+   "claim": "hold reads latestStrikeDepositISO through strikeHoldAt",
+   "evidence": "crashPlaybookView.ts:117-130"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1638,
+   "claim": "strikeDepositOf: journal or viewerStrikeDepositISO",
+   "evidence": "crashPlaybookView.ts:117-121"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1639,
+   "claim": "trusted snapshot strikeLastDepositISO raw-set by viewerSync",
+   "evidence": "payloads.ts:119; viewerSync.ts:182-187"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1641,
+   "claim": "every hold reader goes through strikeDepositOf",
+   "evidence": "DecisionFace.tsx:324; EmergencyConsole.tsx:82; usePlanMonth.ts:49; usePlanCardInputs.ts:50"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1650,
+   "claim": "statement minimum entered in Settings -> Strike Strategy",
+   "evidence": "SettingsMain.tsx:311-312,772"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1652,
+   "claim": "after box 'no collateral'; status names what survives",
+   "evidence": "planMonthView.ts:249,394"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1654,
+   "claim": "release 'month-end' / 'small, can wait' under MOVE_THRESHOLD_BTC 0.01",
+   "evidence": "placement.ts:47; planMonthView.ts:71,88"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1657,
+   "claim": "finished year: card stays on today's run",
+   "evidence": "PlanMonthCard.tsx:125 strategyDone prop"
+  }
+ ],
+ "historyClaims": [
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1171,
+   "claim": "old formula drew a point on every row after the seizure"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1193,
+   "claim": "the run used to start from a move the card never named"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1257,
+   "claim": "it read 'Reset to defaults' before"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1350,
+   "claim": "Strategy said 'the loan is at your N% stop'"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1395,
+   "claim": "2b.1 fixes ($0 paycheck in full-draw/partial)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1396,
+   "claim": "2b.2 fixes (stopped / no-draw)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1397,
+   "claim": "2b.3 closed the last three"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1405,
+   "claim": "old stopped sentence said 'again' with bills above paycheck"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1451,
+   "claim": "was 'into'"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1452,
+   "claim": "Strategy's old '... BTC in custody' value went"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1459,
+   "claim": "Cycling's '... the honest answer for a while' is retired"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1473,
+   "claim": "BL33: no longer says 'nothing new moves to cold'"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1513,
+   "claim": "SETTINGS_FIELDS (39 -> 45) at Run 1"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1514,
+   "claim": "VIEWER_SETTINGS_FIELDS 34 -> 40 at Run 1"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1546,
+   "claim": "queue item 5a shipped and taken in"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1554,
+   "claim": "runAdvisor leaves both screens; log overlay until Run 3"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1585,
+   "claim": "offline split recorded, not fixed; Run 3 and 4 left it"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1590,
+   "claim": "Outlook and log overlay until Run 3"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1603,
+   "claim": "Advisor keeps tiers until Run 4"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1608,
+   "claim": "crash gate ltvTriggered until Run 4 — done"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1645,
+   "claim": "crash gate — done in Run 4"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1646,
+   "claim": "Run 3 removed log overlay and simpleModePlan helpers — done (simpleModePlan.ts:4-5 comment only)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1649,
+   "claim": "Run 4: Safety at-support line — done"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1659,
+   "claim": "logged: Decision face reading breaker cache"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1660,
+   "claim": "logged: trusted->safe downgrade (§9 known)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1661,
+   "claim": "logged: history fetched every visit (5e F12 since)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1662,
+   "claim": "logged: ~60 SimpleModeView CSS rules (swept Run 3)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1662,
+   "claim": "logged: Daily rollup lists Strike paydowns not Coinbase's"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1664,
+   "claim": "queued: empty state's other zero figures"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1098,
+   "claim": "29 grid runs at the commit before F9"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1430,
+   "claim": "ternaries collapsed"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1484,
+   "claim": "2b.1 narrowed creditExhaustedNote"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1509,
+   "claim": "Run 2 is built"
+  }
+ ],
+ "uncheckableClaims": [
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1075,
+   "claim": "spec pbloc-spec-policy-v2-safety-v1.md (not in repo)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1214,
+   "claim": "spec pbloc-spec-support-policy-faces-v1.md"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1507,
+   "claim": "spec pbloc-spec-plan-of-record-v1.md + owner's calls BL9"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1552,
+   "claim": "spec v1.7.2 + owner's calls BL16/BL17"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 907,
+   "claim": "owner picks re-arm from A5 table (decision)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1118,
+   "claim": "12 months the owner's pick (D1)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1222,
+   "claim": "re-arm 6 is the owner's pick"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1215,
+   "claim": "2a and 2b merge to main together (decision)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1034,
+   "claim": "SP_REPRO: Coinbase ceiling never binds at $8k/$6k"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1036,
+   "claim": "G3 OFF twin never liquidates; stripped twin does"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1040,
+   "claim": "defense in depth measured"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1043,
+   "claim": "costs on 4-yr cycle / support line / P7"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1050,
+   "claim": "risks: power-law slope bet (b 5.63-5.96, P8)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1052,
+   "claim": "tops compressing"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1053,
+   "claim": "backtest flatters; Jun-2026 low ~2% under support"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1055,
+   "claim": "income is hidden liquidity risk"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1056,
+   "claim": "monthly steps miss 72h window; re-borrow fee"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1100,
+   "claim": "F3 counts over 15,549 runs"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1108,
+   "claim": "0 violations over 15,564 runs"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1128,
+   "claim": "F8 placement within 0.025 BTC, worse 6 of 60"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1155,
+   "claim": "B1 cliff row counts 348,810 + 353,415; closest 0.3442%"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1157,
+   "claim": "v1.0's 563,378 subset"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1159,
+   "claim": "1,163 grid rows"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1172,
+   "claim": "32,677 grid rows"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1199,
+   "claim": "B5 counts 7,709 / 5,447 / 1,879 / 383 / 3,603 / 2,211 / 16 / 579"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1262,
+   "claim": "owner's device check DC1"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1416,
+   "claim": "rate-card figures measured policy off"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1536,
+   "claim": "17 of 18 screens byte-identical (measured)"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1545,
+   "claim": "NIP-44 padding ~66 KB vs 64 KiB relay limit"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1567,
+   "claim": "kill criterion 2 measured on screen, four households"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1597,
+   "claim": "900 income-mode runs: 300 / 45 / 27 cells"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1641,
+   "claim": "HOLD: 4,000 journals x 9 days vs 3580f92"
+  },
+  {
+   "doc": "docs/claude/almanac.md",
+   "line": 1655,
+   "claim": "in life Strike honours a release after its hold (lender)"
+  }
+ ]
+}

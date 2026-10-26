@@ -1,0 +1,105 @@
+{
+ "area": "A1",
+ "lens": "inv",
+ "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+ "findings": [
+  {
+   "id": "A1i-1",
+   "severity": "Medium",
+   "lane": "Heavy",
+   "file": "src/simulation/cyclingSim.ts",
+   "line": 1576,
+   "title": "Gate G2 ('cold is never retrieved at or above support for a position that opens inside both ceilings') fails when spare income cannot repay capitalised interest, and the policy card then explains the retrieval with the false clause 'the position opened over its limits'.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-g2c1, C1 plan defaults (cbStop 45, skStop 50, accumulateBelow 2.0, payDownAbove 3.0, buffer 12, cash 0; cbLtvCapPct 70, strikeLtvCapPct 60, defendCbLtv, cycle 1), support flat 50,000; price 75,000 (k 1.5) for m0-39 then 50,500 (k 1.01); strikeColl 1, strikeBal 20,000, line 30,000; cbColl 1, cbDebt 22,000; cold 0.5; income 4,000 < expenses 6,000; APR 13 / 6. Output: applied true; opening INSIDE both ceilings (row0 cbCeilingHeadroomUsd +500, strikeCeilingHeadroomUsd +5,000); m39 strikeBalance 29,870 (skRoom -4,870), cbRoom -4,695, restore 0, unfunded 2,000/month; first retrieval m41 k=1.01 zone 'accumulate' strikeTopUpBtc 0.0073 at strikeLtv 0.600; result.coldRetrievedAboveSupportBtc = 0.01821 (must be 0 by G2). policyDetails(policyReading(r,42,6000)) prints '0.0182 ₿ came out of cold while price was above support — the position opened over its limits.' Path: the restore (cyclingSim.ts:1214 `surplus = max(0, inc - expenses)` → :1249 skPay = min(surplus, excess)) can only repay from spare income, so with none, Strike's 13% interest capitalises past its ceiling at support; at k≈1 the Strike cap's cold → Strike top-up (cyclingSim.ts:1576-1584, target 60% at TODAY's price) fires, and :1692-1695 counts it into coldRetrievedAboveSupportBtc; supportPolicyView.ts:482-483 (coldAlarm) and :563 then assert the opening was over its limits. A random sweep (20,000 synthetic policy runs, 6,210 opening inside both ceilings) found the same breach once (no-surplus, at-goal run: 0.00059 ₿ at k=1.0056).",
+   "whyItMatters": "G2 is a rule-row promise (engine.md: 'Cold is never retrieved at or above support for a position that opens inside both ceilings') and the card's COLD_PROMISE/coldAlarm pair tells the owner either that cold is never touched above support or that their position opened over its limits; in a deficit budget (income below bills — the app's 'living on bitcoin' case) both are false: the position opened inside and the plan itself walked it over. Every G2 test and the report grids use income above bills, so nothing pins this.",
+   "fixSketch": "Owner call: either scope G2 and the alarm to 'opened over, or went over, its limits' (count when a leg is over its ceiling at support at the retrieval month, not only at the opening), or let the restore/pay-down treat capitalised interest so a leg can't drift over its ceiling unpaid.",
+   "notKnownBecause": "§9 lists no G2/cold-alarm item; the closest ('the zero-state words') concerns states with nothing to show, not a funded position drifting over its limits; GAP items in §5.1 are fullyBackedPrice and the accrual clamp."
+  },
+  {
+   "id": "A1i-2",
+   "severity": "Medium",
+   "lane": "Heavy",
+   "file": "src/components/Tools/crashPlaybookView.ts",
+   "line": 66,
+   "title": "isCrashDay open-codes the LTV as `value > 0 && debt / value >= trigger`, so a Coinbase loan with debt and no collateral (LTV ∞) is never a crash day: the Emergency Console acts while THIS MONTH, Daily and the CB Loan tab show no crash day.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-crashInf: live figures price 40,000, support 50,000, cbDebt 10,000, cbCollateralBtc 0, strikeColl 2, strikeBal 0, line 20,000, cold 0.5, target 65, plan limit 45. Output: isCrashDay({hasCbLoan:true, cbDebt:10000, cbCollateralBtc:0, price:40000, triggerPct:75}) = false, the same at 1e-8 ₿ collateral = true; waitingCard = null; crashPlaybook order 'topUpFirst', steps [coldToCoinbase 0.38461 ₿]; playbookCard: pastLiquidation 'At this price Coinbase is at ∞ — past its 86% liquidation line…', step 'Move 0.38461 ₿ (~$15,384) from cold storage into Coinbase.', outcome 'Coinbase is back at your 65% target.'; placementPlan state 'cbPastLiquidation'. Path: crashPlaybookView.ts:70-71 (`value > 0 && …`) → usePlanCardInputs.ts:62 cbTriggered false → :72 playbookLine null (no crash line on THIS MONTH / the Advisor tab); DailyModeView.tsx:144-148 crashDay false → planStatus instead, whose m=1 cbPastLiquidation branch (planMonthView.ts:234-238) says 'The policy moves nothing today.'; CoinbaseLoanMain.tsx:85/106 no crash banner. The console itself runs on hasCbLoan alone (CbDefenseTool.tsx:13). A 200,000-input random sweep of crashPlaybook found 19,917 inputs where the console acts at/over the trigger while isCrashDay is false — every one with cbCollateralBtc 0. ltv.test.ts's copy guard greps only the `<= 0 ? Number.POSITIVE_INFINITY` shape, so this copy escapes it.",
+   "whyItMatters": "The unbacked loan is the worst position the app can describe (ltv.ts's own docblock: a copy that reports it as safe is the bug it exists to stop). On it the console says 'move 0.38 ₿ into Coinbase now' while THIS MONTH says 'The policy moves nothing today' with no crash line — the two crash-day answers disagree exactly where the gate matters most.",
+   "fixSketch": "isCrashDay: `ltvOf(f.cbDebt, f.cbCollateralBtc, f.price) >= f.triggerPct / 100` (∞ ≥ trigger), with a GATE test at zero collateral.",
+   "notKnownBecause": "§9's crash-day items are the console's boundary print and fixed stage ladder, Safety's amber title, and 'the Coinbase leg with the loan off' (hasCbLoan false) — none is the ∞-LTV gate with the loan on."
+  },
+  {
+   "id": "A1i-3",
+   "severity": "Medium",
+   "lane": "Heavy",
+   "file": "src/simulation/cyclingSim.ts",
+   "line": 1767,
+   "title": "The never-draw baseline carries the opening Coinbase loan but has no seizure rule, so on a path through Coinbase's liquidation price the verdict and the futures' 'Beats never borrowing' count credit never-borrowing with a loan Morpho would have seized.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-baselinePath (deterministic, C1 policy, support flat 66,000): price m0 90,000, m1 52,000, m2 44,000, then linear to 200,000 at m36; strikeColl 1, strikeBal 10,000, line 30,000; cbColl 1, cbDebt 40,000; cold 0.2; income 8,000, expenses 6,000; APR 13/6. Output: plan applied, liqMonth null (the playbook moved 0.049 + 0.132 ₿ cold into Coinbase, held at 70%); the never-draw world's own loan ($40,000 × 1.005^m on 1 ₿, even with every $2,000 buy pledged to it) opens m2 at 88.4% LTV — Morpho seizes it; yet allInEquity 459,955 vs baselineAllInEquity 522,708 → beatsNeverDraw false, verdictVsNeverDraw kind 'loses', equityDelta -62,753. Probe A1-baseline over priceFutures(1,000, FUTURES_SEED) at 1.35× support, position A (1 ₿ Strike/$10k, 1 ₿ Coinbase/$40k, 0.2 cold): future #175 (low 46,381 at m2, below the loan's 46,512 liquidation price) — plan survives (max CB LTV 0.70), engine baseline 1,194,733, seizure-aware baseline 883,994, plan all-in 1,023,005 → counted as NOT beating never borrowing; 1 flip in 1,000 at this position. Path: cyclingSim.ts:1767-1812 — `baseCbDebt *= 1 + cmr` each month, `baseBtc` one pool, no LTV test, no seizure; :1814 baselineEquity; consumers monteCarlo.ts:80 (beatsNeverDraw → FuturesSummary.beatsNeverDraw) and cyclingFaceView.ts:866 (wins → the Net-equity tile's colour).",
+   "whyItMatters": "The comparison is supposed to be like with like ('a run that never acts still IS it'); a baseline immune to Morpho overstates never-borrowing on exactly the crash paths where the plan's defense earns its keep, and turns a plan that saved its loan into a 'loses' — a money comparison the owner reads on the faces and in the futures' share.",
+   "fixSketch": "Give the baseline the engine's way-down seizure on its own Coinbase loan (opening collateral, accrued debt, CB_LIF at cbLiquidationPrice) — an engine change behind the G1 golden, so the owner decides.",
+   "notKnownBecause": "§9 has 'the never-draw verdict without a goal tying by float residue' (a tie rule) and a deferred 'doomed next month' check; neither is the baseline lacking any seizure."
+  },
+  {
+   "id": "A1i-4",
+   "severity": "Medium",
+   "lane": "Light",
+   "file": "src/components/Almanac/decisionView.ts",
+   "line": 540,
+   "title": "THE MOVE's batch line rounds a sub-threshold move up to the threshold and says '0.010 ₿ is under the 0.01 ₿ threshold' for any total in [0.0095, 0.01).",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-moveCard: placementPlan({ creditLine 40,000, strikeBalance 0, strikeCollateralBtc keep+0.0097, cbDebt 60,000, cbCollateralBtc 2, coldBtc 0.5, price 100,000, support 100,000, skStop 0.5, cbStop 0.6, cbDefenseLtv 0.7, bufferUsd 72,000, accumulateBelow 1.5, payDownAbove 2.0 }) → moved 0.0097, worthMoving false, strikeLeg 'moves'; moveCard batch line: 'Nothing worth moving yet — 0.010 ₿ is under the 0.01 ₿ threshold; next month's re-plan picks it up.' Path: decisionView.ts:539-541 prints fmtBtc3(movedBtc) where fmtBtc3 = n.toFixed(3) (:71), which rounds half-up; the schedule's '(small — can wait)' markers (:120-121, :126-127, :172-173, `< MOVE_THRESHOLD_BTC`) print the same rounded figure ('Release 0.010 ₿ … (small — can wait)').",
+   "whyItMatters": "A figure that disagrees with its word: the card tells the owner a move of 0.010 ₿ is under a 0.01 ₿ threshold, which reads as a bug in the threshold rather than a rounding.",
+   "fixSketch": "Floor the figure on the sub-threshold lines (Math.floor(x*1000)/1000, the console's flooring precedent) or print it to 4 dp when it rounds onto the threshold.",
+   "notKnownBecause": "§9's display item is 'cents on the faces (BL19)' — dollars, not the ₿ threshold; Sweep 1's sixteen items could not be checked line by line (its spec is not in the repo or Claude outputs/), so the judge should confirm against it."
+  },
+  {
+   "id": "A1i-5",
+   "severity": "Minor",
+   "lane": "Light",
+   "file": "src/components/Tools/crashPlaybookView.ts",
+   "line": 198,
+   "title": "fmtStepBtc's FLOOR_GUARD (1e-7 of the last printed place = 1e-12 ₿) is larger than STRIKE_RELEASE_EPS's cushion when Strike's keep is under 0.001 ₿, so a binding Strike release is rounded UP to an amount that leaves Strike at 50% — the line Strike refuses.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-floorGuard: playbookInputFromLive({ price 100,000, support 125,000, cbDebt 170,000, cbCollateralBtc 2, strikeBalance 25, strikeCollateralBtc 0.1005, creditLine 20,000, coldBtc 0, target 65, plan limit 45 }) → order topUpFirst, release 0.0999999999995 ₿ (binding: required 0.615), fmtStepBtc → '0.10000'; card step 'Release 0.10000 ₿ (~$10,000) of Strike collateral into Coinbase.'; moving the printed 0.10000 leaves 0.0005 ₿ against $25 = 50.0% (float 0.49999999999999956; with $10 on 0.1002 ₿: 0.5000000000000203). At $100 on 0.102 ₿ it floors correctly to '0.09999'. Path: cbDefense.ts:272 releases down to maxAfterLtv × (1 − 1e-9), a cushion of keep × 1e-9 ₿; crashPlaybookView.ts:198/204 `Math.floor(btc * 1e5 + 1e-7)` forgives up to 1e-12 ₿, so for keep ≤ 0.001 ₿ the cushion is inside the guard.",
+   "whyItMatters": "engine.md's rule 'Every crash-day step amount is floored to its printed precision' exists so the console never names a release Strike refuses; with a sliver of a Strike balance (≤ ~$50 per $100k of price) it does.",
+   "fixSketch": "Scale the guard to the cushion (e.g. guard relative to btc × 1e-12, or floor to 5 dp after subtracting the release EPS) and add a ⭐ at a $25 Strike balance.",
+   "notKnownBecause": "§9's 'the Emergency Console's boundary print' concerns a printed LTV landing on a lender line; this is fmtStepBtc's flooring of a step amount, a different function and rule row."
+  },
+  {
+   "id": "A1i-6",
+   "severity": "Minor",
+   "lane": "Heavy",
+   "file": "src/simulation/placement.ts",
+   "line": 234,
+   "title": "THE MOVE and the engine's step 5 apply different 'under 50% after' tests (≤ 50% × (1 − 1e-9) through strikeReleasableBtc vs `< strikeMaxDrawLtv` open-coded in the migration), so at a 50% tie THE MOVE says the release is blocked while the run's month 1 makes it.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-moveCard: placementPlan({ creditLine 30,000, strikeBalance 30,000, strikeCollateralBtc 2, cbDebt 0, cbCollateralBtc 0, coldBtc 0, price 60,000.00003 (k 1.2000000006), support 50,000, skStop 0.6, cbStop 0.45, cbDefenseLtv 0.7, bufferUsd 0, accumulateBelow 1.0, payDownAbove 1.1 }) → keep 1.0, excess 1.0, releasable 0.9999999995, strikeLeg 'ltv'; moveCard state line 'Releasing all of it would leave Strike at 50% LTV or more — pay it down first.' (after-LTV would be 0.49999999975). runCyclingSim on the same position, flat path [P, P], zero rates/income, strikeStopAtSupportPct 60, strikeLtvCapPct 60: row 1 strikeToCbBtc 1, strikeCollateralBtc 1, strikeLtv 0.49999999975. Path: placement.ts:227-234 (excess ≤ strikeReleasableBtc, cbDefense.ts:272 with STRIKE_RELEASE_EPS) vs cyclingSim.ts:1325-1326 (`ltvOf(strikeBal, strikeColl - move, price) < strikeMaxDrawLtv`).",
+   "whyItMatters": "engine.md: 'THE MOVE is never a second placement rule' — here the card and the run disagree on the same move, and the card's sentence is false of the position. The band is ~1e-9 relative wide, so it is reached only at an exact tie.",
+   "fixSketch": "Have step 5 test the move through strikeReleasableBtc (move ≤ releasableNow) so both read one release rule; pin it at the tie.",
+   "notKnownBecause": "Not in §9; §5.1's equivalent-in-effect '<' → '<=' note is about which limit binds in strikeCredit, not the release test."
+  },
+  {
+   "id": "A1i-7",
+   "severity": "Minor",
+   "lane": "Light",
+   "file": "src/components/Almanac/CyclingFace.tsx",
+   "line": 770,
+   "title": "With the policy off, a refinance capped exactly at the defense line leaves a float overage that the debt shift books as a defense, so a face can print 'LTV stop defense: $0 of Coinbase debt shifted to Strike across 1 month' and flag ⇄ on a month that shifted $7e-12.",
+   "evidence": "Probe run from /tmp/hardening-1/audit-A1a as `/tmp/hardening-1/bin/slot npx vitest run src/__probe__/<file> --maxWorkers=1` (probe deleted afterwards; results written to a scratch JSON). Probe A1-dustGrid (policy off): flat price 30,000 × 13 months; strikeColl 1, strikeBal 0, line 100,000; cbColl 1, cbDebt 20,000; income 8,000, expenses 6,000; APR 13/6; cycle 1; cbLtvCapPct 70; defendCbLtv true → defenseCount 1, totalDefenseDrawnUsd 7.28e-12, firstDefenseMonth 7. Repo fixture: runCyclingSim({ ...SP_REPRO, pricePath: pathP2(12) }) → defenseCount 9 of which month 58 drew 5.82e-11 (a refinance month). A 20,000-run random policy-off sweep: 7,360 rows with 0 < defenseDrawnUsd < 0.005, and 188 runs whose ONLY defense was dust. Path: cyclingSim.ts:1464 drops the dust only when `topUpFirstRan` (policy-only), so :1468-1473 count it (defended true, defenseCount++, firstDefenseMonth); CyclingFace.tsx:767-771 and OwnershipFace.tsx:743-747 print fmtK(total) = '$0' 'across N months', and the ⇄ marker reads r.defended (CyclingFace.tsx:502, OwnershipFace.tsx:512).",
+   "whyItMatters": "The policy-off what-if reports a defense that never happened ('$0 … across 1 month, starting month 7 … The 70% stop held') and inflates real counts; the SHIFT_DUST_USD docblock names exactly this symptom but fixes it only under the policy.",
+   "fixSketch": "Gate the policy-off note and the ⇄ flag on shownUsd (or drop a sub-half-cent shift in both arms — an engine change behind the G1 golden).",
+   "notKnownBecause": "§9's policy-off item is the Strike leg's margin × 0.95 bound, not the dust shift."
+  }
+ ],
+ "examined": [
+  "BTC conservation per month (20,000 random policy-on runs, 36 months, C1-range settings, goals, holds, cash, cycle 1/3): Δ(strike + Coinbase + cold) = buys/price − seizures (way-down and month-end) − Strike sales, to 1e-9 — no break.",
+  "Dollar conservation per month in the same sweep: Δ(strikeBal + cbDebt) = CB interest + draw + Strike interest − minimum paid + refinance fee − restore − pay-down − cash cure − sale proceeds − seizure repayment, to $0.011 — no break; restore + pay-down = strikeRepaid + cbRepaid.",
+  "Cold ledger (cold = opening + fromCb + fromStrike − retrieved) and cash ledger (opening − bills − cures = left, never negative) on every row of the sweep — sound; no NaN/∞ in any row field (LTVs excepted by design).",
+  "Way-down seizure: debt exactly 0 and seizure price ≥ the month's price whenever seizedOnTheWayDown; month 0 / policy-off month-end seizure preserves the deficiency only when the pool is short.",
+  "Ceilings at support: no refinance month ends over the Coinbase ceiling; a drawing month can end over the Strike ceiling by at most that month's capitalised interest (122 of 19,645 draw months, ≤ $276, always ≤ strikeInterestUsd) and the next month's restore repays it — draw → interest order, not a defect.",
+  "crashPlaybook over 200,000 random inputs: coins and debt conserved; every Strike release made at ≤ 40% before and < 50% after and never in hold; every shift within min(line, 50% × collateral); 'held' ⇔ after ≤ target; each step kind once except a 1.1e-16 ₿ residue release (seed 16485) that fmtStepBtc drops (< 1 sat), so no card/line ever lists it; cards and THIS MONTH lines never print NaN/Infinity/undefined.",
+  "Ties: 86% is ≥ everywhere (opensPastLltv, month-end breach, placement cbPastLiquidation, pastLiquidation note, doom outcome, waitingCard); 40% is ≤ in both strikeReleasableBtc and the migration; 70%/85% Strike call ≥; breaker at exactly 0.9× support is not below; top-up-first k < 1 − SUPPORT_EPS and G2's k ≥ 1 − SUPPORT_EPS are complementary; cbDoomedThisMonth's possible == need tie ends AT 86% — documented in engine.md, not reported.",
+  "Stop clamp: effectivePolicyStops is the only min() (resolveSupportPolicy has none; the console's cbStopAtSupportFor calls it once); a CB cap ≤ 0 ignores the policy ('cbStop'); effectiveStrikeCapPct clamps to 66.5.",
+  "THE MOVE: after conserves coins; 'unavailable' on any non-finite/≤0 price or support; state order cbPastLiquidation → broken → paused → ready holds at ∞ LTV (cbColl 0); hold boundary (strikeHoldAt day 60 inclusive) agrees with holdMonthsFrom (first month after throughISO).",
+  "Futures: seizedMonth = min(liqMonth, firstOpenPastLltvMonth); seizedHalfByMonth is the lower median (ceil(n/2) − 1); shareText never prints 0%/100% at n = 1,000; seizedShares decides 'all' first.",
+  "planPolicy: clampPlanPolicy clamps finite numbers into range and junk to the C1 default; planCbLimitOf = min(clamp, 70)/100 matches the faces' clamp.",
+  "Noted, not reported (arguable): with income below bills the policy card's overSentence still says 'spare income repays it first' (supportPolicyView.ts:441-442) where THIS MONTH has NO_SPARE — may fall under §9's 'zero-state words'."
+ ]
+}

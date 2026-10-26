@@ -1,0 +1,117 @@
+{
+  "area": "A5",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "findings": [
+    {
+      "id": "A5-1",
+      "severity": "Medium",
+      "file": "src/components/Viewer/ViewerHomeView.tsx",
+      "line": 208,
+      "title": "Offline (or with no price answer this session), the owner's home-screen Safety pill reads 'All positions safe · live' and the full-mode price badge reads 'LIVE' for a price from a past session.",
+      "evidence": "Probe (production build under vercel.json's headers, Chromium 390x844, SW installed online, then offline relaunch): `cd /tmp/hardening-1/audit-A5 && /tmp/hardening-1/bin/slot env VERCEL_GIT_COMMIT_SHA=local npm run build`; `node /tmp/claude-0/-home-user-Personal-BLOC/d4edeca9-4cff-5d56-a615-d52716ce1fad/scratchpad/a5/serve.mjs /tmp/hardening-1/audit-A5/dist /tmp/hardening-1/audit-A5/vercel.json 5182 &`; `/tmp/hardening-1/bin/slot node /tmp/claude-0/-home-user-Personal-BLOC/d4edeca9-4cff-5d56-a615-d52716ce1fad/scratchpad/a5/badge2.mjs` (seed: simpleMode, simpleView 'dashboard', btcPriceMode 'live', btcPrice 50000, btcPriceUpdatedAt = now - 3 days). Output: `dashboard OFFLINE pill: \"All positions safe live\" ; stored price {\"btcPrice\":50000,\"ageHours\":72}` and the lines above it `[\"BTC\",\"1H\",\"1D\",\"1W\",\"price history unavailable\",\"All positions safe\",\"live\",...]`. Full mode, 1280x800 (`node /tmp/claude-0/-home-user-Personal-BLOC/d4edeca9-4cff-5d56-a615-d52716ce1fad/scratchpad/a5/badge.mjs`, same seed with simpleMode false): `default tab BTC PRICE rows: [\"BTC PRICE LIVE $50,000 $20k $1M\"]`, `navigator.onLine = false`. Path: ViewerHomeView.tsx:67 reads the verdict's price from the store (`s.btcPrice`, the last value any session pushed); :208 prints `ownerNav ? 'live' : relativeAge(lastSync)` — a fixed word for the owner, never an age. useBtcPrice.ts:63-65 `isStale = state.lastUpdated ? ... : false` — with nothing landed this session lastUpdated is null, so isStale is false; InputsPanel.tsx:174 (and the same branch in CoinbaseLoanSidebar.tsx:41, LivingInputsPanel.tsx:48, AdvisorSidebar.tsx:61) then falls through to the LIVE badge (InputsPanel.tsx:191). The store already holds the price's age (btcPriceUpdatedAt, persisted; the Emergency Console reads it, EmergencyConsole.tsx:119).",
+      "whyItMatters": "It is the phone's first screen. With no network the Safety verdict is computed on a price that can be days old, and the word beside it says 'live' — after a fall in price the owner is told, in present tense, that every position is safe. A false word on the Safety verdict (a reviewer may class it as a safety misstatement).",
+      "lane": "Light",
+      "fixSketch": "Derive the pill's word and the sidebar badge from btcPriceUpdatedAt (and a price that landed this session): 'live' only within STALE_MS, else 'as of <time>' / '⚠ stale'.",
+      "notKnownBecause": "§9 names the Decision face reading only today's breaker offline and the price chart's own 'as of' label (5e F12, fixed), not the owner pill or the sidebar badge; Sweep 1 §5's sixteen items are not in the repo, so I could not check that list (pbloc-spec-sweep-1-v1.md is absent)."
+    },
+    {
+      "id": "A5-2",
+      "severity": "Medium",
+      "file": "src/store/persistConfig.ts",
+      "line": 148,
+      "title": "migrateState ignores the stored version, so the next store-version bump re-runs v21's roster wipe on every device (viewers [] and nextViewerIndex 0) and the relay pull never restores them.",
+      "evidence": "Probe: `cp /tmp/claude-0/-home-user-Personal-BLOC/d4edeca9-4cff-5d56-a615-d52716ce1fad/scratchpad/a5/probes/migrateRerun.test.ts /tmp/hardening-1/audit-A5/src/__a5probe__/ && cd /tmp/hardening-1/audit-A5 && /tmp/hardening-1/bin/slot npx vitest run src/__a5probe__/migrateRerun.test.ts --maxWorkers=1 --silent=false --reporter=verbose` (a v21 blob: 2 viewers, nextViewerIndex 2, the same three plan events in its log). Output: `BEFORE viewers 2 nextViewerIndex 2 advisorActualBtcHeld 1` / `AFTER  viewers 0 nextViewerIndex 0 advisorActualBtcHeld 0.8 planEvents kept 3` / `FOLD of the kept log: viewers 2 nextViewerIndex 2 advisorActualBtcHeld 1` / `PULL applies the fold (sync.ts:94 condition)? false`. Path: zustand 5.0.13 middleware.mjs:392 calls migrate whenever the blob's version !== CURRENT_STORE_VERSION; persistConfig.ts:204 `migrate: migrateState`; migrateState (persistConfig.ts:57) takes no version and runs every step unconditionally — :148-149 `viewers: [], nextViewerIndex: 0`, :75/:103 subtracts cumBought from advisorActualBtcHeld again (0.2 here; display-only today, DevPanel). The plan pull re-folds only when the relays bring an id this device lacks (sync.ts:94 `if (idKey(merged) !== idKey(s.planEvents))` → :96 applyPlanFold); after a bump the log is unchanged, so the wiped roster stays. The next addViewerSlot (viewerSlice.ts:39-41) emits viewers=[new at index 0] + nextViewerIndex 1, which wins the fold on every device. The bump discipline (build-deploy.md:26, storeVersion.ts:8-9) says only to bump the two constants.",
+      "whyItMatters": "Data loss on the next bump that follows the written discipline: the sharing roster disappears locally on every owner device, and re-adding a viewer reuses index 0 — the index the roster promises is never reused (viewerSlice.ts:35-38), i.e. an old viewer's channel — and drops the other viewers from the synced roster without queuing their revocation.",
+      "lane": "Heavy",
+      "fixSketch": "Pass zustand's fromVersion into migrateState and gate each step (`if (from < 21) { viewers: [], nextViewerIndex: 0 }`, `if (from < 11)` back-solve), plus a test that migrateState(v21 blob, 21) leaves the roster and baseline unchanged; name it in the bump discipline.",
+      "notKnownBecause": "§9 lists no store-migration item; viewerRoster.test.ts:24-28 pins the empty roster for a blob without the old scalars (today's behaviour at v20→v21), and no doc or rule says migrate must be version-gated before a v22 bump."
+    },
+    {
+      "id": "A5-3",
+      "severity": "Medium",
+      "file": "src/hooks/useStrikeData.ts",
+      "line": 42,
+      "title": "A Strike outage (upstream 503) is passed through by the proxy and read by the client as 'key not configured': polling stops for the session and the widget keeps its green dot and last balance.",
+      "evidence": "Probe: `cp /tmp/claude-0/-home-user-Personal-BLOC/d4edeca9-4cff-5d56-a615-d52716ce1fad/scratchpad/a5/probes/strike503.test.ts /tmp/hardening-1/audit-A5/src/__a5probe__/ && /tmp/hardening-1/bin/slot npx vitest run src/__a5probe__/strike503.test.ts --silent=false --reporter=verbose` (handlers imported, fetch stubbed, owner-signed NIP-98). Output: `key configured, Strike upstream 503 → strike-balances answers 503 {\"error\":\"Strike API error\"}` / `... strike-rates answers 503 {\"error\":\"Strike API error\"}` / `key NOT configured → strike-balances answers 503 {\"error\":\"Strike API not configured\"}`. Path: api/strike-balances.js:5 (no key → 503) and :17 `if (!response.ok) return res.status(response.status)` (Strike's 503 → 503; strike-rates.js:18 the same). useStrikeData.ts:42-45 tests the status only: `if (balanceRes.status === 503 || rateRes.status === 503) { strikeProxyUnconfigured = true; return; }` — before the `!ok` branch (:49-51) that would set strikeApiConnected false; :24 `if (strikeProxyUnconfigured) return;` ends every later poll until a reload. InputsPanel.tsx:80/116 keep the green dot (strikeApiConnected still true from the last success) and :87/:89 keep 'STRIKE USD HOLDINGS $X' and 'Draw only $Y this month' on the frozen balance.",
+      "whyItMatters": "A transient Strike maintenance window silently freezes the owner's live Strike holdings and the 'Draw only $Y this month' guidance for the rest of the session while the dot says connected — a figure that disagrees with its word.",
+      "lane": "Light",
+      "fixSketch": "Have the proxies answer an upstream failure with 502 (or tag the body), and latch 'unconfigured' only on the proxy's own 'Strike API not configured'.",
+      "notKnownBecause": "§9 has no item on the Strike proxies or the Strike widget's connection state."
+    },
+    {
+      "id": "A5-4",
+      "severity": "Minor",
+      "file": "src/hooks/useNostrAutoRestore.ts",
+      "line": 24,
+      "title": "On a nip07/nip46 reload of a device that has not loaded its plan, 'Loading your plan…' never shows: optimistic auth renders the app before syncNow reaches firstPullStarts.",
+      "evidence": "Probe: `cp /tmp/claude-0/-home-user-Personal-BLOC/d4edeca9-4cff-5d56-a615-d52716ce1fad/scratchpad/a5/probes/firstPullReload.test.ts /tmp/hardening-1/audit-A5/src/__a5probe__/ && /tmp/hardening-1/bin/slot npx vitest run src/__a5probe__/firstPullReload.test.ts --silent=false --reporter=verbose` (real store, syncNow and firstPull; restoreSigner and the pull held). Output: `SAME TICK as setIsAuthenticated(true): firstPull = idle ; screen up = false ; signedInApp = true` then `PULL RUNNING: firstPull = running ; screen up = false ; planLoaded = false`. Path: useNostrAutoRestore.ts:24 `setIsAuthenticated(true)` (optimistic), :27 `syncNow(nostr)`; with no signer in memory syncNow.ts:20-21 awaits restoreSigner before :27 firstPullStarts. The render in between has signedInApp true (AppShell.tsx:224) and planLoading.up false, so AppShell.tsx:225's effect calls markAppOnScreen(); when the pull starts, firstPull.ts:39 `up = pull === 'running' && !released && !appOnScreen` is false for the whole pull. The existing tests model a fresh sign-in with the signer in hand (firstPull.test.ts:52-58, :66-72), never this path.",
+      "whyItMatters": "firstPull.ts:1-6 promises the screen for 'the session's first plan pull on a signed-in owner device that doesn't hold its plan'; on this path the app is on screen while the plan and then the journal land — the red infinite-LTV flash F1 was built to replace. Its 'never late' exceptions (firstPull.ts:9-10) don't name it.",
+      "lane": "Light",
+      "fixSketch": "Call firstPullStarts (or a 'pending' mark) before syncNow's first await, or have useNostrAutoRestore mark the pull before setIsAuthenticated(true).",
+      "notKnownBecause": "§9 names 'the sync hook reaching Face ID on a locked phone' and other 5b/5c follow-ups, not the F1 screen on the nip07/46 auto-restore path."
+    },
+    {
+      "id": "A5-5",
+      "severity": "Minor",
+      "file": "api/_lib/ownerAuth.js",
+      "line": 19,
+      "title": "The Strike proxies accept a NIP-98 token dated in the future for as long as its date stays ahead of the server's clock — the 60-second window bounds age only.",
+      "evidence": "Probe: `cp /tmp/claude-0/-home-user-Personal-BLOC/d4edeca9-4cff-5d56-a615-d52716ce1fad/scratchpad/a5/probes/proxyAuth.test.ts /tmp/hardening-1/audit-A5/src/__a5probe__/ && /tmp/hardening-1/bin/slot npx vitest run src/__a5probe__/proxyAuth.test.ts --silent=false --reporter=verbose` (the real api/strike-balances.js handler, fetch stubbed). Output: `created_at now-120 s -> 401 {\"error\":\"Unauthorized\"}` / `created_at now+1 year -> 200 [{\"currency\":\"USD\",\"current\":\"100\"}]` / `created_at now+10 years -> 200 [...]`. Path: ownerAuth.js:19 `validateToken(authHeader, url, method)` is the only time check; nostr-tools 2.23.5 lib/esm/nip98.js:144 `return Math.round(new Date().getTime() / 1e3) - event.created_at < 60;` — a negative age always passes. proxyAuth.ts:6 says 'NIP-98 events are valid ±60s', which the server does not enforce.",
+      "whyItMatters": "A token signed while the device clock runs ahead (or by a signer asked to) is a bearer credential for the owner's Strike balances and invoices until that date — a replay window with no upper bound on a privacy-bearing endpoint.",
+      "lane": "Heavy",
+      "fixSketch": "In validateOwnerRequest, also reject `event.created_at > now + 60` (unpack first, check both bounds) and add the future-dated case to ownerAuth.test.ts.",
+      "notKnownBecause": "§9 has no NIP-98 or proxy-auth item; ownerAuth.test.ts:43-47 covers only the past side (now-120 s)."
+    },
+    {
+      "id": "A5-6",
+      "severity": "Minor",
+      "file": "src/lib/nostr/proxyAuth.ts",
+      "line": 11,
+      "title": "The NIP-98 token cache never hits in use: it is one slot shared by the two URLs signed together each poll, and its 50 s life is shorter than the 60 s poll.",
+      "evidence": "Probe (same file, /tmp/claude-0/-home-user-Personal-BLOC/d4edeca9-4cff-5d56-a615-d52716ce1fad/scratchpad/a5/probes/proxyAuth.test.ts, first case). Output: `POLL PATTERN: 3 polls x 2 urls -> signEvent calls = 6` and `A,B then A,B 1 s later -> signEvent calls = 4`. Path: proxyAuth.ts:11 `let cached: {url, method, token, signedAt} | null` — one entry; :20 hits only for the same url within 50_000 ms. useStrikeData.ts:32-35 signs strike-balances and strike-rates together every poll, so each overwrites the other; useStrikeData.ts:6 POLL_INTERVAL_MS = 60_000 > 50_000. The comments say the opposite: proxyAuth.ts:8 '~1 remote sign per ~50s per URL, not per fetch' and :10 'Cache is per (url, method)'.",
+      "whyItMatters": "On NIP-46 every Strike poll costs two remote-signer round trips (and, with Primal, possibly two approvals) — the prompt-spam the cache exists to prevent; the comment misleads the next change.",
+      "lane": "Heavy",
+      "fixSketch": "Key the cache by `${method} ${url}` in a Map and either poll under the token's life or say plainly that steady-state polls re-sign.",
+      "notKnownBecause": "§9 has no proxy-auth item; proxyAuth.test.ts:44-49 ('cache is per-url') passes for a one-slot cache too, so nothing has measured it."
+    },
+    {
+      "id": "A5-7",
+      "severity": "Minor",
+      "file": "src/lib/demo/demoSeed.ts",
+      "line": 1,
+      "title": "demoSeed.ts's header says the seed runs 'On the PUBLIC deploy (VITE_DEMO=1)' — the deploy where, since C1, VITE_DEMO must never be set because real users live there.",
+      "evidence": "`sed -n 1,4p src/lib/demo/demoSeed.ts` → `// C0 — sandbox demo seed. On the PUBLIC deploy (VITE_DEMO=1) this module's side-effect block writes a curated showcase plan into localStorage on EVERY load`. docs/claude/commercialization.md:15: public (`personal-bloc-public`) = `VITE_LANDING=1` … `⚠ **NO** VITE_DEMO`; :16 the sandbox carries VITE_DEMO=1; CLAUDE.md's map: 'VITE_DEMO never on an origin with real users'. What the block does when the flag is set: demoSeed.ts:155-166 removes 'personal-bloc-nostr-pubkey', 'personal-bloc-provenance', 'personal-bloc-writer-key-wrapped', 'personal-bloc-writer-key-meta' and overwrites 'personal-bloc-store' on every load.",
+      "whyItMatters": "The file that holds the origin-destructive block names the wrong deploy for it; someone setting up or reviewing the three Vercel projects from this comment would put VITE_DEMO on the public origin — every visitor's plan and wrapped key gone on each load.",
+      "lane": "Light",
+      "fixSketch": "Change the header to 'On the SANDBOX deploy (personal-bloc-demo, VITE_DEMO=1) — never the public or owner deploy (commercialization.md)'.",
+      "notKnownBecause": "§9 has no deploy or commercialization item; the docs check (§7, K5-A) reads docs/claude/, not source comments."
+    },
+    {
+      "id": "A5-8",
+      "severity": "Minor",
+      "file": "src/hooks/useStrikeData.ts",
+      "line": 90,
+      "title": "useStrikeData's `active` guard never trips: the effect passes the flag by value, so a poll in flight when the effect is torn down still writes the Strike fields.",
+      "evidence": "Path: useStrikeData.ts:23 `const fetchAll = async (active = true) => {` — a parameter; :88 `let active = true;` in the effect; :90 `await fetchAll(active);` copies the value (true) into the call; :94 the cleanup sets the effect's own `active = false`, which the running call never sees. So :43, :48, :74 and :81 (`if (!active) return;`) cannot fire for a request already in flight, and :75-79 write strikeUsdBalance / strikeBtcAvailable / strikeRate / strikeApiConnected / strikeLastFetched after the hook was disabled (AppShell.tsx:233 passes `isAuthenticated && isOwner && !viewerMode`; ViewerLoginFlow.tsx:134 sets isAuthenticated false without a reload).",
+      "whyItMatters": "A guard that doesn't guard: after the page hides or the owner switches the install to viewer mode, a late Strike answer lands in the store. The fields are memory-only (persistConfig.ts:22 excludes them) and sign-out reloads (disconnect.ts:38), so the visible effect is small today.",
+      "lane": "Light",
+      "fixSketch": "Pass a getter or ref (`() => active`) or an AbortController signal into fetchAll and check it after each await.",
+      "notKnownBecause": "§9 has no useStrikeData item."
+    }
+  ],
+  "examined": [
+    "Precache: `slot env VERCEL_GIT_COMMIT_SHA=local npm run build` → 'precache 14 entries (2174.56 KiB)'; the manifest in dist/sw.js lists index.html (revisioned), icon.svg, the index js/css, the dynamic `mod-*.js` chunk, both module workers and all six woff2 — every chunk the bundle references (`new Worker(new URL('/assets/crypto.worker-…'))`, `/assets/futures.worker-…`) is in it; the 4 MiB cap has headroom (largest 1.80 MB).",
+    "dist/sw.js is built 'es' format but holds no import/export or import() (grep counts 0), so the classic registration workbox-window makes is safe.",
+    "Offline relaunch, production build, Chromium (serve.mjs applies vercel.json's headers + the rewrite; boot.mjs): SW controlling, workbox-precache-v2 with 14 entries; offline reload → app on screen, no SW DIAG panel, IBM Plex Mono 400 loaded and a ₿ face resolved.",
+    "CSP: zero securitypolicyviolation events on boot, on every Almanac face (Halving Clock, Cycle Clock, Mining, Power Law, Sats, Scenario, Ownership, Decision — the futures worker spawned) and offline. The bundle has no eval/new Function/WebAssembly, no external images or iframes, no Google font hosts; connect-src https:/wss: covers coinbase spot, NIP-11 and relays; worker-src 'self' covers sw.js and both workers; the inline diag script needs 'unsafe-inline' (present).",
+    "Fonts: a woff2 cmap reader (scratchpad a5/woff2cmap.mjs) shows U+20BF mapped in all three latin-ext faces and unmapped in the latin ones — fonts.css's claim that extended Latin is needed for ₿ holds; weights 400/600/700 equal the Google link 5e replaced (git show of index.html at 954a605).",
+    "Permissions-Policy camera=()/microphone=()/geolocation=(): no getUserMedia/BarcodeDetector/geolocation use in src.",
+    "api/btc-candles.js: granularity whitelist (an array query becomes '60,300' → 400); api/btc-history.js and morpho-rate.js: fixed upstream URLs, no request input reaches them; Strike proxies fail closed with no PUBLIC_ORIGIN/OWNER_PUBKEY; 403 vs 401 split matches ownerAuth.test.ts.",
+    "The candle chart dates a CDN-stale copy by its own candles (btcCandlesCache.ts:54-56 historyTime = min(landed, newest close)) — s-maxage + stale-while-revalidate can't make it look fresh.",
+    "Boot order: main.tsx sets __APP_BOOTED after every import has run (ESM), so a module-init throw leaves the 15 s watchdog to paint; demoSeed's runtime imports (storeVersion, runCoinbaseLoan → ltv) pull no store, so the import-order constraint holds; the owner bundle contains no demo-seed strings (grep count 0).",
+    "Fresh sign-in paths reach firstPullStarts in the same tick as setIsAuthenticated: establishOwner.ts:52-53, NostrAuthGate.tsx:422-423/451-452/501-502 (signer set, markSignerFresh), LocalUnlockGate.tsx:40-43 — the gap is only A5-4's auto-restore path.",
+    "syncNow lands the first pull on every exit (syncNow.ts:34 and the finally at :74), so the screen can't outlive its pull.",
+    "vite-plugin-pwa autoUpdate reloads the page when a new deploy's SW activates (register.js 'activated' → location.reload) — documented as intended (build-deploy.md:233, main.tsx:23); not reported.",
+    "Zustand v5 persist with createJSONStorage(() => window.localStorage) (persistConfig.ts:188-190) — the explicit storage the Zustand-v5 gotcha requires."
+  ]
+}

@@ -1,0 +1,3 @@
+# Reviewer's note (verbatim, 2026-10-26)
+
+Reviewer's request before the go: publish Stage 1's records. From the main checkout, create a branch claude/hardening-1-records from the current HEAD; copy everything under `Claude outputs/hardening-1/` (the plan, survivors-*.json, mutants-*.json, the audit findings, the docs check files, this note) into a top-level folder `hardening-1-records/` on that branch only; commit with the subject "Hardening 1 · Stage 1 records (not for merge)"; push it; print the commit sha and the file list with sizes. If the push is refused, print the plan, the five A2 Criticals and the GAP index in full instead. Change nothing else. Then stop and wait for the go.

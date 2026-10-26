@@ -1,0 +1,519 @@
+{
+  "target": "HS",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "survivors": [
+    {
+      "id": "HS-01",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — `STRIKE_MAX_DRAW_LTV`",
+      "file": "src/simulation/strikeCredit.ts",
+      "line": 41,
+      "why": "fullyBackedPrice divides by the 65% cure LTV instead of the 50% draw LTV (spec §5.1 GAP, settled by the session)",
+      "input": "strikeAvailableCredit(40_000, 1, 50_000, 0).fullyBackedPrice",
+      "baseOutput": "80000",
+      "mutantOutput": "61538.46",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/strikeCreditHardening.test.ts",
+        "title": "STRIKE_MAX_DRAW_LTV — fullyBackedPrice is the line over collateral at the 50% draw LTV",
+        "assertion": "expect(strikeAvailableCredit(40_000, 1, 50_000, 0).fullyBackedPrice).toBe(40_000 / (1 * 0.5)) // 80_000"
+      }
+    },
+    {
+      "id": "HS-02",
+      "class": "GAP",
+      "rule": "docs/claude/engines.md § `cbMetrics.ts` — the accrual clamp",
+      "file": "src/simulation/cbMetrics.ts",
+      "line": 73,
+      "why": "a future as-of date discounts the Coinbase balance (spec §5.1 GAP, settled by the session)",
+      "input": "accruedCbBalance(10_000, 10, '2099-01-01')",
+      "baseOutput": "10000",
+      "mutantOutput": "≈7",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cbMetricsHardening.test.ts",
+        "title": "cbMetrics.ts — accruedCbBalance never ages a balance backwards (a future as-of returns it unchanged)",
+        "assertion": "expect(accruedCbBalance(10_000, 10, '2099-01-01')).toBe(10_000)"
+      }
+    },
+    {
+      "id": "HS-03",
+      "class": "GAP",
+      "rule": "docs/claude/engines.md § `cbMetrics.ts` — accruedCbLiquidationPrice never ages backwards (twin of the accrual clamp)",
+      "file": "src/simulation/cbMetrics.ts",
+      "line": 84,
+      "why": "clamp dropped: a future as-of lowers the entered liquidation price",
+      "input": "accruedCbLiquidationPrice(50_000, 10, '2099-01-01') at system time 2026-10-26",
+      "baseOutput": "50000",
+      "mutantOutput": "36.51112072163979",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cbMetricsHardening.test.ts",
+        "title": "cbMetrics.ts — accruedCbLiquidationPrice never ages an entered liquidation price backwards",
+        "assertion": "vi.setSystemTime(new Date('2026-10-26T12:00:00Z')); expect(accruedCbLiquidationPrice(50_000, 10, '2099-01-01')).toBe(50_000)"
+      }
+    },
+    {
+      "id": "HS-04",
+      "class": "GAP",
+      "rule": "docs/claude/engines.md § `cbMetrics.ts` — a null AsOf means the value has never been anchored and is left alone",
+      "file": "src/simulation/safetyView.ts",
+      "line": 215,
+      "why": "an entered liq price with no as-of of its own is aged from the balance's as-of",
+      "input": "deriveSafetyView(SV), SV = { advisorActualBlocBalance: 50_000, creditLine: 100_000, currentBtcHeld: 1, btcPrice: 100_000, strikeLiquidationLtvPct: 85, hasCbLoan: true, cbLoanBalance: 100_000, cbAprPct: 10, cbLoanBalanceAsOf: '2026-01-01', cbCollateralBtc: 2, cbLtvTriggerPct: 70, cbLiquidationPrice: 50_000, cbLiquidationPriceAsOf: null }, system time fixed 2026-10-26T12:00:00Z",
+      "baseOutput": "50000",
+      "mutantOutput": "54260.28862645176",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/safetyViewHardening.test.ts",
+        "title": "cbMetrics.ts — an entered liquidation price with a null as-of is left alone (never aged from the balance date)",
+        "assertion": "expect(deriveSafetyView(SV).cbLiqPrice).toBe(50_000)"
+      }
+    },
+    {
+      "id": "HS-05",
+      "class": "GAP",
+      "rule": "docs/claude/viewer.md § Viewer V2 — C-trusted = real figures; what a viewer sees equals what the owner sees",
+      "file": "src/simulation/safetyView.ts",
+      "line": 410,
+      "why": "trusted viewer's Coinbase balance prints the entered, un-accrued balance",
+      "input": "computeViewerSafety(null, 0, SV).figures.cb.balance, SV = { advisorActualBlocBalance: 50_000, creditLine: 100_000, currentBtcHeld: 1, btcPrice: 100_000, strikeLiquidationLtvPct: 85, hasCbLoan: true, cbLoanBalance: 100_000, cbAprPct: 10, cbLoanBalanceAsOf: '2026-01-01', cbCollateralBtc: 2, cbLtvTriggerPct: 70, cbLiquidationPrice: 50_000, cbLiquidationPriceAsOf: null }, system time fixed 2026-10-26T12:00:00Z",
+      "baseOutput": "108520.57725290352",
+      "mutantOutput": "100000",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/safetyViewHardening.test.ts",
+        "title": "Viewer V2 — the trusted viewer's Coinbase balance is the owner's accrued balance",
+        "assertion": "expect(computeViewerSafety(null, 0, SV).figures!.cb.balance).toBe(deriveSafetyView(SV).accruedBalance)"
+      }
+    },
+    {
+      "id": "HS-06",
+      "class": "GAP",
+      "rule": "docs/claude/viewer.md § Viewer V2 — the trusted Strike \"Liq at ~$P\" = bloc / (btcHeld × liqLtv)",
+      "file": "src/simulation/safetyView.ts",
+      "line": 396,
+      "why": "the liquidation LTV used as a percent (85) not a fraction (0.85)",
+      "input": "computeViewerSafety(null, 0, SV).figures.strike.liqPrice, SV = { advisorActualBlocBalance: 50_000, creditLine: 100_000, currentBtcHeld: 1, btcPrice: 100_000, strikeLiquidationLtvPct: 85, hasCbLoan: true, cbLoanBalance: 100_000, cbAprPct: 10, cbLoanBalanceAsOf: '2026-01-01', cbCollateralBtc: 2, cbLtvTriggerPct: 70, cbLiquidationPrice: 50_000, cbLiquidationPriceAsOf: null }, system time fixed 2026-10-26T12:00:00Z",
+      "baseOutput": "58823.529411764706",
+      "mutantOutput": "588.2352941176471",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/safetyViewHardening.test.ts",
+        "title": "Viewer V2 — the trusted Strike liq price is bloc / (btcHeld × liq LTV as a fraction)",
+        "assertion": "expect(computeViewerSafety(null, 0, SV).figures!.strike.liqPrice).toBe(50_000 / (1 * 0.85))"
+      }
+    },
+    {
+      "id": "HS-07",
+      "class": "GAP",
+      "rule": "docs/claude/viewer.md § Viewer V2 — live drop% (floored at 0 like the safe path)",
+      "file": "src/simulation/safetyView.ts",
+      "line": 391,
+      "why": "trusted drop% goes negative past Strike's liquidation LTV",
+      "input": "computeViewerSafety(null, 0, { ...SV, advisorActualBlocBalance: 100_000 }).strikeDropPct (Strike LTV 1.0 > 0.85)",
+      "baseOutput": "0",
+      "mutantOutput": "-0.17647058823529416",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/safetyViewHardening.test.ts",
+        "title": "Viewer V2 — the trusted drop% floors at 0 past the liquidation LTV",
+        "assertion": "expect(computeViewerSafety(null, 0, { ...SV, advisorActualBlocBalance: 100_000 }).strikeDropPct).toBe(0)"
+      }
+    },
+    {
+      "id": "HS-08",
+      "class": "GAP",
+      "rule": "docs/claude/viewer.md § Viewer V2 — scaleSafetyView re-barLevels from the payload thresholds (0.76/0.82 × liq LTV)",
+      "file": "src/simulation/safetyView.ts",
+      "line": 331,
+      "why": "safe viewer's Strike gauge bands at the credit thresholds 75%/90%",
+      "input": "scaleSafetyView(snap = { safety: { capacityUsed: 0.5, strikeLtv: 0.70, cbLtv: 0.80, cbLtvAtSupport: null, cbAtSupportLevel: 'safe' }, thresholds: { strikeLiqLtv: 0.85, cbLtvTriggerPct: 70, cbLiqFrac: 1.0 }, btcPriceAtSnapshot: 100_000, hasCbLoan: true }, 100_000).strikeLevel",
+      "baseOutput": "\"act\"",
+      "mutantOutput": "\"safe\"",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/safetyViewHardening.test.ts",
+        "title": "Viewer V2 — the safe viewer's Strike level bands at 0.76/0.82 × the liquidation LTV, as the owner's",
+        "assertion": "expect(scaleSafetyView(snap, 100_000).strikeLevel).toBe('act') // 0.70 >= 0.85 × 0.82 = 0.697"
+      }
+    },
+    {
+      "id": "HS-09",
+      "class": "GAP",
+      "rule": "docs/claude/viewer.md § Viewer V2 — an unusable price falls back to factor 1",
+      "file": "src/simulation/safetyView.ts",
+      "line": 324,
+      "why": "a snapshot sealed with price 0 scales every LTV to 0",
+      "input": "scaleSafetyView({ ...snap, btcPriceAtSnapshot: 0 }, 100_000), snap = { safety: { capacityUsed: 0.5, strikeLtv: 0.70, cbLtv: 0.80, cbLtvAtSupport: null, cbAtSupportLevel: 'safe' }, thresholds: { strikeLiqLtv: 0.85, cbLtvTriggerPct: 70, cbLiqFrac: 1.0 }, btcPriceAtSnapshot: 100_000, hasCbLoan: true }",
+      "baseOutput": "[0.7,0.8,\"act\"] (strikeLtv, cbLtv, strikeLevel)",
+      "mutantOutput": "[0,0,\"safe\"]",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/safetyViewHardening.test.ts",
+        "title": "Viewer V2 — scaleSafetyView: a snapshot with no price keeps factor 1 (the at-snapshot levels)",
+        "assertion": "const v = scaleSafetyView({ ...snap, btcPriceAtSnapshot: 0 }, 100_000); expect(v.strikeLtv).toBe(0.70); expect(v.cbLtv).toBe(0.80); expect(v.strikeLevel).toBe('act')"
+      }
+    },
+    {
+      "id": "HS-10",
+      "class": "GAP",
+      "rule": "docs/claude/engines.md § `cbMetrics.ts` — the entered liquidation price is authoritative; cbBarLevel's red line is cbLiqFrac × 0.93",
+      "file": "src/simulation/safetyView.ts",
+      "line": 222,
+      "why": "owner's CB bar bands against Morpho's 86% instead of the entered price's fraction",
+      "input": "deriveSafetyView({ ...SV, btcPrice: 60_000, cbLoanBalanceAsOf: null }) → cbLtv 0.8333, cbLiqFrac 1.0",
+      "baseOutput": "[0.8333333333333334,1,\"watch\"]",
+      "mutantOutput": "[0.8333333333333334,1,\"act\"]",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/safetyViewHardening.test.ts",
+        "title": "cbMetrics.ts — Safety's CB bar reds at the entered liq price's fraction × 0.93, not Morpho's 86%",
+        "assertion": "const v = deriveSafetyView({ ...SV, btcPrice: 60_000, cbLoanBalanceAsOf: null }); expect(v.cbLiqFrac).toBe(1); expect(v.cbLevel).toBe('watch') // 0.833 < 1.0 × 0.93, >= 0.70"
+      }
+    },
+    {
+      "id": "HS-11",
+      "class": "GAP",
+      "rule": "docs/claude/viewer.md § Viewer V2 — scaleSafetyView re-barLevels from the payload thresholds (the sealed cbLiqFrac)",
+      "file": "src/simulation/safetyView.ts",
+      "line": 332,
+      "why": "safe viewer's CB gauge ignores the sealed cbLiqFrac",
+      "input": "scaleSafetyView({ ...snap, safety: { ...snap.safety, strikeLtv: 0.5 } }, 100_000).cbLevel (cbLtv 0.80, cbLiqFrac 1.0)",
+      "baseOutput": "\"watch\"",
+      "mutantOutput": "\"act\"",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/safetyViewHardening.test.ts",
+        "title": "Viewer V2 — the safe viewer's CB level bands at the sealed cbLiqFrac × 0.93",
+        "assertion": "expect(scaleSafetyView(snap, 100_000).cbLevel).toBe('watch') // 0.80 < 1.0 × 0.93"
+      }
+    },
+    {
+      "id": "HS-13",
+      "class": "GAP",
+      "rule": "boundary: at the liquidation price the loan IS liquidatable (Morpho seizes at the LLTV) — docs/claude/engines.md § CB Loan",
+      "file": "src/simulation/runCoinbaseLoan.ts",
+      "line": 135,
+      "why": "at exactly the liquidation price the modeler says 'not yet liquidatable'",
+      "input": "computeLiquidationAnalysis(50_000, 1, 50_000, 50_000).isAlreadyLiquidatable",
+      "baseOutput": "true",
+      "mutantOutput": "false",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/runCoinbaseLoanHardening.test.ts",
+        "title": "CB Loan — at exactly the liquidation price the loan is already liquidatable",
+        "assertion": "expect(computeLiquidationAnalysis(50_000, 1, 50_000, 50_000).isAlreadyLiquidatable).toBe(true)"
+      }
+    },
+    {
+      "id": "HS-14",
+      "class": "GAP",
+      "rule": "docs/claude/engines.md § CB Loan — the liquidation penalty is never negative",
+      "file": "src/simulation/runCoinbaseLoan.ts",
+      "line": 145,
+      "why": "collateral-capped seizure prints a negative LIF penalty",
+      "input": "computeLiquidationAnalysis(100_000, 1, 50_000, 60_000).scenarios.map(s => s.lifBonus)",
+      "baseOutput": "[1096.0334029227597,0,0,0]",
+      "mutantOutput": "[1096.0334029227597,0,-25000,-50000]",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/runCoinbaseLoanHardening.test.ts",
+        "title": "CB Loan — the LIF penalty is never negative when the seizure is capped by the collateral",
+        "assertion": "for (const s of computeLiquidationAnalysis(100_000, 1, 50_000, 60_000).scenarios) expect(s.lifBonus).toBeGreaterThanOrEqual(0); expect(scenarios[3].lifBonus).toBe(0)"
+      }
+    },
+    {
+      "id": "HS-15",
+      "class": "GAP",
+      "rule": "docs/claude/almanac.md § The plan of record (Run 2) — the catch-up names cold when cold covers it",
+      "file": "src/components/Almanac/planMonthView.ts",
+      "line": 265,
+      "why": "with exactly enough cold the catch-up says 'Add BTC' instead of 'Move from cold'",
+      "input": "planMonthRun(facts()) with planMonthView.test.ts's facts() (price 100_000, cbDebt 50_000 on 1 BTC, coldBtc 0.5, creditLine 40_000, strikeBalance 20_000 on 1 BTC); planStatus(run.sim, run.placement, 1, { …statusFacts, coldBtc: A }) with A = cbOverCeilingUsd / (cbStop × support0)",
+      "baseOutput": "\"Move ₿0.717 from cold storage to Coinbase, or repay $20,885.10.\"",
+      "mutantOutput": "\"Add ₿0.717 of collateral to Coinbase, or repay $20,885.10.\"",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/planMonthViewHardening.test.ts",
+        "title": "The plan of record (Run 2) — the catch-up moves cold when cold exactly covers it",
+        "assertion": "expect(st.fixes[0]).toMatch(/^Move ₿.* from cold storage to Coinbase/) // coldBtc === A, derived from the run's own facts"
+      }
+    },
+    {
+      "id": "HS-16",
+      "class": "GAP",
+      "rule": "docs/claude/file-structure.md § planMonthView.ts — monthTrack: amber over the limit, or bills unpaid",
+      "file": "src/components/Almanac/planMonthView.ts",
+      "line": 423,
+      "why": "a month with unpaid bills paints green",
+      "input": "monthTrack({ policyApplied: true, rows: [{ m: 1, postLiquidation: false, cbCeilingHeadroomUsd: 1_000, unfundedUsd: 100 }] }, 1, 2) — or a real run row with unfundedUsd > 0",
+      "baseOutput": "\"linear-gradient(90deg, var(--amber) 0.00% 50.00%, …)\"",
+      "mutantOutput": "\"linear-gradient(90deg, var(--green) 0.00% 50.00%, …)\"",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/planMonthViewHardening.test.ts",
+        "title": "planMonthView.ts — monthTrack paints a month whose bills go unpaid amber",
+        "assertion": "expect(monthTrack(sim, 1, 2)).toMatch(/^linear-gradient\\(90deg, var\\(--amber\\) 0\\.00% 50\\.00%/) — prefer a SWEEP run whose row has shownUsd(unfundedUsd) and headroom > 0"
+      }
+    },
+    {
+      "id": "HS-17",
+      "class": "GAP",
+      "rule": "boundary: THE one 'over' rule is planRun's cbOverLimitAtMonthEnd (headroom <= -DUST_USD)",
+      "file": "src/components/Almanac/supportPolicyView.ts",
+      "line": 290,
+      "why": "exactly 50 cents over, the policy card says 'at its limit' where THIS MONTH says over",
+      "input": "planMonthRun(facts()) with planMonthView.test.ts's facts() (price 100_000, cbDebt 50_000 on 1 BTC, coldBtc 0.5, creditLine 40_000, strikeBalance 20_000 on 1 BTC); policyReading({ ...run.sim, rows with row m=1 cbCeilingHeadroomUsd: -0.5 }, 1, 4_000).cb",
+      "baseOutput": "{\"roomUsd\":-0.5,\"roomMonths\":0,\"over\":true}",
+      "mutantOutput": "{\"roomUsd\":0,\"roomMonths\":0,\"over\":false}",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/supportPolicyViewHardening.test.ts",
+        "title": "supportPolicyView — the card's 'over' agrees with cbOverLimitAtMonthEnd at exactly −DUST_USD",
+        "assertion": "expect(policyReading(simAt(-DUST_USD), 1, 4_000).cb!.over).toBe(cbOverLimitAtMonthEnd({ cbCeilingHeadroomUsd: -DUST_USD })) // true"
+      }
+    },
+    {
+      "id": "HS-18",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — THE MOVE's copy lives in `moveCard` (every line TRUE of its inputs)",
+      "file": "src/components/Almanac/decisionView.ts",
+      "line": 505,
+      "why": "the why line prints today's price as the support price",
+      "input": "moveCard over decisionView.test.ts's CTX (placementPlan(PLACE)) with support: 66_000, price: 100_000",
+      "baseOutput": "\"Strike keeps what your $40,000 line needs at support ($66,000); …\"",
+      "mutantOutput": "\"Strike keeps what your $40,000 line needs at support ($100,000); …\"",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/decisionViewHardening.test.ts",
+        "title": "THE MOVE's copy lives in `moveCard` — the why line names the support price, not today's",
+        "assertion": "expect(card({ support: 66_000, price: 100_000 }).lines.find(l => l.key === 'why')!.text).toContain(`at support (${fmtUSD(66_000)})`)"
+      }
+    },
+    {
+      "id": "HS-19",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — THE MOVE's copy lives in `moveCard` (the limit-depth line is a multiple of SUPPORT)",
+      "file": "src/components/Almanac/decisionView.ts",
+      "line": 589,
+      "why": "the cliffDepth dollar figure is priced off today, not support",
+      "input": "moveCard over decisionView.test.ts's CTX (placementPlan(PLACE)) with support: 66_000, price: 100_000",
+      "baseOutput": "\"At its limit at support, Coinbase survives price down to 0.70× support ($46,047).\"",
+      "mutantOutput": "\"… 0.70× support ($69,767).\"",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/decisionViewHardening.test.ts",
+        "title": "THE MOVE's copy lives in `moveCard` — the cliff-depth dollars are the multiple × support",
+        "assertion": "const depth = ceilingLiquidationMultiple(0.60, CB_LLTV); expect(card({ support: 66_000 }).lines.find(l => l.key === 'cliffDepth')!.text).toContain(`(${fmtUSD(depth * 66_000)})`)"
+      }
+    },
+    {
+      "id": "HS-23",
+      "class": "GAP",
+      "rule": ".claude/rules/journal.md — THIS MONTH, Daily and its sheets print dollars to the cent (a shared builder takes a formatter)",
+      "file": "src/components/Almanac/decisionView.ts",
+      "line": 200,
+      "why": "the on-the-way-down seizure price ignores the formatter handed in",
+      "input": "rowActions(row m=1 (e.g. a real run's liquidation row), 1, { onTheWayDown: true, priceUsd: 57_140.5 }, fmtUSDCents)",
+      "baseOutput": "[\"Coinbase liquidates the loan on the way down, at $57,140.50.\"]",
+      "mutantOutput": "[\"… at $57,141.\"]",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/decisionViewHardening.test.ts",
+        "title": "Dollars to the cent — rowActions prints the on-the-way-down seizure price through the formatter it is handed",
+        "assertion": "expect(rowActions(row, row.m, { onTheWayDown: true, priceUsd: 57_140.5 }, fmtUSDCents)[0].text).toContain(fmtUSDCents(57_140.5))"
+      }
+    },
+    {
+      "id": "HS-24",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — A run shown as THIS MONTH'S MOVE carries the policy's memory (the breaker line)",
+      "file": "src/components/Almanac/decisionView.ts",
+      "line": 650,
+      "why": "the one-short breaker warning says 90% under support instead of 10%",
+      "input": "moveCard over decisionView.test.ts's CTX (placementPlan(PLACE)) with support: 66_000, price: 100_000, breaker { broken: false, monthsAtOrAbove: 0, monthsBelow: 1, lastMonthEndLabel: '31 Aug 2026' }",
+      "baseOutput": "\"… 31 Aug 2026 closed more than 10% under support — one more like it …\"",
+      "mutantOutput": "\"… closed more than 90% under support …\"",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/decisionViewHardening.test.ts",
+        "title": "THIS MONTH'S MOVE carries the policy's memory — the one-short line names HARD_BREAKER_DEPTH's 10%",
+        "assertion": "expect(card({ breaker: ONE_SHORT }).lines.find(l => l.key === 'breaker')!.text).toContain(`more than ${HARD_BREAKER_DEPTH * 100}% under support`) // 10"
+      }
+    },
+    {
+      "id": "HS-25",
+      "class": "GAP",
+      "rule": "docs/claude/file-structure.md § decisionView.ts — THE MOVE names no figure under its floor, never \"$0\"",
+      "file": "src/components/Almanac/decisionView.ts",
+      "line": 562,
+      "why": "a few cents of Strike room reads '$0 of room'",
+      "input": "moveCard over decisionView.test.ts's CTX (placementPlan(PLACE)) with support: 66_000, price: 100_000, plan: { ...CTX.plan, strikeShortBtc: 0.1, strikeRoomUsd: 0.3 }",
+      "baseOutput": "\"… the policy's Strike limit leaves no room.\"",
+      "mutantOutput": "\"… leaves $0 of room.\"",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/decisionViewHardening.test.ts",
+        "title": "decisionView.ts — THE MOVE never prints \"$0\": room under the dust floor reads \"no room\"",
+        "assertion": "const t = card({ plan: { ...CTX.plan, strikeShortBtc: 0.1, strikeRoomUsd: 0.3 } }).lines.find(l => l.key === 'short')!.text; expect(t).toMatch(/leaves no room\\.$/); expect(t).not.toMatch(NO_ZERO)"
+      }
+    },
+    {
+      "id": "HS-26",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — Every opening figure on a face includes the cold reserve, and no Almanac face passes deriveOwnership's cold parameter",
+      "file": "src/components/Almanac/ownershipFaceView.ts",
+      "line": 92,
+      "why": "the cold pool counted twice through the first argument",
+      "input": "ownershipHero(row, row), row { btcHeld: 1 (cold included), coldBtc: 0.5, debt: 0, price: 100_000 }",
+      "baseOutput": "1",
+      "mutantOutput": "1.5",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/ownershipFaceViewHardening.test.ts",
+        "title": "Every opening figure includes the cold reserve once — ownershipHero counts btcHeld (cold inside) and never adds coldBtc",
+        "assertion": "expect(ownershipHero(row, row).yoursBtc).toBe(1) // btcHeld 1 already holds the 0.5 cold; debt 0"
+      }
+    },
+    {
+      "id": "HS-27",
+      "class": "GAP",
+      "rule": "docs/claude/ui.md § Date Formatting — local dates from toLocalISO(), never toISOString() split at T",
+      "file": "src/components/Settings/coldStorageView.ts",
+      "line": 1,
+      "why": "'Entered <day>' prints the UTC day",
+      "input": "vi.stubEnv('TZ', 'Pacific/Kiritimati'); coldAsOfLine(Date.parse('2026-10-26T20:00:00Z'), 0) (forks pool — as powerLawView.test.ts does)",
+      "baseOutput": "\"Entered 2026-10-27.\"",
+      "mutantOutput": "\"Entered 2026-10-26.\"",
+      "proposedTest": {
+        "file": "src/components/Settings/__tests__/coldStorageViewHardening.test.ts",
+        "title": "Date Formatting — coldAsOfLine prints the LOCAL day the total was entered",
+        "assertion": "vi.stubEnv('TZ', 'Pacific/Kiritimati'); const ms = Date.parse('2026-10-26T20:00:00Z'); expect(coldAsOfLine(ms, 0)).toBe(`Entered ${toLocalISO(new Date(ms))}.`); expect(coldAsOfLine(ms, 0)).toBe('Entered 2026-10-27.')"
+      }
+    },
+    {
+      "id": "HS-28",
+      "class": "GAP",
+      "rule": ".claude/rules/ui.md — `NumberInput` saving ('live' hands on each readable, non-negative keystroke)",
+      "file": "src/components/ui/numberInputModel.ts",
+      "line": 73,
+      "why": "typing 0 into a live field hands nothing on",
+      "input": "keystrokeWrite('live', '0')",
+      "baseOutput": "0",
+      "mutantOutput": "null",
+      "proposedTest": {
+        "file": "src/components/ui/__tests__/numberInputModelHardening.test.ts",
+        "title": "`NumberInput` saving — a 'live' field hands on a typed 0 (non-negative)",
+        "assertion": "expect(keystrokeWrite('live', '0')).toBe(0)"
+      }
+    },
+    {
+      "id": "HS-29",
+      "class": "GAP",
+      "rule": ".claude/rules/ui.md — `NumberInput` saving (saved only when it differs from what the field SHOWS)",
+      "file": "src/components/ui/numberInputModel.ts",
+      "line": 66,
+      "why": "a figure equal to the shown text at its decimals is saved again",
+      "input": "numberCommit({ typed: true, raw: '0.12345679', value: 0.123456789, decimals: 8 }).write",
+      "baseOutput": "null",
+      "mutantOutput": "0.12345679",
+      "proposedTest": {
+        "file": "src/components/ui/__tests__/numberInputModelHardening.test.ts",
+        "title": "`NumberInput` saving — a typed figure equal to the one the field shows at its decimals saves nothing",
+        "assertion": "expect(numberCommit({ typed: true, raw: '0.12345679', value: 0.123456789, decimals: 8 }).write).toBeNull()"
+      }
+    },
+    {
+      "id": "HS-31",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — A run shown as THIS MONTH'S MOVE carries the policy's memory (ONE placement input, broken from the same breakerSeed as openingBreaker)",
+      "file": "src/components/Almanac/planRun.ts",
+      "line": 224,
+      "why": "the MOVE is built unbroken while the run opens broken",
+      "input": "planMonthRun(facts({ breakerSeed: { state: { ...REARMABLE_BREAKER_START, broken: true, brokenMonth: 1 }, lastMonthEndISO: '2026-09-30' } })) → [placementInput.broken, placement.state]",
+      "baseOutput": "[true,\"broken\"]",
+      "mutantOutput": "[false,\"ready\"]",
+      "proposedTest": {
+        "file": "src/components/Almanac/__tests__/planRunHardening.test.ts",
+        "title": "THIS MONTH'S MOVE carries the policy's memory — a broken breakerSeed breaks the placement input too",
+        "assertion": "expect(run.placementInput.broken).toBe(true); expect(run.placement.state).toBe('broken')"
+      }
+    },
+    {
+      "id": "HS-34",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — Strike avail-credit invariant (the daily-view trio pill)",
+      "file": "src/components/Daily/DailyModeView.tsx",
+      "line": 136,
+      "why": "positional price/drawn swapped in Daily's trio pill (render-only; judged by reading: strikeAvailableCredit(creditLine, collateralBtc, btcPrice, drawn) — with the swap the LTV cap uses the drawn balance as price)",
+      "input": "reading: strikeAvailableCredit(40_000, 1, 100_000, 10_000) vs (40_000, 1, 10_000, 100_000)",
+      "baseOutput": "available 30000 (limit 40000)",
+      "mutantOutput": "available 0 (limit 5000)",
+      "proposedTest": {
+        "file": "src/components/Daily/__tests__/dailyModeViewHardening.test.ts",
+        "title": "Strike avail-credit invariant — every strikeAvailableCredit call in src/components passes the price third and the drawn balance fourth",
+        "assertion": "source walk over src/components/**/*.tsx: for each `strikeAvailableCredit(` call, split its args; expect(args[2]).toMatch(/price/i); expect(args[3]).not.toMatch(/price/i)"
+      }
+    },
+    {
+      "id": "HS-37",
+      "class": "GAP",
+      "rule": ".claude/rules/general.md — `strikeLtv` storage (decimal; multiply ×100 for display)",
+      "file": "src/components/Viewer/ViewerHomeView.tsx",
+      "line": 221,
+      "why": "the viewer's Strike gauge gets the fraction as a percent (render-only; judged by reading — the sibling cards pass capacityUsed * 100 and cbLtv * 100)",
+      "input": "reading: s.strikeLtv 0.5",
+      "baseOutput": "pct 50",
+      "mutantOutput": "pct 0.5",
+      "proposedTest": {
+        "file": "src/components/Viewer/__tests__/viewerHomeViewHardening.test.ts",
+        "title": "`strikeLtv` storage — every StatusCard pct in ViewerHomeView is a stored fraction × 100",
+        "assertion": "const src = readFileSync('src/components/Viewer/ViewerHomeView.tsx','utf8'); for (const m of src.matchAll(/pct=\\{s\\.(\\w+)[^}]*\\}/g)) expect(m[0]).toMatch(/\\* 100\\}$/); expect(src).toContain('pct={s.strikeLtv * 100}')"
+      }
+    },
+    {
+      "id": "HS-38",
+      "class": "GAP",
+      "rule": ".claude/rules/ui.md — `SummaryBar fmtUSD` (local sign-preserving)",
+      "file": "src/components/Summary/SummaryBar.tsx",
+      "line": 5,
+      "why": "a deficit prints unsigned (render-only, a private function; judged by reading)",
+      "input": "reading: fmtUSD(-1_000)",
+      "baseOutput": "\"-$1,000\"",
+      "mutantOutput": "\"$1,000\"",
+      "proposedTest": {
+        "file": "src/components/Summary/__tests__/summaryBarHardening.test.ts",
+        "title": "`SummaryBar fmtUSD` — local and sign-preserving",
+        "assertion": "const src = readFileSync('src/components/Summary/SummaryBar.tsx','utf8'); expect(src).toMatch(/function fmtUSD\\(n: number\\): string \\{\\s*return \\(n < 0 \\? '-' : ''\\) \\+ '\\$'/)"
+      }
+    },
+    {
+      "id": "HS-39",
+      "class": "GAP",
+      "rule": ".claude/rules/ui.md — Mining electricity (fiat overhead — 100% sats kept, never deducted)",
+      "file": "src/simulation/miningUtils.ts",
+      "line": 62,
+      "why": "the sats kept are net of the power bill",
+      "input": "calcMiningStrategy('pooled', [{ hashrateTH: 100, powerW: 1_000, enabled: true, soloMining: false, poolFee: 0, … }], 100_000, 10, 800, 1, [100_000]).dailyEV_sats",
+      "baseOutput": "4500",
+      "mutantOutput": "2100",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/miningUtilsHardening.test.ts",
+        "title": "Mining electricity — dailyEV_sats is the gross mined sats, the power bill never deducted",
+        "assertion": "expect(r.dailyEV_sats).toBe(usdToSats(dailyEV_usd(100, 100_000, 0), 100_000)) // 4500, electricity 10¢ × 24 kWh ignored"
+      }
+    },
+    {
+      "id": "HS-40",
+      "class": "GAP",
+      "rule": ".claude/rules/ui.md — Every masked field goes through `ui/PassphraseInput` (the four iOS suppressions)",
+      "file": "src/components/ui/PassphraseInput.tsx",
+      "line": 62,
+      "why": "autoCapitalize=\"none\" dropped (render-only; judged by reading)",
+      "input": "reading: the masked <input> props",
+      "baseOutput": "autoComplete off, autoCorrect off, autoCapitalize none, spellCheck false",
+      "mutantOutput": "autoCapitalize missing",
+      "proposedTest": {
+        "file": "src/components/ui/__tests__/passphraseInputHardening.test.ts",
+        "title": "Every masked field goes through `ui/PassphraseInput` — it carries all four iOS suppressions",
+        "assertion": "const src = readFileSync('src/components/ui/PassphraseInput.tsx','utf8'); for (const p of ['autoComplete=\"off\"','autoCorrect=\"off\"','autoCapitalize=\"none\"','spellCheck={false}']) expect(src).toContain(p)"
+      }
+    },
+    {
+      "id": "HS-43",
+      "class": "GAP",
+      "rule": ".claude/rules/ui.md — `SettingsMain` ALL_TABS (keep in sync with AppShell `ALL_TABS_META`)",
+      "file": "src/components/Settings/SettingsMain.tsx",
+      "line": 77,
+      "why": "Settings says 'Mining' where the bar says 'Miners' (render-only; judged by reading)",
+      "input": "reading: key mining",
+      "baseOutput": "\"Miners\" (= AppShell fullLabel)",
+      "mutantOutput": "\"Mining\"",
+      "proposedTest": {
+        "file": "src/components/Settings/__tests__/settingsMainHardening.test.ts",
+        "title": "`SettingsMain` ALL_TABS — every label equals AppShell ALL_TABS_META fullLabel for its key",
+        "assertion": "parse { key: 'k', label: 'L' } from SettingsMain.tsx and { key: 'k', fullLabel: 'L' } from Layout/AppShell.tsx; for each SettingsMain key expect(label).toBe(meta[key])"
+      }
+    }
+  ],
+  "skipped": []
+}

@@ -1,0 +1,391 @@
+{
+ "target": "HJ",
+ "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+ "survivors": [
+  {
+   "id": "HJ-02",
+   "class": "GAP",
+   "rule": ".claude/rules/journal.md — A Coinbase borrow/paydown is journal-only at EVERY dayLog reader",
+   "file": "src/store/dailyRouting.ts",
+   "line": 160,
+   "why": "monthOf drops its isMonthlyMeaningful gate, so a journal-only event (Coinbase draw) names a month and the caller re-rolls (and reopens) a signed month.",
+   "input": "monthOf(get, {date:'2026-06-10', kind:'draw', amount:1000, target:'cb'}) with advisorStartDate 2026-06-01",
+   "baseOutput": "null",
+   "mutantOutput": "1",
+   "proposedTest": {
+    "file": "src/store/__tests__/dailyRoutingHardening.test.ts",
+    "title": "A Coinbase borrow/paydown is journal-only at EVERY dayLog reader — monthOf names no month for a Coinbase draw",
+    "assertion": "expect(monthOf(get, cbDraw)).toBeNull()"
+   }
+  },
+  {
+   "id": "HJ-03",
+   "class": "GAP",
+   "rule": ".claude/rules/journal.md — A buy's dollars are the owner's",
+   "file": "src/store/dailyRouting.ts",
+   "line": 100,
+   "why": "monthEntryCurrent's lag check counts journal-only events, so a Coinbase draw logged after the sign-off makes a current entry read stale and a dollars-only buy edit reopens the month.",
+   "input": "entry month 1 {source:'daily', btcBought:0.01, updatedAt:100}; dayLog: buy 0.01 ₿/$650 ts 50, Coinbase draw $1,000 ts 200 (same month)",
+   "baseOutput": "true",
+   "mutantOutput": "false",
+   "proposedTest": {
+    "file": "src/store/__tests__/dailyRoutingHardening.test.ts",
+    "title": "A buy's dollars are the owner's — a Coinbase borrow logged after the sign-off leaves the month's entry current",
+    "assertion": "expect(monthEntryCurrent(get, 1)).toBe(true)"
+   }
+  },
+  {
+   "id": "HJ-04",
+   "class": "GAP",
+   "rule": ".claude/rules/journal.md — Strike collateral (v20 Collateral-Truth)",
+   "file": "src/simulation/logUtils.ts",
+   "line": 309,
+   "why": "The strictly-after filter goes ts-only, so a Strike deposit backfilled to a date before the anchor reading is re-summed.",
+   "input": "reading 2026-01-20 ts10 strikeCollateral 1.0; deposit strike 0.3 ₿ dated 2026-01-05 ts20",
+   "baseOutput": "1",
+   "mutantOutput": "1.3",
+   "proposedTest": {
+    "file": "src/simulation/__tests__/logUtilsHardening.test.ts",
+    "title": "Strike collateral (v20 Collateral-Truth) — a deposit backfilled before the anchor reading is not re-summed",
+    "assertion": "expect(deriveStrikeCollateral(log, 0)).toBe(1)"
+   }
+  },
+  {
+   "id": "HJ-05",
+   "class": "GAP",
+   "rule": ".claude/rules/journal.md — Strike collateral (v20 Collateral-Truth)",
+   "file": "src/simulation/logUtils.ts",
+   "line": 301,
+   "why": "The anchor pick loses its ts tiebreak; on a same-day tie array order wins instead of the later ts.",
+   "input": "two readings dated 2026-01-20: [0.9 ₿ ts30, 0.6 ₿ ts20] (array order)",
+   "baseOutput": "0.9",
+   "mutantOutput": "0.6",
+   "proposedTest": {
+    "file": "src/simulation/__tests__/logUtilsHardening.test.ts",
+    "title": "Strike collateral (v20 Collateral-Truth) — a same-day tie anchors on the later ts, not array order",
+    "assertion": "expect(deriveStrikeCollateral(log, 0)).toBe(0.9)"
+   }
+  },
+  {
+   "id": "HJ-06",
+   "class": "GAP",
+   "rule": "docs/claude/journal.md § Coinbase borrow & paydown events (journal-only; store unchanged, NO bump)",
+   "file": "src/simulation/logUtils.ts",
+   "line": 345,
+   "why": "unreconciledCbFlows anchors by ts instead of (date, ts), so an older backfilled reading becomes the anchor and an absorbed borrow is reported stale.",
+   "input": "readings: 2026-01-20 ts10 cbBal 70000; 2026-01-05 ts30 cbBal 50000; Coinbase draw $10,000 dated 2026-01-10 ts20",
+   "baseOutput": "{events:0, anchorCbBal:70000, suggestedCbBal:70000}",
+   "mutantOutput": "{events:1, anchorCbBal:50000, suggestedCbBal:60000}",
+   "proposedTest": {
+    "file": "src/simulation/__tests__/logUtilsHardening.test.ts",
+    "title": "Coinbase borrow & paydown events — the anchor is the latest CB reading by date, then ts",
+    "assertion": "const r = unreconciledCbFlows(log); expect(r.events).toHaveLength(0); expect(r.anchorCbBal).toBe(70000); expect(r.suggestedCbBal).toBe(70000)"
+   }
+  },
+  {
+   "id": "HJ-07",
+   "class": "GAP",
+   "rule": ".claude/rules/journal.md — `deriveCurrentPosition`",
+   "file": "src/simulation/logUtils.ts",
+   "line": 32,
+   "why": "deriveCurrentPosition trusts log order, so an unsorted monthlyLog reports the last array entry instead of the latest month.",
+   "input": "deriveCurrentPosition([{month:3,strikeBal:9000},{month:1,strikeBal:3000}], 1, 0)",
+   "baseOutput": "{btcHeld:1, blocBalance:9000, lastLoggedMonth:3}",
+   "mutantOutput": "{btcHeld:1, blocBalance:3000, lastLoggedMonth:1}",
+   "proposedTest": {
+    "file": "src/simulation/__tests__/logUtilsHardening.test.ts",
+    "title": "deriveCurrentPosition — an unsorted log still reports the latest month",
+    "assertion": "expect(deriveCurrentPosition(unsorted, 1, 0)).toEqual({ btcHeld: 1, blocBalance: 9000, lastLoggedMonth: 3 })"
+   }
+  },
+  {
+   "id": "HJ-08",
+   "class": "GAP",
+   "rule": ".claude/rules/store.md — Zustand v11 migration",
+   "file": "src/store/persistConfig.ts",
+   "line": 79,
+   "why": "The v11 btcHeld backfill becomes unconditional; migrateState runs on every bump and overwrites a recorded Strike col with the running chain.",
+   "input": "migrateState({advisorActualBtcHeld:1.0, expenses:3500, hasCbLoan:true, cbCollateralBtc:1.48, strikeCollateralBtc:0.8, monthlyLog:[{month:1,btcBought:0.1,btcHeld:0.62,expensesActual:2500,source:'daily',confirmed:false,...}], dayLog:[one Strike draw]})",
+   "baseOutput": "monthlyLog[0].btcHeld 0.62",
+   "mutantOutput": "1",
+   "proposedTest": {
+    "file": "src/store/__tests__/persistConfigHardening.test.ts",
+    "title": "Zustand v11 migration — a recorded btcHeld survives a later migration",
+    "assertion": "expect(migrateState(blob).monthlyLog[0].btcHeld).toBe(0.62)"
+   }
+  },
+  {
+   "id": "HJ-09",
+   "class": "GAP",
+   "rule": ".claude/rules/store.md — Zustand v11 migration",
+   "file": "src/store/persistConfig.ts",
+   "line": 82,
+   "why": "The v11 expensesActual default becomes unconditional and replaces a month's signed actual with the plan's static assumption.",
+   "input": "migrateState({advisorActualBtcHeld:1.0, expenses:3500, hasCbLoan:true, cbCollateralBtc:1.48, strikeCollateralBtc:0.8, monthlyLog:[{month:1,btcBought:0.1,btcHeld:0.62,expensesActual:2500,source:'daily',confirmed:false,...}], dayLog:[one Strike draw]})",
+   "baseOutput": "monthlyLog[0].expensesActual 2500",
+   "mutantOutput": "3500",
+   "proposedTest": {
+    "file": "src/store/__tests__/persistConfigHardening.test.ts",
+    "title": "Zustand v11 migration — a recorded expensesActual survives a later migration",
+    "assertion": "expect(migrateState(blob).monthlyLog[0].expensesActual).toBe(2500)"
+   }
+  },
+  {
+   "id": "HJ-10",
+   "class": "GAP",
+   "rule": ".claude/rules/store.md — Zustand v19 migration",
+   "file": "src/store/persistConfig.ts",
+   "line": 87,
+   "why": "The v19 confirmed backfill becomes unconditional and signs every open month.",
+   "input": "migrateState({advisorActualBtcHeld:1.0, expenses:3500, hasCbLoan:true, cbCollateralBtc:1.48, strikeCollateralBtc:0.8, monthlyLog:[{month:1,btcBought:0.1,btcHeld:0.62,expensesActual:2500,source:'daily',confirmed:false,...}], dayLog:[one Strike draw]})",
+   "baseOutput": "monthlyLog[0].confirmed false",
+   "mutantOutput": "true",
+   "proposedTest": {
+    "file": "src/store/__tests__/persistConfigHardening.test.ts",
+    "title": "Zustand v19 migration — an open month stays unconfirmed across a later migration",
+    "assertion": "expect(migrateState(blob).monthlyLog[0].confirmed).toBe(false)"
+   }
+  },
+  {
+   "id": "HJ-11",
+   "class": "GAP",
+   "rule": ".claude/rules/store.md — Zustand v19 migration",
+   "file": "src/store/persistConfig.ts",
+   "line": 86,
+   "why": "The v19 source backfill becomes unconditional and stamps daily-owned months 'manual'.",
+   "input": "migrateState({advisorActualBtcHeld:1.0, expenses:3500, hasCbLoan:true, cbCollateralBtc:1.48, strikeCollateralBtc:0.8, monthlyLog:[{month:1,btcBought:0.1,btcHeld:0.62,expensesActual:2500,source:'daily',confirmed:false,...}], dayLog:[one Strike draw]})",
+   "baseOutput": "monthlyLog[0].source 'daily'",
+   "mutantOutput": "'manual'",
+   "proposedTest": {
+    "file": "src/store/__tests__/persistConfigHardening.test.ts",
+    "title": "Zustand v19 migration — a daily-owned month keeps source 'daily' across a later migration",
+    "assertion": "expect(migrateState(blob).monthlyLog[0].source).toBe('daily')"
+   }
+  },
+  {
+   "id": "HJ-12",
+   "class": "GAP",
+   "rule": ".claude/rules/store.md — Zustand v19 migration",
+   "file": "src/store/persistConfig.ts",
+   "line": 92,
+   "why": "The C2 seed loses its empty-journal guard and appends a synthetic cbCollateralReading to an existing journal on every bump.",
+   "input": "migrateState({advisorActualBtcHeld:1.0, expenses:3500, hasCbLoan:true, cbCollateralBtc:1.48, strikeCollateralBtc:0.8, monthlyLog:[{month:1,btcBought:0.1,btcHeld:0.62,expensesActual:2500,source:'daily',confirmed:false,...}], dayLog:[one Strike draw]})",
+   "baseOutput": "dayLog kinds ['draw']",
+   "mutantOutput": "['draw','cbCollateralReading']",
+   "proposedTest": {
+    "file": "src/store/__tests__/persistConfigHardening.test.ts",
+    "title": "Zustand v19 migration — the C2 cbCollateralReading seed is added only to an empty journal",
+    "assertion": "expect(migrateState(blob).dayLog.map((e) => e.kind)).toEqual(['draw'])"
+   }
+  },
+  {
+   "id": "HJ-13",
+   "class": "GAP",
+   "rule": ".claude/rules/store.md — Zustand v20 migration",
+   "file": "src/store/persistConfig.ts",
+   "line": 174,
+   "why": "The v20 cache-seed ignores a stored strikeCollateralBtc and re-seeds from the last entry's btcHeld, moving current collateral across a migration.",
+   "input": "migrateState({advisorActualBtcHeld:1.0, expenses:3500, hasCbLoan:true, cbCollateralBtc:1.48, strikeCollateralBtc:0.8, monthlyLog:[{month:1,btcBought:0.1,btcHeld:0.62,expensesActual:2500,source:'daily',confirmed:false,...}], dayLog:[one Strike draw]})",
+   "baseOutput": "strikeCollateralBtc 0.8",
+   "mutantOutput": "0.62",
+   "proposedTest": {
+    "file": "src/store/__tests__/persistConfigHardening.test.ts",
+    "title": "Zustand v20 migration — a stored strikeCollateralBtc cache is kept as is",
+    "assertion": "expect(migrateState(blob).strikeCollateralBtc).toBe(0.8)"
+   }
+  },
+  {
+   "id": "HJ-14",
+   "class": "GAP",
+   "rule": "docs/claude/journal.md § Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)",
+   "file": "src/store/dailyRouting.ts",
+   "line": 16,
+   "why": "strategyMonthDate steps one month too far, so a month the journal creates is dated at the next anniversary.",
+   "input": "rerollMonth(get, 1) with advisorStartDate 2026-06-01, empty monthlyLog, one Strike draw $1,000 dated 2026-06-10 (capture upsertLogEntry)",
+   "baseOutput": "new entry date '2026-06-01'",
+   "mutantOutput": "'2026-07-01'",
+   "proposedTest": {
+    "file": "src/store/__tests__/dailyRoutingHardening.test.ts",
+    "title": "Strategy-Month Calendar Fix — a month the journal creates is dated at its own anniversary",
+    "assertion": "expect(upserted.date).toBe('2026-06-01')"
+   }
+  },
+  {
+   "id": "HJ-15",
+   "class": "GAP",
+   "rule": "docs/claude/journal.md § Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)",
+   "file": "src/store/slices/advisorJournalSlice.ts",
+   "line": 129,
+   "why": "The one-shot reconcile loop stops at month 11, so a stale month 12 is never re-rolled.",
+   "input": "store: advisorStartDate 2026-06-01, dayLog Strike draw $1,000 dated 2027-05-15, monthlyLog month 12 {source:'daily', expensesActual:0}; reconcileMonthBuckets()",
+   "baseOutput": "month 12 expensesActual 1000",
+   "mutantOutput": "0",
+   "proposedTest": {
+    "file": "src/store/__tests__/advisorJournalSliceHardening.test.ts",
+    "title": "Strategy-Month Calendar Fix — the reconcile re-rolls month 12",
+    "assertion": "expect(month12.expensesActual).toBe(1000)"
+   }
+  },
+  {
+   "id": "HJ-16",
+   "class": "GAP",
+   "rule": "docs/claude/journal.md § Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)",
+   "file": "src/store/slices/advisorJournalSlice.ts",
+   "line": 133,
+   "why": "The reconcile's diff guard borrows prior stocks from two months back, so an unchanged signed carry-forward month re-rolls and reopens (not idempotent).",
+   "input": "store: start 2026-06-01; readings strikeBal 2000 (06-15), 3000 (07-15); Strike draw $1,000 08-15; months 1-3 seeded to their fresh rollups, confirmed:true; reconcileMonthBuckets()",
+   "baseOutput": "month 3 {strikeBal:3000, confirmed:true}",
+   "mutantOutput": "{strikeBal:3000, confirmed:false}",
+   "proposedTest": {
+    "file": "src/store/__tests__/advisorJournalSliceHardening.test.ts",
+    "title": "Strategy-Month Calendar Fix — the reconcile leaves a current signed carry-forward month signed",
+    "assertion": "expect(month3.confirmed).toBe(true)"
+   }
+  },
+  {
+   "id": "HJ-17",
+   "class": "GAP",
+   "rule": "docs/claude/daily-mode.md § Daily Mode (P2a — store wiring; store v18→19)",
+   "file": "src/store/dailyRouting.ts",
+   "line": 119,
+   "why": "The emptied-month cleanup deletes any entry, not only a daily-owned one, so a manual month with no meaningful events is deleted and tombstoned.",
+   "input": "rerollMonth(get, 1) with monthlyLog [{month:1, source:'manual'}] and an empty dayLog (capture deleteLogEntry)",
+   "baseOutput": "no delete",
+   "mutantOutput": "deleteLogEntry(1)",
+   "proposedTest": {
+    "file": "src/store/__tests__/dailyRoutingHardening.test.ts",
+    "title": "Daily Mode (P2a — store wiring) — an emptied month is removed only when daily-owned",
+    "assertion": "expect(deleteLogEntry).not.toHaveBeenCalled()"
+   }
+  },
+  {
+   "id": "HJ-18",
+   "class": "GAP",
+   "rule": "docs/claude/daily-mode.md § Daily Mode (P4c-3b — reconcile → Review → confirm flow; store stays v19, NO store changes)",
+   "file": "src/store/slices/advisorJournalSlice.ts",
+   "line": 106,
+   "why": "The sign-off clears provisional, so a carried-forward month reads as measured after confirm.",
+   "input": "store monthlyLog [{month:1, provisional:true, confirmed:false}]; confirmMonth(1)",
+   "baseOutput": "{confirmed:true, provisional:true}",
+   "mutantOutput": "{confirmed:true, provisional:false}",
+   "proposedTest": {
+    "file": "src/store/__tests__/advisorJournalSliceHardening.test.ts",
+    "title": "Daily Mode (P4c-3b) — signing off a provisional month keeps it provisional",
+    "assertion": "expect(entry.confirmed).toBe(true); expect(entry.provisional).toBe(true)"
+   }
+  },
+  {
+   "id": "HJ-20",
+   "class": "GAP",
+   "rule": "docs/claude/journal.md § Logging Consolidation §5b — Readings-Unification",
+   "file": "src/store/dailyRouting.ts",
+   "line": 59,
+   "why": "readingCtx omits cbLiqPrice, so the delete-fallback cannot fall back from a deleted reading's liquidation price.",
+   "input": "readingCtx({kind:'balanceReading', date:'2026-01-20', reading:{strikeBal:0, strikeLtv:0, cbBal:50000, cbLiqPrice:61000}})",
+   "baseOutput": "{oldDate:'2026-01-20', strikeBal:0, cbBal:50000, cbLiqPrice:61000}",
+   "mutantOutput": "{oldDate:'2026-01-20', strikeBal:0, cbBal:50000}",
+   "proposedTest": {
+    "file": "src/store/__tests__/dailyRoutingHardening.test.ts",
+    "title": "Logging Consolidation §5b — Readings-Unification — the reading context carries the Coinbase liquidation price",
+    "assertion": "expect(readingCtx(ev)).toEqual({ oldDate: '2026-01-20', strikeBal: 0, cbBal: 50000, cbLiqPrice: 61000 })"
+   }
+  },
+  {
+   "id": "HJ-21",
+   "class": "GAP",
+   "rule": "docs/claude/journal.md § Logging Consolidation — One Ledger, One Sign-off, a Pure Playbook",
+   "file": "src/components/Daily/calendarModel.ts",
+   "line": 157,
+   "why": "A minPayment event is summed into paydown instead of minPayment; the minimum is balance-neutral by rule.",
+   "input": "buildMonthRollup([{kind:'minPayment', amount:200, date:'2026-06-10'}], '2026-06-01', 1).streams",
+   "baseOutput": "{paydown:0, minPayment:200}",
+   "mutantOutput": "{paydown:200, minPayment:0}",
+   "proposedTest": {
+    "file": "src/components/Daily/__tests__/calendarModelHardening.test.ts",
+    "title": "Logging Consolidation — One Ledger, One Sign-off — Strike's minimum is balance-neutral, not paydown",
+    "assertion": "const s = buildMonthRollup(log, '2026-06-01', 1).streams; expect(s.paydown).toBe(0); expect(s.minPayment).toBe(200)"
+   }
+  },
+  {
+   "id": "HJ-22",
+   "class": "GAP",
+   "rule": "docs/claude/daily-mode.md § Daily Mode (P4c-1a — Week|Month calendar + pure calendarModel)",
+   "file": "src/components/Daily/calendarModel.ts",
+   "line": 90,
+   "why": "buildDayCells forgets withdraw, so a withdraw-only day shows no 'logged' pip.",
+   "input": "buildDayCells([{kind:'withdraw', amount:0.05, target:'strike', date:'2026-06-10'}], ['2026-06-10'])[0].pips",
+   "baseOutput": "['logged']",
+   "mutantOutput": "[]",
+   "proposedTest": {
+    "file": "src/components/Daily/__tests__/calendarModelHardening.test.ts",
+    "title": "Daily Mode (P4c-1a — Week|Month calendar) — a withdraw-only day carries the logged pip",
+    "assertion": "expect(buildDayCells(log, ['2026-06-10'])[0].pips).toEqual(['logged'])"
+   }
+  },
+  {
+   "id": "HJ-23",
+   "class": "GAP",
+   "rule": "docs/claude/almanac.md § M-L1 — Ledger face (seventh Almanac face) + CSV export",
+   "file": "src/lib/ledgerCsv.ts",
+   "line": 145,
+   "why": "The CB cells are swapped under an unchanged header.",
+   "input": "buildLedgerCsv([{month:1, date:'2026-06-01', cbBal:60000, cbLtv:0.4, ...zeros}], {hasCbLoan:true, showMining:false})",
+   "baseOutput": "row '1,2026-06-01,0,0,0,0,,0,60000,0.4'",
+   "mutantOutput": "'1,2026-06-01,0,0,0,0,,0,0.4,60000'",
+   "proposedTest": {
+    "file": "src/lib/__tests__/ledgerCsvHardening.test.ts",
+    "title": "M-L1 — Ledger CSV export — CB bal and CB LTV cells follow the header",
+    "assertion": "expect(csv.split('\\r\\n')[1]).toBe('1,2026-06-01,0,0,0,0,,0,60000,0.4')"
+   }
+  },
+  {
+   "id": "HJ-24",
+   "class": "GAP",
+   "rule": "docs/claude/almanac.md § M-L1 — Ledger face (seventh Almanac face) + CSV export",
+   "file": "src/lib/ledgerCsv.ts",
+   "line": 102,
+   "why": "csvCell quotes but no longer doubles an embedded quote (RFC-4180).",
+   "input": "buildLedgerCsv([{month:1, date:'2026-01-01\"x', ...zeros}], {hasCbLoan:false, showMining:false})",
+   "baseOutput": "row '1,\"2026-01-01\"\"x\",0,0,0,0,,0'",
+   "mutantOutput": "'1,\"2026-01-01\"x\",0,0,0,0,,0'",
+   "proposedTest": {
+    "file": "src/lib/__tests__/ledgerCsvHardening.test.ts",
+    "title": "M-L1 — Ledger CSV export — an embedded quote is doubled (RFC-4180)",
+    "assertion": "expect(csv.split('\\r\\n')[1]).toBe('1,\"2026-01-01\"\"x\",0,0,0,0,,0')"
+   }
+  },
+  {
+   "id": "HJ-25",
+   "class": "GAP",
+   "rule": "docs/claude/file-structure.md logUtils entry — the expenses re-anchor prompt fires at drift > 5%",
+   "file": "src/simulation/logUtils.ts",
+   "line": 69,
+   "why": "The prompt fires at exactly 5% drift instead of strictly above.",
+   "input": "computeExpenseReanchor(three months expensesActual 4200, expenses 4000, dismissedAt 0)",
+   "baseOutput": "{show:false, avg:4200}",
+   "mutantOutput": "{show:true, avg:4200}",
+   "proposedTest": {
+    "file": "src/simulation/__tests__/logUtilsHardening.test.ts",
+    "title": "computeExpenseReanchor — exactly 5% drift does not raise the prompt (> 5% only)",
+    "assertion": "expect(computeExpenseReanchor(log, 4000, 0)).toEqual({ show: false, avg: 4200 })"
+   }
+  },
+  {
+   "id": "HJ-26",
+   "class": "GAP",
+   "rule": "docs/claude/engines.md § `coldStorageBtc` — a REAL balance, not the projection",
+   "file": "src/simulation/logUtils.ts",
+   "line": 375,
+   "why": "isAfterColdAnchor loses its non-finite guard; a NaN anchor prints 'NaN-NaN-NaN' and every cold move drops out instead of counting as for a null anchor.",
+   "input": "deriveColdStorage([{kind:'deposit', target:'cold', amount:0.2, date:'2026-01-10', ts:5}], 1, NaN)",
+   "baseOutput": "1.2",
+   "mutantOutput": "1",
+   "proposedTest": {
+    "file": "src/simulation/__tests__/logUtilsHardening.test.ts",
+    "title": "coldStorageBtc — a REAL balance — a non-finite anchor stamp counts every cold move, like null",
+    "assertion": "expect(deriveColdStorage(log, 1, NaN)).toBeCloseTo(1.2, 12); expect(coldMovesSinceAnchor(log, NaN)).toBe(1)"
+   }
+  }
+ ],
+ "skipped": []
+}

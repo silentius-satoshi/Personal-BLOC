@@ -1,0 +1,335 @@
+{
+  "target": "HE",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "survivors": [
+    {
+      "id": "HE-02",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — Every support-policy stress figure is support(t), never `price × (1 − buffer)`",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1146,
+      "why": "The policy draw's Strike ceiling must be read at support; at 1.4× support with Strike short of its keep the mutant draws past strikeColl × S × skStop.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { strikeCollateralBtc: 1, strikeBalance: 22_000, strikeCreditLine: 30_000, cbCollateralBtc: 2, cbDebt: 20_000 }; pricePath [70_000, 70_000, 70_000]",
+      "baseOutput": "rows[1].strikeDrawn = 3000",
+      "mutantOutput": "rows[1].strikeDrawn = 6000",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "Every support-policy stress figure is support(t): the draw stops at Strike's ceiling at support",
+        "assertion": "expect(r.rows[1].strikeDrawn).toBe(1 * 50_000 * 0.5 - 22_000)   // 3000"
+      }
+    },
+    {
+      "id": "HE-03",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — Every support-policy stress figure is support(t), never `price × (1 − buffer)`",
+      "file": "src/simulation/placement.ts",
+      "line": 262,
+      "why": "THE MOVE's \"at support today the policy's Strike limit leaves $X\" must be measured at support; the mutant overstates it at today's price.",
+      "input": "placementPlan({ creditLine: 30_000, strikeBalance: 10_000, strikeCollateralBtc: 1, cbDebt: 20_000, cbCollateralBtc: 1, coldBtc: 0, price: 60_000, support: 50_000, skStop: 0.5, cbStop: 0.6, cbDefenseLtv: 0.7, bufferUsd: 0, accumulateBelow: 1.5, payDownAbove: 2, inHold: false, broken: false })",
+      "baseOutput": "strikeRoomUsd 15000",
+      "mutantOutput": "strikeRoomUsd 20000",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/placementHardening.test.ts",
+        "title": "Every support-policy stress figure is support(t): strikeRoomUsd is the Strike room at support",
+        "assertion": "expect(p.strikeRoomUsd).toBe(1 * 50_000 * 0.5 - 10_000)   // 15000"
+      }
+    },
+    {
+      "id": "HE-04",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — The support policy's settings are the owner's SAVED plan",
+      "file": "src/lib/planPolicy.ts",
+      "line": 65,
+      "why": "Junk (not a finite number) reads as the default; the mutant clamps ±Infinity to the range edge.",
+      "input": "clampPlanPolicy(k, Infinity) and clampPlanPolicy(k, -Infinity) for every k in PLAN_POLICY_KEYS",
+      "baseOutput": "every key → PLAN_POLICY_DEFAULTS[k] (45, 50, 2, 3, 12, 0)",
+      "mutantOutput": "Infinity → range max (70, 60, 2.5, 5, 48, 12); -Infinity → range min (40, 30, 1, 1.5, 0, 0)",
+      "proposedTest": {
+        "file": "src/lib/__tests__/planPolicyHardening.test.ts",
+        "title": "The support policy's settings are the owner's SAVED plan: a non-finite saved setting reads as its default",
+        "assertion": "for (const k of PLAN_POLICY_KEYS) for (const v of [Infinity, -Infinity]) expect(clampPlanPolicy(k, v)).toBe(PLAN_POLICY_DEFAULTS[k])"
+      }
+    },
+    {
+      "id": "HE-06",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — Cold is never retrieved at or above support for a position that opens inside both ceilings",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1694,
+      "why": "G2's field must count every coin that leaves cold at or above support; the mutant drops a Strike cure's cold (an opening over Strike's ceiling).",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { strikeBalance: 40_000, strikeCreditLine: 40_000, strikeCollateralBtc: 1, cbDebt: 0, cbCollateralBtc: 0, openingColdBtc: 1, strikeLtvCapPct: 0 }; pricePath [50_000, 50_000, 50_000]",
+      "baseOutput": "rows[1].strikeCall \"cured\", coldRetrievedBtc 0.16923; coldRetrievedAboveSupportBtc 0.16923",
+      "mutantOutput": "coldRetrievedAboveSupportBtc 0",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "Cold is never retrieved at or above support for a position that opens inside both ceilings: a Strike cure's cold at support counts in coldRetrievedAboveSupportBtc",
+        "assertion": "expect(r.rows[1].strikeCall).toBe('cured'); expect(r.coldRetrievedAboveSupportBtc).toBeCloseTo(38_000 / (0.65 * 50_000) - 1, 12)"
+      }
+    },
+    {
+      "id": "HE-07",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — A stop at support can never exceed its leg's defense line (engine clamp)",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 823,
+      "why": "The stop clamp must use the cap the engine runs (min(cap, margin × 0.95) = 66.5%); fed the raw 90% cap the 68% Strike stop runs above its defense line.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { strikeLtvCapPct: 90 }, policy { strikeStopAtSupportPct: 68 }; pricePath [60_000, 60_000, 60_000]",
+      "baseOutput": "rows[0].strikeCeilingHeadroomUsd 33250; rows[2].strikeDrawn 3855.2263",
+      "mutantOutput": "rows[0].strikeCeilingHeadroomUsd 34000; rows[2].strikeDrawn 4440.5998",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "A stop at support can never exceed its leg's defense line: a 68% Strike stop under a 90% cap runs at 66.5%",
+        "assertion": "expect(r.rows[0].strikeCeilingHeadroomUsd).toBeCloseTo(1 * 50_000 * STRIKE_MARGIN_CALL_LTV * 0.95, 6)   // 33250"
+      }
+    },
+    {
+      "id": "HE-10",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1428,
+      "why": "\"Collateral leaving Strike starts no hold\": the mutant starts a 60-day hold after a top-up-first Strike release, so the next month's release is blocked and the shift runs instead.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { strikeCollateralBtc: 1, strikeBalance: 0, strikeCreditLine: 30_000, cbCollateralBtc: 1, cbDebt: 30_000 }; pricePath [60_000, 40_000, 36_000, 36_000]",
+      "baseOutput": "rows[2].topUpFromStrikeBtc 0.03968254, defenseDrawnUsd 0",
+      "mutantOutput": "rows[2].topUpFromStrikeBtc 0, defenseDrawnUsd 1000",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "Every Strike → Coinbase move by a defense obeys Strike's release rules: a release starts no hold, so the next month releases again",
+        "assertion": "expect(r.rows[1].topUpFromStrikeBtc).toBeGreaterThan(0); expect(r.rows[2].topUpFromStrikeBtc).toBeGreaterThan(0); expect(r.rows[2].defenseDrawnUsd).toBe(0)"
+      }
+    },
+    {
+      "id": "HE-11",
+      "class": "GAP",
+      "rule": "docs/claude/almanac.md § Support-anchored policy (step 5: \"only at ≤ 40% before and < 50% after\")",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1326,
+      "why": "A migration that leaves Strike exactly on 50% is refused (strictly under); the mutant moves it.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { strikeCreditLine: 25_000, strikeBalance: 25_000, strikeCollateralBtc: 2, cbCollateralBtc: 1, cbDebt: 10_000 }; pricePath [50_000, 50_000, 50_000] (keep = 25_000 / (0.5 × 50_000) = 1 ₿, after-LTV exactly 0.5)",
+      "baseOutput": "rows[1].strikeToCbBtc 0 (strikeCollateralBtc 2)",
+      "mutantOutput": "rows[1].strikeToCbBtc 1 (strikeCollateralBtc 1)",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "Support-anchored policy step 5: Strike releases only under 50% after — a move landing exactly on 50% is refused",
+        "assertion": "expect(r.rows[1].strikeToCbBtc + r.rows[1].strikeToColdBtc).toBe(0); expect(r.rows[1].strikeCollateralBtc).toBe(2)"
+      }
+    },
+    {
+      "id": "HE-12",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off",
+      "file": "src/simulation/crashPlaybook.ts",
+      "line": 184,
+      "why": "The fallback top-up re-asks doom after the shift (as the engine's doom gate does); the mutant reuses the opening doom and skips the cold.",
+      "input": "crashPlaybook({ price: 100_000, support: 100_000, cbDebt: 90_000, cbCollateralBtc: 1, strikeBalance: 45_000, strikeCollateralBtc: 1, strikeCreditLine: 55_000, coldBtc: 0.02, targetCbLtvPct: 70, cbStopAtSupport: 0.6, lltv: CB_LLTV, maxDrawLtv: STRIKE_MAX_DRAW_LTV, marginLtv: STRIKE_MARGIN_CALL_LTV, retrieveMaxLtv: STRIKE_RETRIEVE_MAX_LTV, strikeInHold: false })",
+      "baseOutput": "doomed true; steps [shiftToStrike 5000, coldToCoinbase 0.02]; shortfallBtc 0.194286",
+      "mutantOutput": "steps [shiftToStrike 5000]; cold 0.02 unspent; shortfallBtc 0.214286",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/crashPlaybookHardening.test.ts",
+        "title": "`crashPlaybook` is the one crash-day answer: the fallback top-up asks doom again after the shift",
+        "assertion": "expect(r.doomed).toBe(true); expect(r.steps).toEqual([{ kind: 'shiftToStrike', usd: 5_000 }, { kind: 'coldToCoinbase', btc: 0.02 }])"
+      }
+    },
+    {
+      "id": "HE-13",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off",
+      "file": "src/simulation/crashPlaybook.ts",
+      "line": 170,
+      "why": "Only a draw after a top-up-first step is dust; the mutant drops a sub-half-cent shift-first draw and tops up from Strike instead.",
+      "input": "crashPlaybook({ same as HE-12 but cbDebt: 70_000.001, strikeBalance: 0, strikeCreditLine: 30_000, coldBtc: 0 }) — price on support, shift first",
+      "baseOutput": "steps [shiftToStrike 0.0010000000038]",
+      "mutantOutput": "steps [strikeToCoinbase 1.43e-8 ₿]",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/crashPlaybookHardening.test.ts",
+        "title": "`crashPlaybook` is the one crash-day answer: a shift-first draw under half a cent is booked, not dropped",
+        "assertion": "expect(r.order).toBe('shiftFirst'); expect(r.steps).toHaveLength(1); expect(r.steps[0].kind).toBe('shiftToStrike'); expect((r.steps[0] as { usd: number }).usd).toBeCloseTo(0.001, 9)"
+      }
+    },
+    {
+      "id": "HE-16",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — Every crash-day step amount is floored to its printed precision",
+      "file": "src/components/Tools/crashPlaybookView.ts",
+      "line": 206,
+      "why": "The 8-dp tier floors; the mutant rounds, printing more than moves and a satoshi that is not there.",
+      "input": "fmtStepBtc(0.000009996); fmtStepBtc(6e-9)",
+      "baseOutput": "\"0.00000999\"; null",
+      "mutantOutput": "\"0.00001000\"; \"0.00000001\"",
+      "proposedTest": {
+        "file": "src/components/Tools/__tests__/crashPlaybookViewHardening.test.ts",
+        "title": "Every crash-day step amount is floored to its printed precision: the 8-dp tier floors too",
+        "assertion": "expect(fmtStepBtc(0.000009996)).toBe('0.00000999'); expect(fmtStepBtc(6e-9)).toBeNull()"
+      }
+    },
+    {
+      "id": "HE-23",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — Phase 4 priority",
+      "file": "src/simulation/runBlocYearOne.ts",
+      "line": 94,
+      "why": "`creditExceeded` is checked FIRST; the mutant lets a same-month paydown classify the month as phase 2/3.",
+      "input": "runBlocYearOne({ collateralBtc: 1, btcPrice: 100_000, income: 6_000, expenses: 5_000, apr: 0, ltvCeiling: 0.05, creditLine: 8_000, btcGrowthRate: 0 })",
+      "baseOutput": "rows[1] phase 4 (creditExceeded true, paydown 2700); rows[2..11] phase 4",
+      "mutantOutput": "rows[1] phase 2; rows[2..11] phase 3",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/runBlocYearOneHardening.test.ts",
+        "title": "Phase 4 priority: creditExceeded wins over a paydown in the same month",
+        "assertion": "expect(r.rows[1].creditExceeded).toBe(true); expect(r.rows[1].paydown).toBeGreaterThan(0); expect(r.rows[1].phase).toBe(4)"
+      }
+    },
+    {
+      "id": "HE-26",
+      "class": "GAP",
+      "rule": "docs/claude/almanac.md § Support-anchored policy (step 8: \"at/over the partial liquidation LTV (85%) the sale is immediate\")",
+      "file": "src/simulation/supportPolicy.ts",
+      "line": 155,
+      "why": "At exactly 85% the sale is immediate; the mutant spends cash on a cure Strike does not offer.",
+      "input": "resolveStrikeCall({ strikeBalance: 85_000, strikeCollateralBtc: 1, price: 100_000, callLtv: 0.7, cureLtv: 0.65, partialLiqLtv: 0.85, cashUsd: 100_000, coldBtc: 0 })",
+      "baseOutput": "state 'soldImmediate', soldBtc 0.571429, cureCashUsd 0",
+      "mutantOutput": "state 'cured', cureCashUsd 20000",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/supportPolicyHardening.test.ts",
+        "title": "Support-anchored policy step 8: at exactly the partial liquidation LTV the sale is immediate",
+        "assertion": "expect(c.state).toBe('soldImmediate'); expect(c.cureCashUsd).toBe(0); expect(c.soldBtc).toBeCloseTo((85_000 - 0.65 * 100_000) / (0.35 * 100_000), 12)"
+      }
+    },
+    {
+      "id": "HE-27",
+      "class": "GAP",
+      "rule": "docs/claude/almanac.md § Support-anchored policy (\"Pay down to ZERO … the 0.005 residual sweep — never correct it to 1e-9\")",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1264,
+      "why": "A Strike residual under half a cent after the pay-down is swept to zero; the mutant leaves 0.001.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { strikeBalance: 1000.001, strikeCreditLine: 30_000, cbDebt: 0, income: 7_000, expenses: 6_000 }; pricePath [125_000, 125_000, 125_000]",
+      "baseOutput": "rows[1].strikeBalance 0",
+      "mutantOutput": "rows[1].strikeBalance 0.00099999999998",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "Support-anchored policy: the pay-down's 0.005 residual sweep clears a sub-half-cent Strike balance to exactly zero",
+        "assertion": "expect(r.rows[1].strikeBalance).toBe(0)"
+      }
+    },
+    {
+      "id": "HE-28",
+      "class": "GAP",
+      "rule": "docs/claude/almanac.md § Support-anchored policy (step 5: \"never inside the 60-day hold that follows ANY cold → Strike move (strikeHoldUntil = m + 2)\")",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1617,
+      "why": "A cure's cold → Strike move holds two months; the mutant releases one month later at the stand-down.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { strikeBalance: 1_000, strikeCreditLine: 30_000, strikeCollateralBtc: 0.05, cbDebt: 0, income: 6_500, expenses: 6_000, openingColdBtc: 1, goalNetBtc: 0.5, strikeLtvCapPct: 0 }; pricePath [100_000, 12_500, 12_500, 12_500]",
+      "baseOutput": "cure at m1 (coldRetrievedBtc 0.011538); rows[2].strikeToColdBtc 0; rows[3].strikeToColdBtc 0.061538",
+      "mutantOutput": "rows[2].strikeToColdBtc 0.061538",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "Support-anchored policy step 5: a Strike cure's cold → Strike move starts the 60-day hold (m + 2)",
+        "assertion": "expect(r.rows[1].coldRetrievedBtc).toBeGreaterThan(0); expect(r.rows[2].strikeToColdBtc).toBe(0); expect(r.rows[3].strikeToColdBtc).toBeGreaterThan(0)"
+      }
+    },
+    {
+      "id": "HE-29",
+      "class": "GAP",
+      "rule": "docs/claude/file-structure.md § cyclingSim.ts (\"Terminal for the WHOLE Coinbase loop\") · almanac.md § Support-anchored policy step 9",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1675,
+      "why": "After a Coinbase seizure step 9 sweeps nothing; the mutant sweeps the survivor's Coinbase pool once the price recovers.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { income: 6_000, strikeCreditLine: 20_000, strikeBalance: 19_000, cbDebt: 41_000 }, policy { bearBufferMonths: 0 }; pricePath [67_500, 22_500, 60_000, 60_000]",
+      "baseOutput": "liqMonth 1; rows[2..3].sweptToColdBtc 0 (cbCollateralBtc 0.10229645 stays)",
+      "mutantOutput": "rows[2].sweptToColdBtc 0.10229645",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "Terminal for the WHOLE Coinbase loop: no sweep after the seizure month",
+        "assertion": "expect(r.liqMonth).toBe(1); for (const x of r.rows.filter((x) => x.m > 1)) expect(x.sweptToColdBtc).toBe(0)"
+      }
+    },
+    {
+      "id": "HE-30",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — `crashPlaybook` is the one crash-day answer (boundary: top up first only for k ∈ [depth, 1 − ε))",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1404,
+      "why": "On the support line the shift goes first (as crashPlaybook orders it); the mutant pours cold first.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { cbDebt: 40_000, cbCollateralBtc: 1, openingColdBtc: 0.5, strikeBalance: 0, strikeCreditLine: 30_000 }; pricePath [60_000, 50_000, 50_000]",
+      "baseOutput": "rows[1]: defenseDrawnUsd 3000, topUpFromColdBtc 0, cbDebt 35000",
+      "mutantOutput": "rows[1]: topUpFromColdBtc 0.085714, defenseDrawnUsd 0, cbDebt 38000",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "`crashPlaybook` is the one crash-day answer: on the support line the engine shifts first",
+        "assertion": "expect(r.rows[1].topUpFromColdBtc).toBe(0); expect(r.rows[1].defenseDrawnUsd).toBe(38_000 - 0.7 * 1 * 50_000)   // 3000"
+      }
+    },
+    {
+      "id": "HE-31",
+      "class": "GAP",
+      "rule": "cyclingSim.ts CyclingResult.firstUnheldMonth: \"ulp-tolerant, since a top-up landing exactly on the line can sit an ulp over it\"",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1567,
+      "why": "A top-up that restores Coinbase onto its line (an ulp over in float) is held; the mutant reports the month unheld.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { cbDebt: 30_000, openingColdBtc: 1 }; pricePath [60_000, 40_000]",
+      "baseOutput": "firstUnheldMonth null",
+      "mutantOutput": "firstUnheldMonth 1",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/cyclingSimHardening.test.ts",
+        "title": "firstUnheldMonth is ulp-tolerant: a top-up landing on the line holds it",
+        "assertion": "expect(r.rows[1].topUpBtc).toBeGreaterThan(0); expect(r.firstUnheldMonth).toBeNull()"
+      }
+    },
+    {
+      "id": "HE-33",
+      "class": "GAP",
+      "rule": "docs/claude/file-structure.md § planSearch.ts (M4: a run whose policyApplied differs from what was asked is NOT ranked)",
+      "file": "src/simulation/planSearch.ts",
+      "line": 159,
+      "why": "With no path rankable the base ranks them all (they are one strategy); the mutant crowns index 0 by no rule.",
+      "input": "evaluatePaths({ ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0, supportPolicy: policyFor([50_000]) }, [[60_000, 60_000, 60_000], [60_000, 20_000, 20_000]], ['a', 'b']) — the 1-entry support path is ignored on both runs",
+      "baseOutput": "worstIndex 1, worstBy 'cushion'",
+      "mutantOutput": "worstIndex 0, worstBy 'index'",
+      "proposedTest": {
+        "file": "src/simulation/__tests__/planSearchHardening.test.ts",
+        "title": "M4: when no path ran the policy as asked, every path is still ranked — the crash path is worst",
+        "assertion": "expect(r.worstIndex).toBe(1); expect(r.worstBy).toBe('cushion')"
+      }
+    },
+    {
+      "id": "HE-39",
+      "class": "GAP",
+      "rule": ".claude/rules/engine.md — `getCollateralForTier` — Uses starting `btcPrice` — not per-month price",
+      "file": "src/components/MonthBreakdown/MonthBreakdown.tsx",
+      "line": 37,
+      "why": "Judged by reading (a render only): any growthScenario other than flat (bull +80%: projectedPrice = 1.8 × btcPrice) sizes the tier's collateral 1/1.8 smaller in the mutant.",
+      "input": "growthScenario \"bull\", tier \"min\", expenses 5_000, btcPrice 100_000",
+      "baseOutput": "collateralBtc = 5_000 / (0.15 × 100_000) = 0.33333",
+      "mutantOutput": "collateralBtc = 5_000 / (0.15 × 180_000) = 0.18519",
+      "proposedTest": {
+        "file": "src/components/MonthBreakdown/__tests__/MonthBreakdownHardening.test.ts",
+        "title": "`getCollateralForTier` uses the starting btcPrice — not the projected price",
+        "assertion": "const src = readFileSync('src/components/MonthBreakdown/MonthBreakdown.tsx', 'utf8'); expect(src).toMatch(/getCollateralForTier\\(\\s*activeTier,\\s*expenses,\\s*btcPrice,/); expect(src).not.toMatch(/getCollateralForTier\\([^)]*projectedPrice/)"
+      }
+    },
+    {
+      "id": "HE-20",
+      "class": "EQUIVALENT",
+      "rule": ".claude/rules/engine.md — The Strike cap never outranks Coinbase survival (⚠ the guard runs ONLY in a month the CB top-up runs)",
+      "file": "src/simulation/cyclingSim.ts",
+      "line": 1504,
+      "why": "In a month with defenseShortfallUsd 0 Coinbase ends the defense at or under its cap, and cbSurvivalCollateralBtc (cbDefense.ts:366-380) aims at max(line, cap) and returns 0 for need ≤ 0, so allowed = coldBtc ≥ the reserve (drawn from cold) — no cut, and skFloorOn = coldBtc ≥ 0 = skDefend. A difference needs a cap above the survival line AND a float coincidence (a restore an ulp over the cap with the reserve exactly equal to the cold left); probe at caps 80/85 on a crash path: identical.",
+      "input": "BASE = { ...SP_REPRO, strikeAprPct: 0, cbAprPct: 0 }, support flat 50_000 every month (policyFor(path.map(() => 50_000), o)); + { cbLtvCapPct: 80 | 85, cbDebt: 30_000, openingColdBtc: 0.05 }; pricePath [60_000, 40_000, 36_000, 30_000]",
+      "baseOutput": "firstSurvivalYieldMonth null, rows identical",
+      "mutantOutput": "same",
+      "proposedTest": null
+    },
+    {
+      "id": "HE-40",
+      "class": "EQUIVALENT",
+      "rule": "boundary: crashPlaybook — shortfallBtc 0 \"when the line held\"",
+      "file": "src/simulation/crashPlaybook.ts",
+      "line": 178,
+      "why": "When shiftShortfallUsd is exactly 0 the fallback is skipped either way (> 0 test, crashPlaybook.ts:184); the only change is shortfall(false) = max(0, cbDebt/(target·P) − coll), and after a full shift cbDebt = debt − (debt − target·coll·P) is target·coll·P exactly (Sterbenz), whose quotient came back ≤ coll in every case of a 960-input grid (coll 0.3–2.9, price 1–1.31× support, 1–40% over the line) and an 810-input grid — no input found that tells them apart.",
+      "input": "crashPlaybook grid: cbCollateralBtc ∈ {0.3,0.7,1.1,1.3,0.37,2.9}, price ∈ {100k,103k,117k,131k}, support 100k, cbDebt = 0.7·c·P·(1 + j/100), j 1..40, strikeCollateralBtc 2, line 100k",
+      "baseOutput": "shortfallBtc 0 in all 960",
+      "mutantOutput": "shortfallBtc 0 in all 960",
+      "proposedTest": null
+    }
+  ],
+  "skipped": []
+}

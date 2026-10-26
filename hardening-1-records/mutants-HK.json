@@ -1,0 +1,784 @@
+{
+  "target": "HK",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "mutants": [
+    {
+      "id": "HK-01",
+      "target": "HK",
+      "file": "src/lib/nostr/keyVault.ts",
+      "find": "  if (meta.payloadKind !== 'nip06-entropy') return bytes;\n  try {\n    return deriveSkFromEntropy(bytes);\n  } finally {\n    bytes.fill(0);   // the intermediate entropy never outlives this call\n  }\n",
+      "replace": "  if (meta.payloadKind !== 'nip06-entropy') return bytes;\n  return deriveSkFromEntropy(bytes);\n",
+      "rule": ".claude/rules/identity.md — The words string",
+      "why": "unwrapSecretKey 'simplified' to return deriveSkFromEntropy(bytes) directly: the decrypted 16-byte NIP-06 entropy (the whole recovery phrase) is left un-zeroed in memory after every unlock of a words key; every test reads only the returned 32-byte sk",
+      "tests": [
+        "src/lib/nostr/__tests__/keyVault.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HK-02",
+      "target": "HK",
+      "file": "src/lib/nostr/keyVault.ts",
+      "find": "const PBKDF2_ITERS = 600_000;",
+      "replace": "const PBKDF2_ITERS = 310_000;",
+      "rule": ".claude/rules/identity.md — `WrapMeta.payloadKind` (the compatibility contract: a wrapped key can never become unreadable) | docs/claude/nostr.md § keyVault.ts",
+      "why": "PBKDF2 iterations 'tuned' 600,000 → 310,000 for slow phones with no migration: every PIN-wrapped key already on a device (writer and viewer) derives a different AES key and fails to unwrap — a total lockout; every keyVault test wraps and unwraps with the same build, and no stored ciphertext vector exists",
+      "tests": [
+        "src/lib/nostr/__tests__/keyVault.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HK-03",
+      "target": "HK",
+      "file": "src/lib/crypto/cryptoClient.ts",
+      "find": "  const copy = sk.slice();   // the transferred copy — caller's `sk` is never neutered\n",
+      "replace": "  const copy = new Uint8Array(sk.buffer as ArrayBuffer, sk.byteOffset, sk.length);   // a view over the caller's bytes — no extra allocation\n",
+      "rule": ".claude/rules/identity.md — A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` | docs/claude/nostr.md § cryptoClient.ts (INTERNAL-COPY CONTRACT)",
+      "why": "the worker-path 'copy' becomes a view, so postMessage TRANSFERS the caller's own sk buffer: NostrAuthGate's remediation encrypts pendingSkRef.current directly, the ref is neutered to 0 bytes, and Continue then wraps and persists an empty key (a corrupted credential); node has no Worker, so every test runs only the fallback",
+      "tests": [
+        "src/lib/crypto/__tests__/cryptoClient.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HK-04",
+      "target": "HK",
+      "file": "src/lib/crypto/cryptoClient.ts",
+      "find": "  else entry.reject(new CryptoError(classifyWorkerFailure(resp)));   // a legit crypto result — worker stays healthy\n",
+      "replace": "  else entry.reject(new CryptoError('passphrase'));   // a legit crypto result — worker stays healthy\n",
+      "rule": ".claude/rules/identity.md — Malformed payload ≠ wrong passphrase",
+      "why": "the worker's classified kind is dropped and every ok:false response becomes kind 'passphrase': on any device with a module Worker a corrupted/truncated ncryptsec paste is reported as 'wrong passphrase' (the R2c-7a bug, collapsed back into one catch); the tests reach only the no-Worker fallback and the pure classifyWorkerFailure",
+      "tests": [
+        "src/lib/crypto/__tests__/cryptoClient.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HK-05",
+      "target": "HK",
+      "file": "src/lib/backup/exportPlan.ts",
+      "find": "  const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, ...planSettings } = full;\n",
+      "replace": "  const { viewers: _vs, nostrRelays: _r, ...planSettings } = full;\n",
+      "rule": ".claude/rules/store.md — Zustand v21 migration (viewers + nextViewerIndex STRIPPED from the trusted viewer snapshot + the plan backup)",
+      "why": "the backup's strip loses nextViewerIndex: every export carries the roster counter, which the restore whitelist rejects as a transport field — the app's own backup becomes un-restorable (expected caught: exportPlan.test + the validator round trip)",
+      "tests": [
+        "src/lib/backup/__tests__/exportPlan.test.ts",
+        "src/lib/backup/__tests__/validatePlanBackup.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HK-06",
+      "target": "HK",
+      "file": "src/lib/nostr/establishOwner.ts",
+      "find": "  const signer = new NSecSigner(sk.slice()) as unknown as NostrSigner;\n",
+      "replace": "  const signer = new NSecSigner(sk) as unknown as NostrSigner;\n",
+      "rule": ".claude/rules/identity.md — A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` (always pass a `.slice()`) | `establishLocalOwner` derives its own sk",
+      "why": "the '.slice()' into NSecSigner is optimized away: NSecSigner stores the reference (verified in node_modules/@nostrify/nostrify/dist/NSecSigner.js), establishLocalOwner's own payload.fill(0)/sk.fill(0) then zeroes the live signer's key, and every sign/NIP-44 call after an import or a key-gen runs on 32 zero bytes; establishOwner.test mocks NSecSigner as an inert stub",
+      "tests": [
+        "src/lib/nostr/__tests__/establishOwner.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-07",
+      "target": "HK",
+      "file": "src/lib/nostr/session.ts",
+      "find": "      const signer = new NSecSigner(sk.slice()) as unknown as NostrSigner;\n",
+      "replace": "      const signer = new NSecSigner(sk) as unknown as NostrSigner;\n",
+      "rule": ".claude/rules/identity.md — A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` (the second copy: restoreSigner)",
+      "why": "restoreSigner hands NSecSigner the unwrapped buffer itself, then 'sk.fill(0); // best-effort zero after the signer holds its own copy' zeroes the signer's key: the pubkey check passes (cached before the fill), but every local unlock yields a signer that cannot sign or decrypt; restoreSignerSingleFlight.test stubs NSecSigner",
+      "tests": [
+        "src/lib/nostr/__tests__/restoreSignerSingleFlight.test.ts",
+        "src/lib/nostr/__tests__/session.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-08",
+      "target": "HK",
+      "file": "src/lib/nostr/session.ts",
+      "find": "  p.finally(() => { if (restoreInFlight === p) { restoreInFlight = null; restoreInFlightPinned = false; } });\n",
+      "replace": "  p.finally(() => { restoreInFlight = null; restoreInFlightPinned = false; });\n",
+      "rule": ".claude/rules/identity.md — ⚠ The `restoreSigner` single-flight guard is PIN-AWARE — do not simplify it back (the `.finally` ownership check)",
+      "why": "the ownership check is 'simplified' away: the doomed pinless restore (syncNow, 'PIN required' → null, settles fast) nulls the slot the user's pinned unlock now owns, so a second pinless caller during the PBKDF2 run starts its own doomed worker instead of joining the real one and gets null; no test makes a third call while the pinned restore is in flight",
+      "tests": [
+        "src/lib/nostr/__tests__/restoreSignerSingleFlight.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-09",
+      "target": "HK",
+      "file": "src/components/Auth/NostrAuthGate.tsx",
+      "find": "        payload = decryptState.sk.slice();\n",
+      "replace": "        payload = decryptState.sk;\n",
+      "rule": ".claude/rules/identity.md — The encrypted branch's payload MUST be `.slice()`d",
+      "why": "the copy of decryptState.sk is 'optimized away': after a cancelled Face ID, handleLocal's finally (payload?.fill(0)) zeroes the React-state buffer in place, and the retry hands establishLocalOwner 32 zero bytes, which it wraps and persists before getPublicKey throws — a corrupted credential; the row says bufferAliasing.test now fails on a deleted .slice(), but that test simulates the mechanism and never reads NostrAuthGate",
+      "tests": [
+        "src/lib/__tests__/bufferAliasing.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-10",
+      "target": "HK",
+      "file": "src/components/Auth/NostrAuthGate.tsx",
+      "find": "        try { payload = entropyFromWords(input.value); payloadKind = 'nip06-entropy'; }\n",
+      "replace": "        try { payload = entropyFromWords(input.value); }\n",
+      "rule": ".claude/rules/identity.md — Import `payloadKind` is THREE-WAY asymmetric (words → 'nip06-entropy')",
+      "why": "the words branch keeps the default payloadKind 'sk': a 12-word import wraps the 16-byte entropy as a raw secret key, establishLocalOwner persists that credential and then throws on getPublicKey of 16 bytes — importing a recovery phrase fails and leaves a corrupted writerKeyWrapped on disk; no test renders or reads the gate",
+      "tests": [],
+      "outsideList": true
+    },
+    {
+      "id": "HK-11",
+      "target": "HK",
+      "file": "src/components/Auth/NostrAuthGate.tsx",
+      "find": "The app keeps your key protected on this device, but that's not a backup",
+      "replace": "The app keeps your key and your plan encrypted on this device, but that's not a backup",
+      "rule": ".claude/rules/general.md — Never claim plan-data encryption-at-rest before Phase 5",
+      "why": "the import notice's copy drifts back to a security promise the code doesn't keep — plan DATA is plaintext at rest (storeEncEnabled off by default); no test reads this sentence",
+      "tests": [],
+      "outsideList": true
+    },
+    {
+      "id": "HK-12",
+      "target": "HK",
+      "file": "src/store/bootstrap.ts",
+      "find": "if (st.writerKeyWrapped) { wrapped = String(st.writerKeyWrapped); localStorage.setItem(WK_WRAPPED_KEY, wrapped); }",
+      "replace": "if (st.writerKeyWrapped) { wrapped = String(st.writerKeyWrapped); }",
+      "rule": ".claude/rules/store.md — Zustand v15 migration (moved OUT of the persist blob into standalone localStorage; seeded at module init + back-filled once from the legacy in-blob location; partialize-excluded)",
+      "why": "the one-time back-fill reads the wrapped key out of a legacy blob into memory but never writes personal-bloc-writer-key-wrapped: the next persist write drops it from the blob (partialize-excluded), the meta key alone now blocks a second back-fill, and the following launch has no wrapped key anywhere — lockout; writerKeyStandalone.test runs the seed against an empty localStorage and gateFieldsStandalone covers only the GATE_* back-fill",
+      "tests": [
+        "src/store/__tests__/writerKeyStandalone.test.ts",
+        "src/store/__tests__/gateFieldsStandalone.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-13",
+      "target": "HK",
+      "file": "src/store/persistConfig.ts",
+      "find": "    viewerMode:           persistedState.viewerMode          ?? false,\n",
+      "replace": "    viewerMode:           false,\n",
+      "rule": ".claude/rules/store.md — Zustand v17 migration (viewerMode default `?? false`, additive shallow-merge, no transform)",
+      "why": "the v21 clean-cut reset is copied one block down onto the viewer-side flag: on the next store-version bump every viewer device migrates to viewerMode false and boots as an owner (onboarding / the owner shell) instead of its viewer home; no migrate test reads viewerMode",
+      "tests": [
+        "src/store/__tests__/viewerRoster.test.ts",
+        "src/store/__tests__/dailyModeStore.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-14",
+      "target": "HK",
+      "file": "src/store/persistConfig.ts",
+      "find": "    viewerSecretKey:      persistedState.viewerSecretKey     ?? null,\n",
+      "replace": "    viewerSecretKey:      null,   // v18 wraps the viewer key at rest — drop the plaintext copy\n",
+      "rule": ".claude/rules/store.md — Zustand v18 migration (LEAVES any existing plaintext `viewerSecretKey` in place)",
+      "why": "migrate 'cleans up' the plaintext viewer key the row says it must leave: a viewer that never ran the one-time wrap-setup loses its only key on the next bump and must be re-issued a handoff token; no migrate test reads viewerSecretKey",
+      "tests": [
+        "src/store/__tests__/viewerRoster.test.ts",
+        "src/store/__tests__/dailyModeStore.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-15",
+      "target": "HK",
+      "file": "src/store/persistConfig.ts",
+      "find": "    nostrLogin:           persistedState.nostrLogin         ?? null,\n",
+      "replace": "    nostrLogin:           persistedState.nostrLogin         ?? null,\n    keyProvenance:        persistedState.keyProvenance      ?? 'generated',   // R2a-1 — every owner key starts as one this device made\n",
+      "rule": ".claude/rules/identity.md — Backup gate — no migration (NEVER add a `migrateState` case for keyProvenance/backupVerifiedAt)",
+      "why": "a migrate default for keyProvenance turns every pre-R2 owner (null = satisfied by construction) into 'generated' + no backupVerifiedAt on the next bump: gateHydratedIdentity falls back to it (no standalone provenance key for them), sync is gated and the backup ladder fires for every existing owner; no migrate test reads keyProvenance",
+      "tests": [
+        "src/store/__tests__/viewerRoster.test.ts",
+        "src/store/__tests__/dailyModeStore.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-16",
+      "target": "HK",
+      "file": "src/lib/store/escapeHatch.ts",
+      "find": "export function resetAndResync(_nostr?: NostrParam): void {\n  clearStoreEncryptionState();\n",
+      "replace": "export function resetAndResync(_nostr?: NostrParam): void {\n  clearStoreEncryptionState();\n  try { localStorage.removeItem('personal-bloc-provenance'); } catch { /* noop */ }   // a clean slate: re-stamped on the next establish\n",
+      "rule": ".claude/rules/identity.md — `resetAndResync` (escape hatch) (identity retained) | `setKeyProvenance` (resetAndResync RETAINS the identity → must NOT clear)",
+      "why": "the escape hatch also removes personal-bloc-provenance: after the reload the seed and the merge read null (= legacy, satisfied), so a generated-and-never-verified key ungates itself — R2c-6-final's bypass 1 reopened; escapeHatch.test checks the enc flag, marker, blob, key and reload but not the provenance key",
+      "tests": [
+        "src/lib/store/__tests__/escapeHatch.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-17",
+      "target": "HK",
+      "file": "src/lib/nostr/disconnect.ts",
+      "find": "  if (method === 'nip07') { disconnectNostr(); return; }",
+      "replace": "  if (method === 'nip07') { reconnectNostr(); return; }",
+      "rule": ".claude/rules/identity.md — NEVER collapse the sign-out dispatch to `external → reconnectNostr`",
+      "why": "nip07 'simplified' onto the session teardown: pubkey survives, auto-restore silently re-authenticates through the extension and Sign out does nothing visible (expected caught: disconnect.test's nip07 regression pin)",
+      "tests": [
+        "src/lib/nostr/__tests__/disconnect.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-18",
+      "target": "HK",
+      "file": "src/lib/nostr/disconnect.ts",
+      "find": "  s.setKeyProvenance(null);\n  s.setBackupVerifiedAt(null);\n  // Remanence (R2c-6b): the setters clear identity FIELDS, not the persisted plan. Without this, the next load\n  // renders the full hydrated plan to whoever opens the tab — the auth gates all condition on nostrAuthEnabled,\n  // which is now false, so the ladder falls straight through to the app.\n  // ⚠ MUST be the LAST mutation before reload(): zustand's persist writes the blob synchronously on every set(),\n  // so any store setter placed after this call would resurrect the blob we just removed.\n  wipeLocalPlanData();\n",
+      "replace": "  wipeLocalPlanData();\n  s.setKeyProvenance(null);\n  s.setBackupVerifiedAt(null);\n",
+      "rule": ".claude/rules/identity.md — An identity-forget must never leave the plan blob readable (wipeLocalPlanData() as its LAST mutation before reload()) | `disconnectNostr`",
+      "why": "the two gate clears are reordered after the wipe: zustand persist writes the blob on each set(), so the plan is resurrected on disk before reload() and the identity-less shell renders it (expected caught: disconnect.test 'WIPES the plan blob')",
+      "tests": [
+        "src/lib/nostr/__tests__/disconnect.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-19",
+      "target": "HK",
+      "file": "src/lib/nostr/disconnect.ts",
+      "find": "  s.setIsAuthenticated(false);\n  // nostrPubkey + nostrSigningMethod intentionally retained; auth derives from the retained pubkey.\n",
+      "replace": "  s.setIsAuthenticated(false);\n  s.setKeyProvenance(null);   // the session is gone — the gate re-stamps on the next login\n  // nostrPubkey + nostrSigningMethod intentionally retained; auth derives from the retained pubkey.\n",
+      "rule": ".claude/rules/identity.md — Sign out must NEVER clear `keyProvenance` / `backupVerifiedAt` (local) | `reconnectNostr` | `setKeyProvenance`",
+      "why": "the shared session teardown (signOutLocal → reconnectNostr, nip46 sign-out) clears provenance: a verified generated key that signs out loses the write-once stamp it can never get back from a relay (expected caught: disconnect.test retention pins)",
+      "tests": [
+        "src/lib/nostr/__tests__/disconnect.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HK-20",
+      "target": "HK",
+      "file": "src/store/slices/identitySlice.ts",
+      "find": "    if (v == null) { set({ backupVerifiedAt: null }); return; }   // teardown clear — RAW, NO event\n",
+      "replace": "    if (v == null) { get().emitPlanSets([['backupVerifiedAt', null]]); return; }   // teardown clear — synced like the stamp\n",
+      "rule": ".claude/rules/identity.md — `setBackupVerifiedAt` (`null` = teardown clear, RAW — no event, no wake) | `backupVerifiedAt` latch",
+      "why": "the null clear becomes a plan event: a disconnect publishes 'unverified' to every owner device and the one-way latch breaks (expected caught: backupGate.test's null-clear and planEventsCutover's LATCH source pin)",
+      "tests": [
+        "src/store/__tests__/backupGate.test.ts",
+        "src/store/__tests__/planEventsCutover.test.ts"
+      ],
+      "outsideList": true
+    }
+  ],
+  "rowCoverage": [
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Backup ceremony stamps once, self-waking",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "the stamp's call site is RecoveryKeyCeremony (render-only); dropping its `nostr` arg leaves `const { nostr } = useNostr()` unused and removing the setter's own syncNow wake leaves the `nostr` param unused — both killed by tsc -b (noUnusedLocals/Parameters), and renaming the param breaks planEventsCutover's source pin. The setter's emit side is HK-20's row"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "NEVER collapse the sign-out dispatch to `external → reconnectNostr`",
+      "status": "mutated",
+      "mutants": [
+        "HK-17"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "An identity-forget must never leave the plan blob readable",
+      "status": "mutated",
+      "mutants": [
+        "HK-18"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Sign out must NEVER clear `keyProvenance` / `backupVerifiedAt` (local)",
+      "status": "mutated",
+      "mutants": [
+        "HK-19"
+      ],
+      "why": "the 'two exits READ as different weights' half is CSS (.signOutBtn / .nostrDisconnectBtn) — not plantable through the TS harness"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "✅ FIXED (P0) — every unlock surface for a `scheme:'pin'` key MUST collect and forward the PIN",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in LocalUnlockGate and NostrAuthGate.handleUnlockExisting (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; restoreSigner's forwarding can't be dropped type-correctly (doRestoreSigner's `pin` would become an unused parameter → tsc -b) and is pinned by restoreSignerSingleFlight.test 'forwards a supplied pin'"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "⚠ The `restoreSigner` single-flight guard is PIN-AWARE — do not simplify it back",
+      "status": "mutated",
+      "mutants": [
+        "HK-08"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "A bare nsec must save an encrypted backup BEFORE it establishes",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in NostrAuthGate.handleLocal's nsec branch and the remediation step's bareNsecSaved gate (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; a source-order wiring test could pin `setRemediating(true); return;`"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "A held key buffer is zeroed on success/teardown, NEVER in an establish `finally`",
+      "status": "mutated",
+      "mutants": [
+        "HK-03",
+        "HK-06",
+        "HK-07",
+        "HK-09"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`nip49.encrypt` is ~1s of SYNCHRONOUS scrypt — yield before it",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "React commit timing (setEncrypting → 30 ms yield → scrypt) in RecoveryKeyCeremony / NostrAuthGate — only a render on a device can observe the frozen button"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Reproducing onboarding-transition crashes",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "a process note about `npm run dev` and the gate suffixes — no code to mutate"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "No attestation checkbox on the IMPORT path",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in NostrAuthGate's localCanContinue / JSX (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "The ceremony verifies the artifact the user SAVED, not the one on screen",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "CAP SKIP (executable, not planted — H-K's 20 went to rows no test pins): the verifyEncrypted branch is RecoveryKeyCeremony render-only; its lib half, recoveryQuiz.checkBackupPassphrase, trims both sides and is pinned by recoveryQuiz.test (both-side trim cases, case/inner-space mismatches)"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "No save, no Continue",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in RecoveryKeyCeremony (savedOnce / invalidateArtifact / share's AbortError) (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`RevealRecoveryKey` is view-only",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in RevealRecoveryKey (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Ceremony idempotency",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in RecoveryKeyCeremony's step flow (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Import `payloadKind` is THREE-WAY asymmetric: **words → `'nip06-entropy'`, nsec → `'sk'`, ncryptsec → `'sk'`**",
+      "status": "mutated",
+      "mutants": [
+        "HK-10"
+      ],
+      "why": "planted in the component (outsideList) — establishLocalOwner's absent ⇒ 'sk' default is pinned by establishOwner.test 'an nsec import still wraps the raw sk'"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Never auto-strip a handoff token's `:npub` suffix",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in NostrAuthGate's render guard and handleLocal's `.includes(':')` (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; a wiring test could pin both occurrences"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Malformed payload ≠ wrong passphrase",
+      "status": "mutated",
+      "mutants": [
+        "HK-04"
+      ],
+      "why": "ncryptsec.ts (isWellFormedNcryptsec / classifyNcryptsecError) is pinned by ncryptsec.test; the worker's own classify line cannot be mutated type-correctly (the import would go unused) — HK-04 collapses it on the client side of the boundary"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "The encrypted branch's payload MUST be `.slice()`d",
+      "status": "mutated",
+      "mutants": [
+        "HK-09"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "The ceremony's save aids derive the sk from the STRINGS, never retained bytes",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in RecoveryKeyCeremony's ensureArtifact (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Encrypt is a one-shot on tap; guard the stale result",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in RecoveryKeyCeremony's prepRef token (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; and the hazard is a 30 ms timing race"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "The QR PNG comes from `QRCodeCanvas`, not SVG rasterization",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in RecoveryKeyCeremony (a hidden canvas, marginSize={4}) (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; the scan quality is a device check"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Recovery grid is capture UX only",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "the rule is that the component never authorizes on recoveryGrid's hints — the authority (skFromWords) and its consumers are NostrAuthGate/OwnerKeySetup render paths; recoveryGrid.ts itself owns nothing to break"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`handleLocal` is one path",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in NostrAuthGate.handleLocal (its structure) (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`establishLocalOwner` derives its own sk",
+      "status": "mutated",
+      "mutants": [
+        "HK-06"
+      ],
+      "why": "HK-06 leaves the signer on the caller's buffer, which the function zeroes — the identity that signs is no longer the one wrapped; the derive itself (entropy → sk) is pinned by establishOwner.test 'derives the signing identity from the entropy payload'"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`classifyRecoveryInput`",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "CAP SKIP (executable, not planted — H-K's 20 went to rows no test pins): recoveryInput.ts is pinned shape-only by recoveryInput.test ('12 NONSENSE tokens still classify as words', 'a malformed nsec1…/ncryptsec1… still routes')"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`remotePlanFound`",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "CAP SKIP (executable, not planted — H-K's 20 went to rows no test pins): syncSlice.recordRemotePlanFound is pinned by remotePlanFound.test (never synced, partialize-excluded, latched once per session, Dismiss does not unlatch)"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "The `NoPlanNotice` mount",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in AppShell / ViewerHomeView (`{ownerNav && notice}`) (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Backup ladder mutual exclusivity",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in NoPlanNotice / BackupNagCard self-gates (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Ceremony has exactly TWO triggers",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in BackupNagCard, RECOVERY and the Identity & Security row (SettingsRow alert) (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`WrapMeta.payloadKind`",
+      "status": "mutated",
+      "mutants": [
+        "HK-02"
+      ],
+      "why": "HK-02 breaks the row's compatibility contract (every key already wrapped must stay readable) through the work factor; the payloadKind branch itself (absent / unknown ⇒ legacy path) is pinned by keyVault.test's LEGACY and unknown-kind cases"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`unwrapSecretKey` return type",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "CAP SKIP (executable, not planted — H-K's 20 went to rows no test pins): pinned by keyVault.test 'unwrapSecretKey DERIVES the 32-byte sk' (toHaveLength(32)) and the LEGACY round trip; its four call sites are components/session"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "NIP-06 derivation constants",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "CAP SKIP (executable, not planted — H-K's 20 went to rows no test pins): nip06Key.ts takes nostr-tools' defaults; the published-vector test and the skFromWords ≡ deriveSkFromEntropy round trips kill any path/account/passphrase/wordlist change"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "The words string",
+      "status": "mutated",
+      "mutants": [
+        "HK-01"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Backup gate — no migration",
+      "status": "mutated",
+      "mutants": [
+        "HK-15"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`setKeyProvenance`",
+      "status": "mutated",
+      "mutants": [
+        "HK-16",
+        "HK-19"
+      ],
+      "why": "the write-once guard and the null clear are pinned by backupGate.test; HK-16 and HK-19 break the \"reconnectNostr + resetAndResync RETAIN → must NOT clear\" half"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Provenance stamp ordering",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in the establishment call sites (NostrAuthGate ×4, OwnerKeySetup) (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; a source-order wiring test could pin stamp-before-establish"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`setBackupVerifiedAt`",
+      "status": "mutated",
+      "mutants": [
+        "HK-20"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`backupVerifiedAt` latch",
+      "status": "mutated",
+      "mutants": [
+        "HK-20"
+      ],
+      "why": "the two whitelist strips (VIEWER_SNAPSHOT_STRIP, APPLY_FIELDS) are pinned by viewerSettingsApply.test and validatePlanBackup.test (spec §5.1's probe caught all four planted there)"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Onboarding verifies by default (R2c-6a, SUPERSEDES the retired R2c-4a bridge)",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in OwnerKeySetup K2 (save + two-word quiz → stamp; handleGenerate/handleStartOver's null) (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; "
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "Seed-phrase hygiene copy — two variants, don't cross them",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "component-only: the code lives in OwnerKeySetup K2, RecoveryKeyCeremony and NostrAuthGate (copy strings) (JSX/state), which only a render reaches — the repo has no render harness by design and no wiring test reads it; a wiring test could pin the two strings and their placement"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`disconnectNostr`",
+      "status": "mutated",
+      "mutants": [
+        "HK-18"
+      ],
+      "why": "observation for the docs check (not a mutant): the row says merge gates BOTH nostrPubkey and nostrSigningMethod 'GATE-first with blob fallback', but bootstrap.ts gateHydratedIdentity takes `nostrPubkey: persisted?.nostrPubkey ?? gatePubkey` — blob-first once the GATE key is present (method and provenance are GATE-first); gateFieldsStandalone.test pins today's blob-first pubkey"
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`resetAndResync` (escape hatch)",
+      "status": "mutated",
+      "mutants": [
+        "HK-16"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "`reconnectNostr`",
+      "status": "mutated",
+      "mutants": [
+        "HK-19"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/identity.md",
+      "row": "NIP-46 mobile login",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "a device / relay-timing rule (warm the relay in the foreground before the deep link) in the NIP-46 login component — no lib code, no test can reach it"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v7 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (H-K owns store.md v15, v17, v18 and v21 only); an older additive-default migration row"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v8 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (H-K owns store.md v15, v17, v18 and v21 only); an older additive-default migration row"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v9 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (H-K owns store.md v15, v17, v18 and v21 only); an older additive-default migration row"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v10 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (H-K owns store.md v15, v17, v18 and v21 only); an older additive-default migration row"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v11 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-J owns store.md v11, v19 and v20 (task assignment)"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v15 migration",
+      "status": "mutated",
+      "mutants": [
+        "HK-12"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v16 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (H-K owns store.md v15, v17, v18 and v21 only); an older additive-default migration row"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v17 migration",
+      "status": "mutated",
+      "mutants": [
+        "HK-13"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v18 migration",
+      "status": "mutated",
+      "mutants": [
+        "HK-14"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v20 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-J owns store.md v11, v19 and v20 (task assignment)"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v21 migration",
+      "status": "mutated",
+      "mutants": [
+        "HK-05"
+      ],
+      "why": "the migrate strip of the 5 old scalars and the empty roster are pinned by viewerRoster.test; the trusted-snapshot strip by viewerSnapshot.test; HK-05 plants the backup's copy (expected caught)"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v19 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-J owns store.md v11, v19 and v20 (task assignment)"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v14 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (H-K owns store.md v15, v17, v18 and v21 only); an older additive-default migration row"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v12 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (H-K owns store.md v15, v17, v18 and v21 only); an older additive-default migration row"
+    },
+    {
+      "rulesFile": ".claude/rules/store.md",
+      "row": "Zustand v13 migration",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (H-K owns store.md v15, v17, v18 and v21 only); an older additive-default migration row"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "An exact (deep-equal) golden may depend only on `+ − × ÷`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-E (the engine goldens); H-K writes no golden"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "A hook may never sit to the right of `\\|\\|`, `&&`, or `?:`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (task: general.md encryption-at-rest + nostr-tools pin only); a component render rule"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "Never claim plan-data encryption-at-rest before Phase 5",
+      "status": "mutated",
+      "mutants": [
+        "HK-11"
+      ],
+      "why": "the other at-rest sentence (SettingsMain 'Your key is encrypted at rest and never stored in plain text.') makes a KEY claim, which is true — not mutated"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "No plan-dependent write before the plan loads (5c)",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-Y (the plan-load guard)"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "`strikeLtv` storage",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "Skip fields",
+      "status": "other-target",
+      "mutants": [],
+      "why": "not assigned to H-K (task: general.md encryption-at-rest + nostr-tools pin only) — synced settings, H-Y"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "`cbLiquidationPrice`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S / H-Y"
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "nostr-tools pin",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "a package.json version pin — the platform files are never touched (spec §1.2) and the harness plants TypeScript edits only; a pin change is caught by npm ci/the lockfile, not a test"
+    }
+  ]
+}

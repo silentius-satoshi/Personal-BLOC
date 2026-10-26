@@ -1,0 +1,1498 @@
+[
+  {
+    "id": "HS-01",
+    "target": "HS",
+    "file": "src/simulation/strikeCredit.ts",
+    "rule": ".claude/rules/engine.md — `STRIKE_MAX_DRAW_LTV` (spec §5.1 GAP: fullyBackedPrice)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 146.5,
+        "tests": 6,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 71,
+        "tests": 1735,
+        "files": 98
+      },
+      "T3": {
+        "ok": true,
+        "secs": 5.1,
+        "tests": 296,
+        "files": 23
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 27.6
+      }
+    },
+    "secs": 250.8,
+    "md5Before": "160a2dff8b03d22b76e8b6410017ad7f",
+    "md5Mutated": "30fc9a8b71d390459e0102c74f7537f8",
+    "md5After": "160a2dff8b03d22b76e8b6410017ad7f",
+    "restored": true
+  },
+  {
+    "id": "HS-02",
+    "target": "HS",
+    "file": "src/simulation/cbMetrics.ts",
+    "rule": "docs/claude/engines.md § `cbMetrics.ts` — shared CB LTV / liq-price source of truth (spec §5.1 GAP: the accrual clamp)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.4,
+        "tests": 19,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 76.5,
+        "tests": 1684,
+        "files": 94
+      },
+      "T3": {
+        "ok": true,
+        "secs": 5.7,
+        "tests": 324,
+        "files": 25
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.3
+      }
+    },
+    "secs": 113,
+    "md5Before": "40623716645902a60d23a52abc500dbe",
+    "md5Mutated": "2c0c6b0d06b21114754d971fe1e8bff5",
+    "md5After": "40623716645902a60d23a52abc500dbe",
+    "restored": true
+  },
+  {
+    "id": "HS-03",
+    "target": "HS",
+    "file": "src/simulation/cbMetrics.ts",
+    "rule": "boundary: accruedCbLiquidationPrice never ages backwards (the twin of the accrual clamp, docs/claude/engines.md § `cbMetrics.ts`)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.6,
+        "tests": 19,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 78.8,
+        "tests": 1684,
+        "files": 94
+      },
+      "T3": {
+        "ok": true,
+        "secs": 6.7,
+        "tests": 324,
+        "files": 25
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.4
+      }
+    },
+    "secs": 117.5,
+    "md5Before": "40623716645902a60d23a52abc500dbe",
+    "md5Mutated": "9652ea6038bc576755206ae206b5ea2b",
+    "md5After": "40623716645902a60d23a52abc500dbe",
+    "restored": true
+  },
+  {
+    "id": "HS-04",
+    "target": "HS",
+    "file": "src/simulation/safetyView.ts",
+    "rule": "docs/claude/engines.md § `cbMetrics.ts` — accruedCbLiquidationPrice: a null AsOf means the value has never been anchored and is left alone (a figure computed from the wrong field)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.1,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 44.9,
+        "tests": 603,
+        "files": 62
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.5,
+        "tests": 758,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31
+      }
+    },
+    "secs": 109.6,
+    "md5Before": "a33f300014c5815e032c15025c5ba6fb",
+    "md5Mutated": "23aea6854e9ae601edcf85c97b48a13a",
+    "md5After": "a33f300014c5815e032c15025c5ba6fb",
+    "restored": true
+  },
+  {
+    "id": "HS-05",
+    "target": "HS",
+    "file": "src/simulation/safetyView.ts",
+    "rule": "docs/claude/viewer.md § Viewer V2 — C-trusted = real figures (Strike/CB \"Liq at ~$P · $B balance\"); what a viewer sees equals what the owner sees",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.4,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 43.4,
+        "tests": 603,
+        "files": 62
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.6,
+        "tests": 758,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.4
+      }
+    },
+    "secs": 106.8,
+    "md5Before": "a33f300014c5815e032c15025c5ba6fb",
+    "md5Mutated": "6e5e5672482d59d8497f2ece13b82938",
+    "md5After": "a33f300014c5815e032c15025c5ba6fb",
+    "restored": true
+  },
+  {
+    "id": "HS-06",
+    "target": "HS",
+    "file": "src/simulation/safetyView.ts",
+    "rule": "docs/claude/viewer.md § Viewer V2 — the trusted Strike \"Liq at ~$P\" (SafetyDashboard.tsx:101 mirrors the same formula); a percent read where the fraction is stored",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.3,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 45.8,
+        "tests": 603,
+        "files": 62
+      },
+      "T3": {
+        "ok": true,
+        "secs": 30.8,
+        "tests": 758,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.2
+      }
+    },
+    "secs": 111.3,
+    "md5Before": "a33f300014c5815e032c15025c5ba6fb",
+    "md5Mutated": "c2c8129bc60b7e79fe284d0857192c96",
+    "md5After": "a33f300014c5815e032c15025c5ba6fb",
+    "restored": true
+  },
+  {
+    "id": "HS-07",
+    "target": "HS",
+    "file": "src/simulation/safetyView.ts",
+    "rule": "boundary: the trusted path's strikeDropPct clamp (the safe path's copy keeps Math.max(0, …); docs/claude/viewer.md § Viewer V2 — live drop%)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.9,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 48,
+        "tests": 603,
+        "files": 62
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32.3,
+        "tests": 758,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.4
+      }
+    },
+    "secs": 114.6,
+    "md5Before": "a33f300014c5815e032c15025c5ba6fb",
+    "md5Mutated": "a4bb0432a96afe723babae7323dda17e",
+    "md5After": "a33f300014c5815e032c15025c5ba6fb",
+    "restored": true
+  },
+  {
+    "id": "HS-08",
+    "target": "HS",
+    "file": "src/simulation/safetyView.ts",
+    "rule": "docs/claude/viewer.md § Viewer V2 — scaleSafetyView re-barLevels from the payload thresholds (the owner's copy is deriveSafetyView's 0.76/0.82 × liq LTV)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 85.6,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.9,
+        "tests": 603,
+        "files": 62
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.7,
+        "tests": 758,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.5
+      }
+    },
+    "secs": 195.9,
+    "md5Before": "a33f300014c5815e032c15025c5ba6fb",
+    "md5Mutated": "3acba7e09d9b3283ded056ffcf495858",
+    "md5After": "a33f300014c5815e032c15025c5ba6fb",
+    "restored": true
+  },
+  {
+    "id": "HS-09",
+    "target": "HS",
+    "file": "src/simulation/safetyView.ts",
+    "rule": "boundary: scaleSafetyView's factor guard — an unusable snapshot price falls back to factor 1 (docs/claude/viewer.md § Viewer V2)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.4,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.2,
+        "tests": 603,
+        "files": 62
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.6,
+        "tests": 758,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.5
+      }
+    },
+    "secs": 115.9,
+    "md5Before": "a33f300014c5815e032c15025c5ba6fb",
+    "md5Mutated": "668d1684b3e0fd6b03dd06e31fbb38d8",
+    "md5After": "a33f300014c5815e032c15025c5ba6fb",
+    "restored": true
+  },
+  {
+    "id": "HS-10",
+    "target": "HS",
+    "file": "src/simulation/safetyView.ts",
+    "rule": "docs/claude/engines.md § `cbMetrics.ts` — the entered liquidation price is authoritative (activeLiqPrice); cbBarLevel's red line is cbLiqFrac × 0.93",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 32.3,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 48.6,
+        "tests": 603,
+        "files": 62
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.3,
+        "tests": 758,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.6
+      }
+    },
+    "secs": 145,
+    "md5Before": "a33f300014c5815e032c15025c5ba6fb",
+    "md5Mutated": "23eea5e95a22b0c747cc4f164a26d664",
+    "md5After": "a33f300014c5815e032c15025c5ba6fb",
+    "restored": true
+  },
+  {
+    "id": "HS-11",
+    "target": "HS",
+    "file": "src/simulation/safetyView.ts",
+    "rule": "docs/claude/viewer.md § Viewer V2 — scaleSafetyView re-barLevels from the payload thresholds (the second copy of the CB band: the viewer's)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.4,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 44.3,
+        "tests": 603,
+        "files": 62
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32.7,
+        "tests": 758,
+        "files": 36
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.8
+      }
+    },
+    "secs": 109.3,
+    "md5Before": "a33f300014c5815e032c15025c5ba6fb",
+    "md5Mutated": "127c16d34150106b43f3cd2f10c85a2f",
+    "md5After": "a33f300014c5815e032c15025c5ba6fb",
+    "restored": true
+  },
+  {
+    "id": "HS-12",
+    "target": "HS",
+    "file": "src/simulation/strikeCredit.ts",
+    "rule": ".claude/rules/engine.md — `STRIKE_MAX_DRAW_LTV` (available = min(creditLine, collateral×price×0.50) − drawn)",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/simulation/__tests__/strikeCredit.test.ts",
+      "test": "strikeAvailableCredit collateral-bound: ltvCap is the binding constraint",
+      "message": "AssertionError: expected 7000 to be 10000 // Object.is equality\n    at /tmp/hardening-1/hunt-HS/src/simulation/__tests__/strikeCredit.test.ts:30:30\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at file:"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 1.5,
+        "tests": 6,
+        "files": 1
+      }
+    },
+    "secs": 1.6,
+    "md5Before": "160a2dff8b03d22b76e8b6410017ad7f",
+    "md5Mutated": "50f371d6921da5fb63e374bbd0a7fec9",
+    "md5After": "160a2dff8b03d22b76e8b6410017ad7f",
+    "restored": true
+  },
+  {
+    "id": "HS-13",
+    "target": "HS",
+    "file": "src/simulation/runCoinbaseLoan.ts",
+    "rule": "boundary: > ↔ >= — at the liquidation price the loan IS liquidatable (Morpho seizes at the LLTV, no grace)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.4,
+        "tests": 6,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 76.1,
+        "tests": 1836,
+        "files": 106
+      },
+      "T3": {
+        "ok": true,
+        "secs": 630.6,
+        "tests": 293,
+        "files": 22
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 27.4
+      }
+    },
+    "secs": 735.7,
+    "md5Before": "40e58d5657814ebae7dc5d3f6295ebba",
+    "md5Mutated": "4be37b20b599be4021a0157a5753debd",
+    "md5After": "40e58d5657814ebae7dc5d3f6295ebba",
+    "restored": true
+  },
+  {
+    "id": "HS-14",
+    "target": "HS",
+    "file": "src/simulation/runCoinbaseLoan.ts",
+    "rule": "boundary: a dropped clamp — the liquidation penalty is never negative (docs/claude/engines.md § CB Loan: 4.38% penalty)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.4,
+        "tests": 6,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 75.3,
+        "tests": 1836,
+        "files": 106
+      },
+      "T3": {
+        "ok": true,
+        "secs": 4.9,
+        "tests": 293,
+        "files": 22
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 28.3
+      }
+    },
+    "secs": 110,
+    "md5Before": "40e58d5657814ebae7dc5d3f6295ebba",
+    "md5Mutated": "b2340cf891e864d22ed69ab7cad0c24b",
+    "md5After": "40e58d5657814ebae7dc5d3f6295ebba",
+    "restored": true
+  },
+  {
+    "id": "HS-15",
+    "target": "HS",
+    "file": "src/components/Almanac/planMonthView.ts",
+    "rule": "boundary: >= ↔ > — the catch-up names cold when cold covers it (docs/claude/almanac.md § The plan of record (Run 2) — the status, the catch-up as facts)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 68.8,
+        "tests": 42,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 15.6,
+        "tests": 107,
+        "files": 5
+      },
+      "T3": {
+        "ok": true,
+        "secs": 37.3,
+        "tests": 829,
+        "files": 46
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.5
+      }
+    },
+    "secs": 152.5,
+    "md5Before": "16e1f14049f6a5714714459a36dfdce9",
+    "md5Mutated": "745bfb48652ebd9cd52476614925649a",
+    "md5After": "16e1f14049f6a5714714459a36dfdce9",
+    "restored": true
+  },
+  {
+    "id": "HS-16",
+    "target": "HS",
+    "file": "src/components/Almanac/planMonthView.ts",
+    "rule": "docs/claude/file-structure.md § planMonthView.ts — monthTrack: amber over Coinbase's limit, or bills unpaid (its docstring); an inverted/dropped filter",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 13.8,
+        "tests": 42,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 16.7,
+        "tests": 107,
+        "files": 5
+      },
+      "T3": {
+        "ok": true,
+        "secs": 33.4,
+        "tests": 829,
+        "files": 46
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.9
+      }
+    },
+    "secs": 97,
+    "md5Before": "16e1f14049f6a5714714459a36dfdce9",
+    "md5Mutated": "15dfd95d8f6c49fe95f96c4f9460009d",
+    "md5After": "16e1f14049f6a5714714459a36dfdce9",
+    "restored": true
+  },
+  {
+    "id": "HS-17",
+    "target": "HS",
+    "file": "src/components/Almanac/supportPolicyView.ts",
+    "rule": "boundary: <= ↔ < at the dust floor — THE one 'over' rule is planRun's cbOverLimitAtMonthEnd (headroom <= -DUST_USD); the card must agree with THIS MONTH",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 131.7,
+        "tests": 99,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.5,
+        "tests": 1105,
+        "files": 33
+      },
+      "T3": {
+        "ok": true,
+        "secs": 9.5,
+        "tests": 397,
+        "files": 34
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 27.3
+      }
+    },
+    "secs": 216.1,
+    "md5Before": "c4aaa21ae1f4366bec61bee5d7ff4322",
+    "md5Mutated": "75240241a55d5615cfdf7cbdedadfa87",
+    "md5After": "c4aaa21ae1f4366bec61bee5d7ff4322",
+    "restored": true
+  },
+  {
+    "id": "HS-18",
+    "target": "HS",
+    "file": "src/components/Almanac/decisionView.ts",
+    "rule": ".claude/rules/engine.md — THE MOVE's copy lives in `moveCard` (every line TRUE of its inputs; a figure printed from the wrong field)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 9.1,
+        "tests": 84,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 17.9,
+        "tests": 239,
+        "files": 10
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.8,
+        "tests": 799,
+        "files": 44
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 28.9
+      }
+    },
+    "secs": 90.8,
+    "md5Before": "21c1ec82e0858a76032629b22fc9bd88",
+    "md5Mutated": "85566912a747671f48aceda3bb58c405",
+    "md5After": "21c1ec82e0858a76032629b22fc9bd88",
+    "restored": true
+  },
+  {
+    "id": "HS-19",
+    "target": "HS",
+    "file": "src/components/Almanac/decisionView.ts",
+    "rule": ".claude/rules/engine.md — THE MOVE's copy lives in `moveCard` (the limit-depth line is a multiple of SUPPORT)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 8.7,
+        "tests": 84,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 17.1,
+        "tests": 239,
+        "files": 10
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.4,
+        "tests": 799,
+        "files": 44
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.9
+      }
+    },
+    "secs": 90.3,
+    "md5Before": "21c1ec82e0858a76032629b22fc9bd88",
+    "md5Mutated": "ede4ede96dd5850d19fba0122fb5cb14",
+    "md5After": "21c1ec82e0858a76032629b22fc9bd88",
+    "restored": true
+  },
+  {
+    "id": "HS-20",
+    "target": "HS",
+    "file": "src/components/Almanac/decisionView.ts",
+    "rule": ".claude/rules/engine.md — THE MOVE's copy lives in `moveCard`, and the cliff is `cbMetrics().liqPrice` (it reads plan.opening, N5)",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Almanac/__tests__/decisionView.test.ts",
+      "test": "⭐ N5 — a move under the threshold is not a move ⭐ the cliff reads TODAY's collateral, not a position that won't exist",
+      "message": "AssertionError: expected 'Coinbase seizes this loan at $31,712 …' to contain '$31,741'\n    at /tmp/hardening-1/hunt-HS/src/components/Almanac/__tests__/decisionView.test.ts:611:8\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-ar"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 129.9,
+        "tests": 84,
+        "files": 1
+      }
+    },
+    "secs": 130.1,
+    "md5Before": "21c1ec82e0858a76032629b22fc9bd88",
+    "md5Mutated": "f3e6580a084a992549334324458f466d",
+    "md5After": "21c1ec82e0858a76032629b22fc9bd88",
+    "restored": true
+  },
+  {
+    "id": "HS-21",
+    "target": "HS",
+    "file": "src/components/Almanac/decisionView.ts",
+    "rule": "boundary: >= ↔ > — 'covers': the owner's line at or above the suggestion (docs/claude/almanac.md § Decision face — suggestedLineWords, one copy with THE MOVE's line)",
+    "status": "KILLED",
+    "tier": "T2",
+    "killedBy": {
+      "file": "src/components/Almanac/__tests__/goalViews.test.ts",
+      "test": "⭐ STAND WORDS — THE MOVE's card at the stand-down (BL32) ⭐ STAND WORDS — the why line says the plan keeps nothing; the moves go to cold; never the keeps' sentence",
+      "message": "AssertionError: expected 'A $40,000 line would cover two months…' to be 'Your $40,000 line already covers two …' // Object.is equality\n    at /tmp/hardening-1/hunt-HS/src/components/Almanac/__tests__/goalViews.test.ts:506:64\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hun"
+    },
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 9.3,
+        "tests": 84,
+        "files": 1
+      },
+      "T2": {
+        "ok": false,
+        "secs": 18,
+        "tests": 178,
+        "files": 10
+      }
+    },
+    "secs": 27.4,
+    "md5Before": "21c1ec82e0858a76032629b22fc9bd88",
+    "md5Mutated": "32f2ff1ca47b5fcbddfb75b366634fc9",
+    "md5After": "21c1ec82e0858a76032629b22fc9bd88",
+    "restored": true
+  },
+  {
+    "id": "HS-22",
+    "target": "HS",
+    "file": "src/components/Almanac/decisionView.ts",
+    "rule": ".claude/rules/engine.md — The Decision face seeds its run from THE MOVE only when the move is MADE",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Almanac/__tests__/decisionView.test.ts",
+      "test": "⭐ Run B — the Decision face seeds its run only when the engine applies the policy (B4) ⭐ seedsFromMove is the run's own answer — no seed at a Strike liquidation LTV of 1 / 50 / 70%, a seed at 0 (→ 85%), 71 and 85%",
+      "message": "AssertionError: 1%: expected true to be false // Object.is equality\n    at /tmp/hardening-1/hunt-HS/src/components/Almanac/__tests__/decisionView.test.ts:1030:56\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 47.5,
+        "tests": 84,
+        "files": 1
+      }
+    },
+    "secs": 47.6,
+    "md5Before": "21c1ec82e0858a76032629b22fc9bd88",
+    "md5Mutated": "a96235b607a8af7169171cbd1defae7f",
+    "md5After": "21c1ec82e0858a76032629b22fc9bd88",
+    "restored": true
+  },
+  {
+    "id": "HS-23",
+    "target": "HS",
+    "file": "src/components/Almanac/decisionView.ts",
+    "rule": ".claude/rules/journal.md — THIS MONTH, Daily and Daily's sheets print dollars to the cent (a shared builder takes a formatter — never a second copy)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 15.2,
+        "tests": 84,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 18.3,
+        "tests": 239,
+        "files": 10
+      },
+      "T3": {
+        "ok": true,
+        "secs": 32.3,
+        "tests": 799,
+        "files": 44
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 35.1
+      }
+    },
+    "secs": 101,
+    "md5Before": "21c1ec82e0858a76032629b22fc9bd88",
+    "md5Mutated": "1a29070bce994dd200d34b4b6b82ee21",
+    "md5After": "21c1ec82e0858a76032629b22fc9bd88",
+    "restored": true
+  },
+  {
+    "id": "HS-24",
+    "target": "HS",
+    "file": "src/components/Almanac/decisionView.ts",
+    "rule": ".claude/rules/engine.md — A run shown as THIS MONTH'S MOVE carries the policy's memory, or says it can't (the breaker line)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 10.1,
+        "tests": 84,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 20.6,
+        "tests": 239,
+        "files": 10
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.8,
+        "tests": 799,
+        "files": 44
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.7
+      }
+    },
+    "secs": 98.4,
+    "md5Before": "21c1ec82e0858a76032629b22fc9bd88",
+    "md5Mutated": "4a5419d7ff8bcf7a55bcc27f911a5726",
+    "md5After": "21c1ec82e0858a76032629b22fc9bd88",
+    "restored": true
+  },
+  {
+    "id": "HS-25",
+    "target": "HS",
+    "file": "src/components/Almanac/decisionView.ts",
+    "rule": "boundary: a dropped dust floor — THE MOVE names no figure under its floor, never \"$0\" (docs/claude/file-structure.md § decisionView.ts)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 10.2,
+        "tests": 84,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 19.9,
+        "tests": 239,
+        "files": 10
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.9,
+        "tests": 799,
+        "files": 44
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.5
+      }
+    },
+    "secs": 95.8,
+    "md5Before": "21c1ec82e0858a76032629b22fc9bd88",
+    "md5Mutated": "2dd8ae1eabfa94110fcbf576306b7ab8",
+    "md5After": "21c1ec82e0858a76032629b22fc9bd88",
+    "restored": true
+  },
+  {
+    "id": "HS-26",
+    "target": "HS",
+    "file": "src/components/Almanac/ownershipFaceView.ts",
+    "rule": ".claude/rules/engine.md — Every opening figure on a face includes the cold reserve, and no Almanac face passes `deriveOwnership`'s cold parameter (the pool counted twice, through the first argument)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 105.3,
+        "tests": 20,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 6.7,
+        "tests": 172,
+        "files": 4
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.3,
+        "tests": 836,
+        "files": 47
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.2
+      }
+    },
+    "secs": 179.5,
+    "md5Before": "42378cdc0dc41899c45f05cc1d69f3b2",
+    "md5Mutated": "2e167def606aeb8102de6293657d1e3a",
+    "md5After": "42378cdc0dc41899c45f05cc1d69f3b2",
+    "restored": true
+  },
+  {
+    "id": "HS-27",
+    "target": "HS",
+    "file": "src/components/Settings/coldStorageView.ts",
+    "rule": "docs/claude/ui.md § Date Formatting — local dates come from todayLocalISO() / toLocalISO(), never toISOString() split at the T",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.1,
+        "tests": 6,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 5.5,
+        "tests": 6,
+        "files": 1
+      },
+      "T3": {
+        "ok": true,
+        "secs": 36.9,
+        "tests": 882,
+        "files": 48
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.9
+      }
+    },
+    "secs": 74.5,
+    "md5Before": "78b9f15903556dcc366b96c2d3d8ca83",
+    "md5Mutated": "7bd3f8ba9afc161dc6bcad270efb4ef0",
+    "md5After": "78b9f15903556dcc366b96c2d3d8ca83",
+    "restored": true
+  },
+  {
+    "id": "HS-28",
+    "target": "HS",
+    "file": "src/components/ui/numberInputModel.ts",
+    "rule": ".claude/rules/ui.md — `NumberInput` saving ('live' hands on each readable, non-negative keystroke)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.5,
+        "tests": 12,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 5.5,
+        "tests": 18,
+        "files": 2
+      },
+      "T3": {
+        "ok": true,
+        "secs": 36.2,
+        "tests": 870,
+        "files": 47
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.3
+      }
+    },
+    "secs": 75.6,
+    "md5Before": "309f5de49ec8409770b1f67611277a51",
+    "md5Mutated": "7968abcfdfd55ce5c20409d048fc0fff",
+    "md5After": "309f5de49ec8409770b1f67611277a51",
+    "restored": true
+  },
+  {
+    "id": "HS-29",
+    "target": "HS",
+    "file": "src/components/ui/numberInputModel.ts",
+    "rule": ".claude/rules/ui.md — `NumberInput` saving (numberCommit: saved only when it differs from what the field SHOWS)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.3,
+        "tests": 12,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 5.3,
+        "tests": 18,
+        "files": 2
+      },
+      "T3": {
+        "ok": true,
+        "secs": 33.5,
+        "tests": 870,
+        "files": 47
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.1
+      }
+    },
+    "secs": 72.3,
+    "md5Before": "309f5de49ec8409770b1f67611277a51",
+    "md5Mutated": "1d71c79a858102b08586945e3ad6683d",
+    "md5After": "309f5de49ec8409770b1f67611277a51",
+    "restored": true
+  },
+  {
+    "id": "HS-30",
+    "target": "HS",
+    "file": "src/components/ui/numberInputModel.ts",
+    "rule": ".claude/rules/ui.md — A field that saves on leaving also saves what was typed when the app goes away — without ending the edit",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/ui/__tests__/numberInputModel.test.ts",
+      "test": "⭐ NUMBER COMMIT — leaving a number field, Enter or Save saves only what the owner typed ⭐ MODES — only a live field hands a figure on as it is typed; a button field keeps its typing when left",
+      "message": "AssertionError: MODES only a plan setting saves when the app goes away: expected [ true, true, false ] to deeply equal [ false, true, false ]\n    at /tmp/hardening-1/hunt-HS/src/components/ui/__tests__/numberInputModel.test.ts:61:8\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardenin"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 4.3,
+        "tests": 12,
+        "files": 1
+      }
+    },
+    "secs": 4.4,
+    "md5Before": "309f5de49ec8409770b1f67611277a51",
+    "md5Mutated": "a74115314ca7dea9ec5c59efffed56b6",
+    "md5After": "309f5de49ec8409770b1f67611277a51",
+    "restored": true
+  },
+  {
+    "id": "HS-31",
+    "target": "HS",
+    "file": "src/components/Almanac/planRun.ts",
+    "rule": ".claude/rules/engine.md — A run shown as THIS MONTH'S MOVE carries the policy's memory (and The Decision face seeds…: ONE placement input, broken from the same breakerSeed as openingBreaker)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.8,
+        "tests": 15,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 16.4,
+        "tests": 155,
+        "files": 9
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.1,
+        "tests": 799,
+        "files": 44
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.4
+      }
+    },
+    "secs": 82.7,
+    "md5Before": "140d31e8874972bdb43992c0b8bcfd3c",
+    "md5Mutated": "dc238a878661ddff9ce4b84d41ddb4aa",
+    "md5After": "140d31e8874972bdb43992c0b8bcfd3c",
+    "restored": true
+  },
+  {
+    "id": "HS-32",
+    "target": "HS",
+    "file": "src/components/Almanac/planRun.ts",
+    "rule": ".claude/rules/engine.md — THIS MONTH, Daily and THE MOVE come from ONE builder (THE MOVE at S₀ = supportPath[0])",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Almanac/__tests__/planRun.test.ts",
+      "test": "⭐ ONE — invariant 2: THIS MONTH and the Decision card build THE MOVE from one object ⭐ ONE — the run's placement input is placementInputOf over its own facts, priced at today's price and support",
+      "message": "AssertionError: ONE support: expected 66518.96974903591 to be 64699.78768874103 // Object.is equality\n    at /tmp/hardening-1/hunt-HS/src/components/Almanac/__tests__/planRun.test.ts:45:57\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dis"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 120.7,
+        "tests": 15,
+        "files": 1
+      }
+    },
+    "secs": 120.8,
+    "md5Before": "140d31e8874972bdb43992c0b8bcfd3c",
+    "md5Mutated": "f90c8d9882658beaa2c0e55a210d3f46",
+    "md5After": "140d31e8874972bdb43992c0b8bcfd3c",
+    "restored": true
+  },
+  {
+    "id": "HS-33",
+    "target": "HS",
+    "file": "src/components/Playbook/playbookView.ts",
+    "rule": ".claude/rules/engine.md — The paydown badge has FIVE states, and three earn a colour (never collapse partial into defended)",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Playbook/__tests__/playbookView.test.ts",
+      "test": "paydownBadge — ledger and in-progress months the in-progress month labels the LTV \"now\" and the paydown as the plan",
+      "message": "AssertionError: expected 'LTV 12.8% now · plan: pay down $3,900' to be 'LTV 12.8% now · plan: pay down $3,900…' // Object.is equality\n    at /tmp/hardening-1/hunt-HS/src/components/Playbook/__tests__/playbookView.test.ts:44:60\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/h"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 1.4,
+        "tests": 15,
+        "files": 1
+      }
+    },
+    "secs": 1.5,
+    "md5Before": "7f692d84c5769d7bbab8df3997911a39",
+    "md5Mutated": "aab745dd01f5597e0c525c19b1c36135",
+    "md5After": "7f692d84c5769d7bbab8df3997911a39",
+    "restored": true
+  },
+  {
+    "id": "HS-34",
+    "target": "HS",
+    "file": "src/components/Daily/DailyModeView.tsx",
+    "rule": ".claude/rules/engine.md — Strike avail-credit invariant (the daily-view trio pill)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.6,
+        "tests": 23,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 4.2,
+        "tests": 0,
+        "files": 0
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.4,
+        "tests": 865,
+        "files": 48
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.6
+      }
+    },
+    "secs": 72.9,
+    "md5Before": "722091ed885693881e758cb775fc0190",
+    "md5Mutated": "844ce1deb6eeb0be559272c7a668a9a4",
+    "md5After": "722091ed885693881e758cb775fc0190",
+    "restored": true
+  },
+  {
+    "id": "HS-35",
+    "target": "HS",
+    "file": "src/components/Almanac/CyclingFace.tsx",
+    "rule": ".claude/rules/engine.md — Policy objects on a face are memoised on stable identities, or the lens reset fires every render",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Almanac/__tests__/supportPolicyWiring.test.ts",
+      "test": "CyclingFace.tsx — support-policy wiring ⭐ supportPath is memoised (a stable identity, or the lens reset fires every render)",
+      "message": "AssertionError: CyclingFace.tsx: const supportPath = useMemo(: expected 'import { useEffect, useMemo, useState…' to match /\\bconst supportPath = useMemo\\(/\n    at /tmp/hardening-1/hunt-HS/src/components/Almanac/__tests__/supportPolicyWiring.test.ts:43:54\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2027:60\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 1.2,
+        "tests": 66,
+        "files": 1
+      }
+    },
+    "secs": 1.5,
+    "md5Before": "1f0784e3ea85629dce2b8daf477523d2",
+    "md5Mutated": "17fe98b8a6fd851345818d64731e5fd2",
+    "md5After": "1f0784e3ea85629dce2b8daf477523d2",
+    "restored": true
+  },
+  {
+    "id": "HS-36",
+    "target": "HS",
+    "file": "src/components/Almanac/supportPolicyInputs.ts",
+    "rule": ".claude/rules/engine.md — A face builds `supportPath` only through `buildSupportPath` and never stresses or phase-shifts it (a month off by one)",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Almanac/__tests__/supportPolicyInputs.test.ts",
+      "test": "buildSupportPath — the support line, built in ONE place has months + 1 entries, each exactly plBandAt('floor', start, m)",
+      "message": "AssertionError: expected 71473.26809156006 to be 69542.30143165069 // Object.is equality\n    at /tmp/hardening-1/hunt-HS/src/components/Almanac/__tests__/supportPolicyInputs.test.ts:35:38\n    at Array.forEach (<anonymous>)\n    at /tmp/hardening-1/hunt-HS/src/components/Almanac/__tests__/supportPolicyInputs.test.ts:35:10\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artif"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 2,
+        "tests": 23,
+        "files": 1
+      }
+    },
+    "secs": 2.1,
+    "md5Before": "bae848c5bc38610445026b2b88b109db",
+    "md5Mutated": "9334d7b7b0a1511396b82e59315a318a",
+    "md5After": "bae848c5bc38610445026b2b88b109db",
+    "restored": true
+  },
+  {
+    "id": "HS-37",
+    "target": "HS",
+    "file": "src/components/Viewer/ViewerHomeView.tsx",
+    "rule": ".claude/rules/general.md — `strikeLtv` storage (decimal; multiply ×100 for display)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.6,
+        "tests": 23,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 5.4,
+        "tests": 6,
+        "files": 1
+      },
+      "T3": {
+        "ok": true,
+        "secs": 33.1,
+        "tests": 859,
+        "files": 47
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 33
+      }
+    },
+    "secs": 74.2,
+    "md5Before": "2f5266787169bd734896e7f5207b04f6",
+    "md5Mutated": "b8d735567c280620fb1789f6fc9b5024",
+    "md5After": "2f5266787169bd734896e7f5207b04f6",
+    "restored": true
+  },
+  {
+    "id": "HS-38",
+    "target": "HS",
+    "file": "src/components/Summary/SummaryBar.tsx",
+    "rule": ".claude/rules/ui.md — `SummaryBar fmtUSD` (local sign-preserving)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T2": {
+        "ok": true,
+        "secs": 3.7,
+        "tests": 0,
+        "files": 0
+      },
+      "T3": {
+        "ok": true,
+        "secs": 37.1,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.8
+      }
+    },
+    "secs": 71.6,
+    "md5Before": "b33125d4dfda852edbf2311f282d85d8",
+    "md5Mutated": "25c2c149c1f4859bbe851830f2cd4b7a",
+    "md5After": "b33125d4dfda852edbf2311f282d85d8",
+    "restored": true
+  },
+  {
+    "id": "HS-39",
+    "target": "HS",
+    "file": "src/simulation/miningUtils.ts",
+    "rule": ".claude/rules/ui.md — Mining electricity (fiat overhead — 100% sats kept, never deducted)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.7,
+        "tests": 12,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 4.9,
+        "tests": 12,
+        "files": 1
+      },
+      "T3": {
+        "ok": true,
+        "secs": 37.1,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.8
+      }
+    },
+    "secs": 73.6,
+    "md5Before": "d696be81709ca08c460e5d436f140771",
+    "md5Mutated": "89155c85d95798877192b05cb4cea54d",
+    "md5After": "d696be81709ca08c460e5d436f140771",
+    "restored": true
+  },
+  {
+    "id": "HS-40",
+    "target": "HS",
+    "file": "src/components/ui/PassphraseInput.tsx",
+    "rule": ".claude/rules/ui.md — Every masked field goes through `ui/PassphraseInput` (it bakes in the four iOS suppressions)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T2": {
+        "ok": true,
+        "secs": 4,
+        "tests": 0,
+        "files": 0
+      },
+      "T3": {
+        "ok": true,
+        "secs": 36.9,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.7
+      }
+    },
+    "secs": 71.7,
+    "md5Before": "8fc5b6111751fddcceae1a498f01d998",
+    "md5Mutated": "8b70807316b984ccc0a20b72448f185f",
+    "md5After": "8fc5b6111751fddcceae1a498f01d998",
+    "restored": true
+  },
+  {
+    "id": "HS-41",
+    "target": "HS",
+    "file": "src/components/ui/EdgeBackGesture.tsx",
+    "rule": ".claude/rules/ui.md — A page closed from code blurs the focused field first (the forwarded tap)",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/ui/__tests__/numberInputModel.test.ts",
+      "test": "⭐ LEAVING THE PAGE — the edge swipe-back leaves the field first (F1) ⭐ GESTURE — a committed swipe and a forwarded tap blur the focused field before the page goes",
+      "message": "AssertionError: GESTURE a forwarded tap blurs first: expected 'import { useRef, useState, type React…' to match /blurFocused\\(\\);\\s*try \\{ \\(document\\…/\n    at /tmp/hardening-1/hunt-HS/src/components/ui/__tests__/numberInputModel.test.ts:160:54\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file://"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 1.7,
+        "tests": 12,
+        "files": 1
+      }
+    },
+    "secs": 1.8,
+    "md5Before": "c96034b6575e8aa9a1733f3ce78d5f7e",
+    "md5Mutated": "e4e9b9a48d636d8818d453de06aa046a",
+    "md5After": "c96034b6575e8aa9a1733f3ce78d5f7e",
+    "restored": true
+  },
+  {
+    "id": "HS-42",
+    "target": "HS",
+    "file": "src/components/Layout/AppShell.tsx",
+    "rule": ".claude/rules/ui.md — Tab hidden guard (also the CB Loan / Emergency tab with the Coinbase loan off)",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/components/Advisor/__tests__/planEdgesWiring.test.ts",
+      "test": "⭐ GATE — D3: the Emergency Console runs with a Coinbase loan ⭐ GATE — every label names the console; the Decision face and the crash day read the loan",
+      "message": "AssertionError: GATE no tab without its loan, on every change: expected 'import { useEffect, useState, useRef …' to match /\\}, \\[hiddenTabs, activeTab, hasCbLoa…/\n    at /tmp/hardening-1/hunt-HS/src/components/Advisor/__tests__/planEdgesWiring.test.ts:81:68\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HS/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCa"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 13.1,
+        "tests": 16,
+        "files": 1
+      }
+    },
+    "secs": 13.3,
+    "md5Before": "1259e3c2b9f1c517317c402f4e13ffe3",
+    "md5Mutated": "9d251ffa9cb4aee302b929f9897b32fe",
+    "md5After": "1259e3c2b9f1c517317c402f4e13ffe3",
+    "restored": true
+  },
+  {
+    "id": "HS-43",
+    "target": "HS",
+    "file": "src/components/Settings/SettingsMain.tsx",
+    "rule": ".claude/rules/ui.md — `SettingsMain` ALL_TABS (keep in sync with AppShell `ALL_TABS_META`)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 4.3,
+        "tests": 16,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 3.8,
+        "tests": 0,
+        "files": 0
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.9,
+        "tests": 872,
+        "files": 48
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 33.5
+      }
+    },
+    "secs": 77.8,
+    "md5Before": "da03a3f452f2382636937804f1dd68e2",
+    "md5Mutated": "79ba6ddf9d67dc6772474d1445ad6a79",
+    "md5After": "da03a3f452f2382636937804f1dd68e2",
+    "restored": true
+  }
+]

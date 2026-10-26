@@ -1,0 +1,859 @@
+{
+  "target": "HE",
+  "base": "c7f709eff95612dc75537e356ba5219d808dab02",
+  "mutants": [
+    {
+      "id": "HE-01",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "? Math.max(0, Math.min(ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop), cap * cbColl * price - cbDebt))",
+      "replace": "? Math.max(0, Math.min(ceilingHeadroomUsd(cbDebt, cbColl, price, policy.cbStop), cap * cbColl * price - cbDebt))",
+      "rule": ".claude/rules/engine.md — Every support-policy stress figure is support(t), never `price × (1 − buffer)`",
+      "why": "The refinance cap measured at today's price: above support a Strike balance carried from a defense shift refinances past the Coinbase ceiling AT SUPPORT (cbDebt > cbColl × S × cbStop) — the ceiling loosens as the price rises.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-02",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "const skCeil = ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop);",
+      "replace": "const skCeil = ceilingHeadroomUsd(strikeBal, strikeColl, price, policy.skStop);",
+      "rule": ".claude/rules/engine.md — Every support-policy stress figure is support(t), never `price × (1 − buffer)`",
+      "why": "The draw's Strike ceiling read at today's price: a Strike pool short of its line's keep (migration blocked, small opening collateral) draws past strikeColl × S × skStop in an accumulate month above support.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-03",
+      "target": "HE",
+      "file": "src/simulation/placement.ts",
+      "find": "strikeRoomUsd: Math.max(0, ceilingHeadroomUsd(strikeBalance, strikeCollateralBtc, support, skStop)),",
+      "replace": "strikeRoomUsd: Math.max(0, ceilingHeadroomUsd(strikeBalance, strikeCollateralBtc, price, skStop)),",
+      "rule": ".claude/rules/engine.md — Every support-policy stress figure is support(t), never `price × (1 − buffer)`",
+      "why": "THE MOVE's \"short\" line (\"at support today the policy's Strike limit leaves $X of room\", decisionView) prints the room at today's price — overstated by (price − S) × coll × skStop above support.",
+      "tests": [
+        "src/simulation/__tests__/placement.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-04",
+      "target": "HE",
+      "file": "src/lib/planPolicy.ts",
+      "find": "return typeof v === 'number' && Number.isFinite(v) ? Math.min(r.max, Math.max(r.min, v)) : PLAN_POLICY_DEFAULTS[k];",
+      "replace": "return typeof v === 'number' && !Number.isNaN(v) ? Math.min(r.max, Math.max(r.min, v)) : PLAN_POLICY_DEFAULTS[k];",
+      "rule": ".claude/rules/engine.md — The support policy's settings are the owner's SAVED plan",
+      "why": "A NaN-only guard: a non-finite saved setting (±Infinity) reads as the range edge (70% stop, 48 months of buffer) instead of the C1 default every reader is promised for junk.",
+      "tests": [
+        "src/store/__tests__/planPolicy.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HE-05",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "&& ltvOf(cbDebt, cbColl, price) >= CB_LLTV;",
+      "replace": "&& ltvOf(cbDebt - ci, cbColl, price) >= CB_LLTV;",
+      "rule": ".claude/rules/engine.md — Under the support policy, Morpho's seizure on the way down comes FIRST in the month, right after the interest",
+      "why": "The way-down test reads last month-end's debt, not the debt after this month's interest: a loan the interest carries from just under 86% to past it is not seized on the way down — the month acts (draws, defends) first, and firstOpenPastLltvMonth misses or delays that month.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+        "src/simulation/__tests__/seizeOnTheWayDown.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-06",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "coldRetrievedAboveSupportBtc += coldRetrievedBtc - coldRetrievedAtStart;",
+      "replace": "coldRetrievedAboveSupportBtc += coldRetrievedBtc - coldRetrievedAtStart - strikeCureColdBtc;",
+      "rule": ".claude/rules/engine.md — Cold is never retrieved at or above support for a position that opens inside both ceilings",
+      "why": "G2's field narrowed by dropping a path: cold a Strike cure pulls at or above support (an opening over Strike's ceiling) is not counted, so coldRetrievedAboveSupportBtc under-reports the coins that left cold.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-07",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "skCapPct: effectiveStrikeCapPct(i.strikeLtvCapPct, i.strikeMarginLtv),",
+      "replace": "skCapPct: i.strikeLtvCapPct ?? 0,",
+      "rule": ".claude/rules/engine.md — A stop at support can never exceed its leg's defense line (engine clamp)",
+      "why": "The stop clamp fed the raw Strike cap, not the cap the engine runs (66.5% max): a 68% Strike stop under a 90% cap runs at 68%, above the 66.5% defense line it must sit under.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-08",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "const doomGate = policy !== null && inputs.doomGateCbTopUp !== false;",
+      "replace": "const doomGate = policy !== null && inputs.doomGateCbTopUp === true;",
+      "rule": ".claude/rules/engine.md — `incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`, … are test-only",
+      "why": "The adopted doom gate \"fixed\" to default OFF (absent no longer means enabled): under the month-end reading cold and Strike collateral pour into a Coinbase Morpho seizes that month.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+        "src/simulation/__tests__/seizeOnTheWayDown.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-09",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "inHold: m < strikeHoldUntil,",
+      "replace": "inHold: m <= strikeHoldUntil,",
+      "rule": ".claude/rules/engine.md — Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules",
+      "why": "Off by one on the 60-day hold for releases: in the month the hold ends (m = strikeHoldUntil, which the migration already treats as free) a defense top-up gets no Strike collateral — the shift or cold covers it, or the line goes unheld.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-10",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "coldRetrievedBtc += t.fromColdBtc;   // 🔴 joins the one retrieval counter, or the cold ledger breaks",
+      "replace": "coldRetrievedBtc += t.fromColdBtc;   // 🔴 joins the one retrieval counter, or the cold ledger breaks\n            if (t.fromStrikeBtc > 0) strikeHoldUntil = m + 2;",
+      "rule": ".claude/rules/engine.md — Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules",
+      "why": "A top-up-first release from Strike starts the 60-day hold (\"Collateral leaving Strike starts no hold\"): after a crash month the recovery's migration and any next-month release are blocked for two months.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-11",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "&& ltvOf(strikeBal, strikeColl - move, price) < strikeMaxDrawLtv) {",
+      "replace": "&& ltvOf(strikeBal, strikeColl - move, price) <= strikeMaxDrawLtv) {",
+      "rule": "docs/claude/almanac.md § Support-anchored policy (step 5: \"only at ≤ 40% before and < 50% after\") | boundary: strictly under 50%",
+      "why": "The migration accepts a move that leaves Strike exactly ON its 50% draw line (balance at the full line, price on support) — a release Strike refuses, and THE MOVE (strikeReleasableBtc, strictly under) would not show it.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-12",
+      "target": "HE",
+      "file": "src/simulation/crashPlaybook.ts",
+      "find": "if (shiftShortfallUsd > 0 && !doomedNow()) {",
+      "replace": "if (shiftShortfallUsd > 0 && !doomed) {",
+      "rule": ".claude/rules/engine.md — `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off",
+      "why": "The fallback top-up reuses the OPENING doom instead of re-asking after the shift (the engine asks post-shift): a Coinbase doomed at the open but saved by the shift gets no cold, and the console reads short where the engine holds.",
+      "tests": [
+        "src/simulation/__tests__/crashPlaybook.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-13",
+      "target": "HE",
+      "file": "src/simulation/crashPlaybook.ts",
+      "find": "const dust = topUpFirst && d.drawUsd < SHIFT_DUST_USD;",
+      "replace": "const dust = d.drawUsd < SHIFT_DUST_USD;",
+      "rule": ".claude/rules/engine.md — `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off",
+      "why": "The dust drop applied in shift-first too (the engine drops only after a top-up-first step): a sub-half-cent shift-first draw is booked by the engine and dropped by the console — parity breaks on a Strike line with cents of room.",
+      "tests": [
+        "src/simulation/__tests__/crashPlaybook.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-14",
+      "target": "HE",
+      "file": "src/simulation/placement.ts",
+      "find": "const keep = strikeKeepCollateralBtc(creditLine, strikeBalance, skStop, support, standDown);",
+      "replace": "const keep = strikeKeepCollateralBtc(creditLine, strikeBalance, STRIKE_MAX_DRAW_LTV, support, standDown);",
+      "rule": ".claude/rules/engine.md — The keeps have ONE definition each",
+      "why": "THE MOVE calls the leaf with Strike's own 50% draw line instead of the run's clamped Strike stop: at any stop but 50% the card's Strike keep is a second placement rule and month 1 ≠ plan.after.",
+      "tests": [
+        "src/simulation/__tests__/placement.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-15",
+      "target": "HE",
+      "file": "src/components/Tools/crashPlaybookView.ts",
+      "find": "if (result.after.cbLtv >= lltv) return 'doom';",
+      "replace": "if (result.doomed || result.after.cbLtv >= lltv) return 'doom';",
+      "rule": ".claude/rules/engine.md — The console's doom warning keys off the after-state (≥ 86%), never `result.doomed`",
+      "why": "\"Belt and braces\" doom: a run doomed at the open that the debt shift brings under 86% prints the red doom outcome on the console and THIS MONTH's line instead of held/short.",
+      "tests": [
+        "src/components/Tools/__tests__/crashPlaybookView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HE-16",
+      "target": "HE",
+      "file": "src/components/Tools/crashPlaybookView.ts",
+      "find": "const eight = Math.floor(btc * 1e8 + FLOOR_GUARD) / 1e8;",
+      "replace": "const eight = Math.round(btc * 1e8) / 1e8;",
+      "rule": ".claude/rules/engine.md — Every crash-day step amount is floored to its printed precision",
+      "why": "The 8-dp tier rounds: a 0.000009996 ₿ step prints 0.00001000 (more than moves) and a 6e-9 ₿ step prints 0.00000001 — a satoshi that is not there, where the floor lists no step.",
+      "tests": [
+        "src/components/Tools/__tests__/crashPlaybookView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HE-17",
+      "target": "HE",
+      "file": "src/components/Daily/DailyModeView.tsx",
+      "find": "BLOC paydown</span>",
+      "replace": "CB paydown</span>",
+      "rule": ".claude/rules/engine.md — `runAdvisor` is gone (5e, D5-A …)",
+      "why": "Daily's month rollup labels the Strike paydown stream \"CB paydown\" — the projection's retired wording back on a plan screen, naming the wrong lender.",
+      "tests": [
+        "src/components/Tools/__tests__/monthlyPlaybookWiring.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HE-18",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "const allIn = r.last.equity - (r.totalUnfundedUsd + r.totalCashToBillsUsd + r.totalCashToCureUsd);",
+      "replace": "const allIn = r.last.equity - (r.totalUnfundedUsd + r.totalCashToBillsUsd);",
+      "rule": ".claude/rules/engine.md — The verdict compares all-in equity on both sides (unpaid bills and reserve cash counted)",
+      "why": "All-in equity drops the reserve cash spent on a Strike cure: outside money that lowered the debt counts as a gain, flipping close verdicts toward \"beats never drawing\".",
+      "tests": [
+        "src/simulation/__tests__/cyclingSim.test.ts",
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-19",
+      "target": "HE",
+      "file": "src/components/Almanac/supportPolicyView.ts",
+      "find": "cbStopAtSupportPct, strikeStopAtSupportPct, ctx.cbLtvCapPct, ctx.strikeCapEffPct);",
+      "replace": "cbStopAtSupportPct, strikeStopAtSupportPct, ctx.cbLtvCapPct, 0);",
+      "rule": ".claude/rules/engine.md — The stop clamp has one definition, `effectivePolicyStops`",
+      "why": "The faces' readout calls the clamp without the Strike cap: a 58% Strike stop under a 55% cap reads \"58%, not clamped\" while the run uses 55% — the readout describes a different run.",
+      "tests": [
+        "src/components/Almanac/__tests__/supportPolicyView.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HE-20",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "survivalGuard && skDefend && defend && liqMonth === null && price > 0 && defenseShortfallUsd > 0",
+      "replace": "survivalGuard && skDefend && defend && liqMonth === null && price > 0",
+      "rule": ".claude/rules/engine.md — The Strike cap never outranks Coinbase survival (⚠ the guard runs ONLY in a month the CB top-up runs)",
+      "why": "The survival guard runs in months the CB top-up never runs: the reserve is cut and firstSurvivalYieldMonth says \"Strike gave way\" in a month nothing was handed over.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSim.test.ts",
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-21",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "const allowed = Math.max(0, coldBtc - survivalBtc);",
+      "replace": "const allowed = coldBtc - survivalBtc;",
+      "rule": "boundary: the survival guard's Math.max(0, …) clamp — .claude/rules/engine.md — The Strike cap never outranks Coinbase survival",
+      "why": "Without the clamp, cold short of the survival need makes the reserve negative: the CB top-up is handed more cold than exists (cold goes negative) and a yield is reported with no reserve to cut.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSim.test.ts",
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-22",
+      "target": "HE",
+      "file": "src/simulation/powerLaw.ts",
+      "find": "export const PL_A_FLOOR   = 0.42e-17;",
+      "replace": "export const PL_A_FLOOR   = PL_A_FAIR * 0.362;",
+      "rule": ".claude/rules/engine.md — Power Law A constants",
+      "why": "Support derived as fair × 0.362 (the \"fixed 36.2% of fair\" the docs describe) instead of its own constant: support — and every ceiling at support — moves 0.02% and follows any later edit of the fair A.",
+      "tests": [
+        "src/simulation/__tests__/powerLaw.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HE-23",
+      "target": "HE",
+      "file": "src/simulation/runBlocYearOne.ts",
+      "find": "if (creditExceeded) {",
+      "replace": "if (creditExceeded && paydown === 0) {",
+      "rule": ".claude/rules/engine.md — Phase 4 priority",
+      "why": "The month-by-month table's phase classifies a paydown before creditExceeded: a month that both runs out of line and pays down reads phase 2/3 instead of phase 4.",
+      "tests": [
+        "src/simulation/__tests__/aprAnchors.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HE-24",
+      "target": "HE",
+      "file": "src/simulation/runBlocYearOne.ts",
+      "find": "const interest = balance * monthlyRate;",
+      "replace": "const interest = (balance - actualDraw) * monthlyRate;",
+      "rule": ".claude/rules/engine.md — BLOC draw order",
+      "why": "Interest accrues on the pre-draw balance (interest → draw), so the month's draw carries no interest until next month — every Strike balance in the month-by-month table is understated.",
+      "tests": [
+        "src/simulation/__tests__/aprAnchors.test.ts"
+      ],
+      "outsideList": true
+    },
+    {
+      "id": "HE-25",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "const cmr = cbAprPct / 100 / 12;",
+      "replace": "const cmr = Math.pow(1 + cbAprPct / 100, 1 / 12) - 1;",
+      "rule": ".claude/rules/general.md — An exact (deep-equal) golden may depend only on `+ − × ÷`",
+      "why": "Coinbase's monthly rate compounded with Math.pow: the engine is no longer pure + − × ÷, so the G1 golden's last bits depend on the runtime's pow (and every CB balance moves).",
+      "tests": [
+        "src/simulation/__tests__/cyclingSim.test.ts",
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-26",
+      "target": "HE",
+      "file": "src/simulation/supportPolicy.ts",
+      "find": "  if (ltv >= partialLiqLtv) {",
+      "replace": "  if (ltv > partialLiqLtv) {",
+      "rule": "docs/claude/almanac.md § Support-anchored policy (step 8: \"at/over the partial liquidation LTV (85%) the sale is immediate\") | boundary: ≥ 85%",
+      "why": "At exactly 85% the call is treated as curable: cash and cold are spent on a cure window Strike does not give, instead of the immediate sale.",
+      "tests": [
+        "src/simulation/__tests__/supportPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-27",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "if (strikeBal < 0.005) strikeBal = 0;\n            if (cbDebt < 0.005) cbDebt = 0;\n            payDownUsd = a.toStrikeUsd + a.toCbUsd;",
+      "replace": "if (strikeBal < 1e-9) strikeBal = 0;\n            if (cbDebt < 0.005) cbDebt = 0;\n            payDownUsd = a.toStrikeUsd + a.toCbUsd;",
+      "rule": "docs/claude/almanac.md § Support-anchored policy (\"Pay down to ZERO … the 0.005 residual sweep — never correct it to 1e-9\")",
+      "why": "The pay-down's half-cent sweep \"corrected\" to 1e-9: a surplus within half a cent of the Strike balance leaves a sub-cent residue that accrues, shows a phantom Strike LTV and blocks the goal's exactly-zero stand-down.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-28",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "if (c.cureColdBtc > 0) strikeHoldUntil = m + 2;",
+      "replace": "if (c.cureColdBtc > 0) strikeHoldUntil = m + 1;",
+      "rule": "docs/claude/almanac.md § Support-anchored policy (step 5: \"never inside the 60-day hold that follows ANY cold → Strike move (strikeHoldUntil = m + 2)\") — the cure's copy",
+      "why": "The cure's cold → Strike move holds for one month, not two (the Strike cap's copy keeps m + 2): the migration and releases resume 30 days after a cure deposit.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-29",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "if (m > 0 && (goalStandDown || (state !== 'paused' && state !== 'broken' && liqMonth === null)) && price > 0",
+      "replace": "if (m > 0 && (goalStandDown || (state !== 'paused' && state !== 'broken')) && price > 0",
+      "rule": "docs/claude/file-structure.md § cyclingSim.ts (\"Terminal for the WHOLE Coinbase loop\") · almanac.md § Support-anchored policy step 9",
+      "why": "Step 9 keeps sweeping after a seizure: once the price is back above support the survivor's Coinbase pool is swept to cold on a loop that no longer exists (the seizure row aside, sweptToColdBtc > 0 post-liquidation).",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-30",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "price > 0 && k < 1 - SUPPORT_EPS",
+      "replace": "price > 0 && k <= 1",
+      "rule": "boundary: the band's top, k ∈ [depth, 1) — .claude/rules/engine.md — `crashPlaybook` is the one crash-day answer",
+      "why": "Top up first also ON support (k ∈ [1 − SUPPORT_EPS, 1]): the engine pours cold in before the shift where crashPlaybook (k < 1 − ε) shifts first — the engine and the console disagree at a price on the support line.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-31",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "&& ltvOf(cbDebt, cbColl, price) > cap * (1 + 1e-9)) firstUnheldMonth = m;",
+      "replace": "&& ltvOf(cbDebt, cbColl, price) > cap) firstUnheldMonth = m;",
+      "rule": "boundary: firstUnheldMonth is ulp-tolerant (cyclingSim.ts CyclingResult.firstUnheldMonth: \"a top-up landing exactly on the line can sit an ulp over it\")",
+      "why": "Dropped float guard: a top-up that restores Coinbase exactly onto its line, an ulp over in float, sets firstUnheldMonth — the card says the playbook could not hold the line when it did.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-32",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "      if (m > 0) {\n        const wasBroken = breaker.broken;",
+      "replace": "      if (m >= 0) {\n        const wasBroken = breaker.broken;",
+      "rule": "docs/claude/almanac.md § Support-anchored policy (\"Hard breaker … Month 0 is the opening and never feeds it\")",
+      "why": "The opening month-end feeds the breaker: a re-planned run (seeded from breakerFromHistory, which already folded today's close) counts today twice and trips a month early — modelBrokenMonth 0 on an opening below 0.9 × S.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts",
+        "src/simulation/__tests__/decisionMemory.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-33",
+      "target": "HE",
+      "file": "src/simulation/planSearch.ts",
+      "find": "const pool = rankable.length > 0 ? rankable : perPath.map((_, i) => i);",
+      "replace": "const pool = rankable;",
+      "rule": "docs/claude/file-structure.md § planSearch.ts (M4: a run whose policyApplied differs from what was asked is NOT ranked) | boundary: no path ranked",
+      "why": "With every path policy-ignored the field is empty and the crown falls to index 0, \"decided by no rule\" — the Worst (modeled) crown no longer ranks anything (base: ranks them all).",
+      "tests": [
+        "src/simulation/__tests__/planSearch.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-34",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "strikeFloorLtv: skFloorOn ? skCapPct / 100 : undefined,\n            strikeReleaseCapBtc: releaseRules ? releasableNow(m, price) : undefined,",
+      "replace": "strikeFloorLtv: skFloorOn ? skCapPct / 100 : undefined,\n            strikeReleaseCapBtc: undefined,",
+      "rule": ".claude/rules/engine.md — Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules — the emergency top-up's copy",
+      "why": "The post-shift emergency top-up's Strike leg is bounded only by the margin buffer (66.5%) again — a move Strike never allows once the shift took it over 40%.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-35",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "strikeFloorLtv: skDefend ? skCapPct / 100 : undefined,\n            strikeReleaseCapBtc: releaseRules ? releasableNow(m, price) : undefined,",
+      "replace": "strikeFloorLtv: skDefend ? skCapPct / 100 : undefined,\n            strikeReleaseCapBtc: undefined,",
+      "rule": ".claude/rules/engine.md — Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules — top up first's copy",
+      "why": "Top up first takes Strike collateral down to the margin buffer, not what Strike releases (≤ 40% before, < 50% after, no hold): the playbook moves coins Strike would refuse.",
+      "tests": [
+        "src/simulation/__tests__/cyclingSimPolicy.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-36",
+      "target": "HE",
+      "file": "src/simulation/cyclingSim.ts",
+      "find": "&& !(Math.abs(allInEquity(r) - baselineAllInEquity(r)) >= NEVER_DRAW_TIE_USD);",
+      "replace": "&& !(Math.abs(allInEquity(r) - baselineAllInEquity(r)) > NEVER_DRAW_TIE_USD);",
+      "rule": ".claude/rules/engine.md — The never-draw verdict is ONE rule (BL14) | boundary: a gap of exactly the $0.50 dust floor",
+      "why": "With a goal, a gap of exactly $0.50 — the dust floor the faces print by — becomes a tie instead of a win or loss (the floor is \"under\", not \"at or under\").",
+      "tests": [
+        "src/simulation/__tests__/goalAmount.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-37",
+      "target": "HE",
+      "file": "src/simulation/goal.ts",
+      "find": "return goal !== null && net !== null && net >= goal * (1 - GOAL_EPS);",
+      "replace": "return goal !== null && net !== null && net >= goal;",
+      "rule": "docs/claude/engines.md § The plan's goal amount — goal.ts GOAL_EPS (\"a figure computed ONTO the goal never reads as below it\") | boundary",
+      "why": "Dropped float guard: net coins computed onto the goal an ulp under it read as below it — the plan keeps borrowing and buying in the month it reached its goal.",
+      "tests": [
+        "src/simulation/__tests__/goalAmount.test.ts",
+        "src/simulation/__tests__/goalStandDown.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-38",
+      "target": "HE",
+      "file": "src/simulation/monteCarlo.ts",
+      "find": "beatsNeverDraw: beatsNeverDraw(r),",
+      "replace": "beatsNeverDraw: beatsNeverDraw(r) || neverDrawTie(r),",
+      "rule": ".claude/rules/engine.md — The never-draw verdict is ONE rule (BL14)",
+      "why": "The futures' \"beats never drawing\" count includes ties (a goal reached early makes the plan the never-draw world) — the count no longer reads the engine's one rule, and ties are counted twice.",
+      "tests": [
+        "src/simulation/__tests__/futures.test.ts"
+      ],
+      "outsideList": false
+    },
+    {
+      "id": "HE-39",
+      "target": "HE",
+      "file": "src/components/MonthBreakdown/MonthBreakdown.tsx",
+      "find": "const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, sandboxBtc);",
+      "replace": "const collateralBtc = getCollateralForTier(activeTier, expenses, projectedPrice, sandboxBtc);",
+      "rule": ".claude/rules/engine.md — `getCollateralForTier`",
+      "why": "The month-by-month table sizes the tier's collateral at the year-end projected price instead of the starting btcPrice: a bull scenario shrinks the collateral (−44% at +80%), a bear one grows it.",
+      "tests": [],
+      "outsideList": true
+    },
+    {
+      "id": "HE-40",
+      "target": "HE",
+      "file": "src/simulation/crashPlaybook.ts",
+      "find": "held = shiftShortfallUsd <= 0;",
+      "replace": "held = shiftShortfallUsd < 0;",
+      "rule": "boundary: crashPlaybook — a shift whose shortfall is exactly 0 held the line (shortfallBtc 0 \"when the line held\")",
+      "why": "A shift that exactly restores the line is not \"held\": shortfallBtc is recomputed from pools that sit on the line, and an ulp over prints a phantom shortfall (short instead of held on the card).",
+      "tests": [
+        "src/simulation/__tests__/crashPlaybook.test.ts"
+      ],
+      "outsideList": false
+    }
+  ],
+  "rowCoverage": [
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Every support-policy stress figure is support(t), never `price × (1 − buffer)`",
+      "status": "mutated",
+      "mutants": [
+        "HE-01",
+        "HE-02",
+        "HE-03"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The support policy's settings are the owner's SAVED plan, edited only in Settings' \"Your plan\"",
+      "status": "mutated",
+      "mutants": [
+        "HE-04"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "THIS MONTH, Daily and THE MOVE come from ONE builder",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Under the support policy, Morpho's seizure on the way down comes FIRST in the month",
+      "status": "mutated",
+      "mutants": [
+        "HE-05"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Cold is never retrieved at or above support for a position that opens inside both ceilings",
+      "status": "mutated",
+      "mutants": [
+        "HE-06"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Every opening figure on a face includes the cold reserve",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "A stop at support can never exceed its leg's defense line (engine clamp)",
+      "status": "mutated",
+      "mutants": [
+        "HE-07"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules`, `topUpBeforeShift`, `topUpFirstAnyDepth` and `seizeOnTheWayDown` are test-only",
+      "status": "mutated",
+      "mutants": [
+        "HE-08"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules",
+      "status": "mutated",
+      "mutants": [
+        "HE-09",
+        "HE-10",
+        "HE-34",
+        "HE-35"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The keeps have ONE definition each",
+      "status": "mutated",
+      "mutants": [
+        "HE-14"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "A run shown as THIS MONTH'S MOVE carries the policy's memory",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The Decision face seeds its run from THE MOVE only when the move is MADE",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The Decision face's Print never clears its body class synchronously",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "THE MOVE's copy lives in `moveCard`, and the cliff is `cbMetrics().liqPrice`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`crashPlaybook` is the one crash-day answer",
+      "status": "mutated",
+      "mutants": [
+        "HE-12",
+        "HE-13",
+        "HE-30"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The console's doom warning keys off the after-state (≥ 86%), never `result.doomed`",
+      "status": "mutated",
+      "mutants": [
+        "HE-15"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Every crash-day step amount is floored to its printed precision",
+      "status": "mutated",
+      "mutants": [
+        "HE-16"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`runAdvisor` is gone",
+      "status": "mutated",
+      "mutants": [
+        "HE-17"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The verdict compares all-in equity on both sides",
+      "status": "mutated",
+      "mutants": [
+        "HE-18"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The never-draw verdict is ONE rule (BL14)",
+      "status": "mutated",
+      "mutants": [
+        "HE-36",
+        "HE-38"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Policy objects on a face are memoised on stable identities",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The stop clamp has one definition, `effectivePolicyStops`",
+      "status": "mutated",
+      "mutants": [
+        "HE-19"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "A face builds `supportPath` only through `buildSupportPath`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The Strike cap never outranks Coinbase survival",
+      "status": "mutated",
+      "mutants": [
+        "HE-20",
+        "HE-21"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "The paydown badge has FIVE states, and three earn a colour",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Power Law A constants",
+      "status": "mutated",
+      "mutants": [
+        "HE-22"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`ltvTriggered` mode",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "History row: runAdvisor (and its ltvTriggered mode) left the code in 5e (D5-A); nothing runs this mode, so no line of code exists to mutate. The live remnant (the crash day reads the Coinbase loan alone) is the crash rows' code, mutated under them."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`ltvTriggered` band",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "History row: the three-threshold band ran only in runAdvisor, deleted in 5e (D5-A); cbRotateBackPct is inert and no screen runs the band, so no code implements it any more."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Phase 4 priority",
+      "status": "mutated",
+      "mutants": [
+        "HE-23"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "BLOC draw order",
+      "status": "mutated",
+      "mutants": [
+        "HE-24"
+      ],
+      "why": "Mutated in runBlocYearOne.ts (draw → interest, as the row says; aprAnchors.test pins month 1). ⚠ FINDING for the owner, not mutated: runBLOC.ts:39-47 (the Smart BLOC 5-year sim) runs interest → draw (\"Step 2: interest capitalizes onto LoC (must be before expenses draw)\") — the code contradicts the row there, or the row covers runBlocYearOne only and does not say so."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`getCollateralForTier`",
+      "status": "mutated",
+      "mutants": [
+        "HE-39"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`computeLiquidationAnalysis`",
+      "status": "not-executable",
+      "mutants": [],
+      "why": "An import-graph rule (runCoinbaseLoan.ts imports only ./ltv). A single edit adding an import of runBLOC/runAdvisor/runBlocYearOne is either unused — tsc -b (noUnusedLocals) kills it, a type-only kill the task forbids — or must reroute a liquidation figure through a function those modules do not have (they export calcTiers/runBLOC, getCollateralForTier/runBlocYearOne, and the strategy-month helpers). No realistic behavioural mutant exists."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "`STRIKE_MAX_DRAW_LTV`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/engine.md",
+      "row": "Strike avail-credit invariant",
+      "status": "other-target",
+      "mutants": [],
+      "why": "H-S owns this row (the task assigns it to H-S; its code lives in H-S's files — planRun/planMonthView/decisionView/the faces/strikeCredit/safetyView)."
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "An exact (deep-equal) golden may depend only on `+ − × ÷`",
+      "status": "mutated",
+      "mutants": [
+        "HE-25"
+      ]
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "A hook may never sit to the right of `||`, `&&`, or `?:`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "Not assigned to H-E: the task names only general.md's exact-golden row. A component/hook rule (UI targets), with no render harness."
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "Never claim plan-data encryption-at-rest before Phase 5",
+      "status": "other-target",
+      "mutants": [],
+      "why": "Not assigned to H-E (task: only the exact-golden row of general.md); copy about the key vault — H-K's area."
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "No plan-dependent write before the plan loads (5c)",
+      "status": "other-target",
+      "mutants": [],
+      "why": "Not assigned to H-E (task: only the exact-golden row of general.md); the plan-load guard is H-Y's target (spec §5.2)."
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "`strikeLtv` storage",
+      "status": "other-target",
+      "mutants": [],
+      "why": "Not assigned to H-E (task: only the exact-golden row of general.md); a store/display convention outside the engine files."
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "Skip fields",
+      "status": "other-target",
+      "mutants": [],
+      "why": "Not assigned to H-E (task: only the exact-golden row of general.md); synced settings — H-Y / H-K's store and sync code."
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "`cbLiquidationPrice`",
+      "status": "other-target",
+      "mutants": [],
+      "why": "Not assigned to H-E (task: only the exact-golden row of general.md); a synced settings field (sync / Safety) — H-Y / H-S."
+    },
+    {
+      "rulesFile": ".claude/rules/general.md",
+      "row": "nostr-tools pin",
+      "status": "other-target",
+      "mutants": [],
+      "why": "Not assigned to H-E (task: only the exact-golden row of general.md); a package.json pin — platform files are never touched (spec §1.2)."
+    }
+  ]
+}

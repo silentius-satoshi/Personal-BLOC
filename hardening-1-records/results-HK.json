@@ -1,0 +1,510 @@
+[
+  {
+    "id": "HK-01",
+    "target": "HK",
+    "file": "src/lib/nostr/keyVault.ts",
+    "rule": ".claude/rules/identity.md — The words string",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 14.6,
+        "tests": 21,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 51.1,
+        "tests": 598,
+        "files": 64
+      },
+      "T3": {
+        "ok": true,
+        "secs": 36.8,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 28.9
+      }
+    },
+    "secs": 131.9,
+    "md5Before": "82afd7410efeb4b70e05fe1ba9c2ad66",
+    "md5Mutated": "52d75e346f066aa1c6faa0db0364ad06",
+    "md5After": "82afd7410efeb4b70e05fe1ba9c2ad66",
+    "restored": true
+  },
+  {
+    "id": "HK-02",
+    "target": "HK",
+    "file": "src/lib/nostr/keyVault.ts",
+    "rule": ".claude/rules/identity.md — `WrapMeta.payloadKind` (the compatibility contract: a wrapped key can never become unreadable) | docs/claude/nostr.md § keyVault.ts",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 6.6,
+        "tests": 21,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 48.1,
+        "tests": 598,
+        "files": 64
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.2,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.5
+      }
+    },
+    "secs": 117.5,
+    "md5Before": "82afd7410efeb4b70e05fe1ba9c2ad66",
+    "md5Mutated": "0031c9622ba04a8fbdb6fd04766b9f4a",
+    "md5After": "82afd7410efeb4b70e05fe1ba9c2ad66",
+    "restored": true
+  },
+  {
+    "id": "HK-03",
+    "target": "HK",
+    "file": "src/lib/crypto/cryptoClient.ts",
+    "rule": ".claude/rules/identity.md — A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` | docs/claude/nostr.md § cryptoClient.ts (INTERNAL-COPY CONTRACT)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.8,
+        "tests": 8,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 4,
+        "tests": 8,
+        "files": 1
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.6,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31.6
+      }
+    },
+    "secs": 73.1,
+    "md5Before": "09ae3889c8d54e478e871ce16c6e60b4",
+    "md5Mutated": "345a47bfcbb63b1062034055d5c16c9c",
+    "md5After": "09ae3889c8d54e478e871ce16c6e60b4",
+    "restored": true
+  },
+  {
+    "id": "HK-04",
+    "target": "HK",
+    "file": "src/lib/crypto/cryptoClient.ts",
+    "rule": ".claude/rules/identity.md — Malformed payload ≠ wrong passphrase",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.5,
+        "tests": 8,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 4.3,
+        "tests": 8,
+        "files": 1
+      },
+      "T3": {
+        "ok": true,
+        "secs": 34.3,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 31
+      }
+    },
+    "secs": 71.2,
+    "md5Before": "09ae3889c8d54e478e871ce16c6e60b4",
+    "md5Mutated": "9fbe1dd627a64428bdc6382a351bd4d9",
+    "md5After": "09ae3889c8d54e478e871ce16c6e60b4",
+    "restored": true
+  },
+  {
+    "id": "HK-05",
+    "target": "HK",
+    "file": "src/lib/backup/exportPlan.ts",
+    "rule": ".claude/rules/store.md — Zustand v21 migration (viewers + nextViewerIndex STRIPPED from the trusted viewer snapshot + the plan backup)",
+    "status": "KILLED",
+    "tier": "T1",
+    "killedBy": {
+      "file": "src/lib/backup/__tests__/validatePlanBackup.test.ts",
+      "test": "validatePlanBackup — happy path accepts a real buildPlanBackup output (round-tripped through JSON)",
+      "message": "AssertionError: expected false to be true // Object.is equality\n    at /tmp/hardening-1/hunt-HK/src/lib/backup/__tests__/validatePlanBackup.test.ts:27:18\n    at file:///tmp/hardening-1/hunt-HK/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n    at file:///tmp/hardening-1/hunt-HK/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n    at file:///tmp/hardening-1/hunt-HK/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///tmp/hardening-1/hunt-HK/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n    at"
+    },
+    "tiers": {
+      "T1": {
+        "ok": false,
+        "secs": 2.4,
+        "tests": 17,
+        "files": 2
+      }
+    },
+    "secs": 2.5,
+    "md5Before": "53f66406f3efb4b209c2b57f457d7a30",
+    "md5Mutated": "6a3c8de7f0c8e531af49db54f3d34d45",
+    "md5After": "53f66406f3efb4b209c2b57f457d7a30",
+    "restored": true
+  },
+  {
+    "id": "HK-06",
+    "target": "HK",
+    "file": "src/lib/nostr/establishOwner.ts",
+    "rule": ".claude/rules/identity.md — A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` (always pass a `.slice()`) | `establishLocalOwner` derives its own sk",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.4,
+        "tests": 5,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 5.3,
+        "tests": 5,
+        "files": 1
+      },
+      "T3": {
+        "ok": true,
+        "secs": 37,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.3
+      }
+    },
+    "secs": 75.1,
+    "md5Before": "a4e22f4275dd544bda76a4a50be0cf64",
+    "md5Mutated": "a577c770f18c8b74762ed8ab51eca004",
+    "md5After": "a4e22f4275dd544bda76a4a50be0cf64",
+    "restored": true
+  },
+  {
+    "id": "HK-07",
+    "target": "HK",
+    "file": "src/lib/nostr/session.ts",
+    "rule": ".claude/rules/identity.md — A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` (the second copy: restoreSigner)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 6.7,
+        "tests": 11,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.4,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.1,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.6
+      }
+    },
+    "secs": 116,
+    "md5Before": "f22e815bc0f3e7a31ce51509ebe8b6eb",
+    "md5Mutated": "8a8cd0f040f1bbdfa429735bc0bf6352",
+    "md5After": "f22e815bc0f3e7a31ce51509ebe8b6eb",
+    "restored": true
+  },
+  {
+    "id": "HK-08",
+    "target": "HK",
+    "file": "src/lib/nostr/session.ts",
+    "rule": ".claude/rules/identity.md — ⚠ The `restoreSigner` single-flight guard is PIN-AWARE — do not simplify it back (the `.finally` ownership check)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.5,
+        "tests": 8,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 46.4,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.5,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.1
+      }
+    },
+    "secs": 113.7,
+    "md5Before": "f22e815bc0f3e7a31ce51509ebe8b6eb",
+    "md5Mutated": "041119f68dc2a856496a9f83e091e4d1",
+    "md5After": "f22e815bc0f3e7a31ce51509ebe8b6eb",
+    "restored": true
+  },
+  {
+    "id": "HK-09",
+    "target": "HK",
+    "file": "src/components/Auth/NostrAuthGate.tsx",
+    "rule": ".claude/rules/identity.md — The encrypted branch's payload MUST be `.slice()`d",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 1.4,
+        "tests": 3,
+        "files": 1
+      },
+      "T2": {
+        "ok": true,
+        "secs": 4.4,
+        "tests": 0,
+        "files": 0
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.7,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 32.2
+      }
+    },
+    "secs": 74,
+    "md5Before": "69ebb344ec5c470e181dfe2884c7ad2f",
+    "md5Mutated": "f8c71dc078321376e7731b30e1822d28",
+    "md5After": "69ebb344ec5c470e181dfe2884c7ad2f",
+    "restored": true
+  },
+  {
+    "id": "HK-10",
+    "target": "HK",
+    "file": "src/components/Auth/NostrAuthGate.tsx",
+    "rule": ".claude/rules/identity.md — Import `payloadKind` is THREE-WAY asymmetric (words → 'nip06-entropy')",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T2": {
+        "ok": true,
+        "secs": 6.1,
+        "tests": 0,
+        "files": 0
+      },
+      "T3": {
+        "ok": true,
+        "secs": 33.5,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 30.8
+      }
+    },
+    "secs": 70.6,
+    "md5Before": "69ebb344ec5c470e181dfe2884c7ad2f",
+    "md5Mutated": "58318dc5247ab137ece338ab7a951ed5",
+    "md5After": "69ebb344ec5c470e181dfe2884c7ad2f",
+    "restored": true
+  },
+  {
+    "id": "HK-11",
+    "target": "HK",
+    "file": "src/components/Auth/NostrAuthGate.tsx",
+    "rule": ".claude/rules/general.md — Never claim plan-data encryption-at-rest before Phase 5",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T2": {
+        "ok": true,
+        "secs": 9.7,
+        "tests": 0,
+        "files": 0
+      },
+      "T3": {
+        "ok": true,
+        "secs": 36.8,
+        "tests": 888,
+        "files": 49
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 29.9
+      }
+    },
+    "secs": 76.7,
+    "md5Before": "69ebb344ec5c470e181dfe2884c7ad2f",
+    "md5Mutated": "d2f0a0c3ec508a57db9231452ef6ab39",
+    "md5After": "69ebb344ec5c470e181dfe2884c7ad2f",
+    "restored": true
+  },
+  {
+    "id": "HK-12",
+    "target": "HK",
+    "file": "src/store/bootstrap.ts",
+    "rule": ".claude/rules/store.md — Zustand v15 migration (moved OUT of the persist blob into standalone localStorage; seeded at module init + back-filled once from the legacy in-blob location; partialize-excluded)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.2,
+        "tests": 14,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 35.8,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 28.8
+      }
+    },
+    "secs": 113.9,
+    "md5Before": "3236dbf5f7faee7f0edf6907878a77a3",
+    "md5Mutated": "194ebf014c7cd7ff99f5e9c412cd460b",
+    "md5After": "3236dbf5f7faee7f0edf6907878a77a3",
+    "restored": true
+  },
+  {
+    "id": "HK-13",
+    "target": "HK",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v17 migration (viewerMode default `?? false`, additive shallow-merge, no transform)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2.4,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 47.4,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 31.9,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 27.1
+      }
+    },
+    "secs": 108.9,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "d0fc2a26a1ecd7d16ffdfa0c4f17669f",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  },
+  {
+    "id": "HK-14",
+    "target": "HK",
+    "file": "src/store/persistConfig.ts",
+    "rule": ".claude/rules/store.md — Zustand v18 migration (LEAVES any existing plaintext `viewerSecretKey` in place)",
+    "status": "SURVIVED",
+    "tier": null,
+    "killedBy": null,
+    "tiers": {
+      "T1": {
+        "ok": true,
+        "secs": 2,
+        "tests": 52,
+        "files": 2
+      },
+      "T2": {
+        "ok": true,
+        "secs": 37.4,
+        "tests": 551,
+        "files": 60
+      },
+      "T3": {
+        "ok": true,
+        "secs": 26.1,
+        "tests": 777,
+        "files": 37
+      },
+      "TSC": {
+        "ok": true,
+        "secs": 25.4
+      }
+    },
+    "secs": 91,
+    "md5Before": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "md5Mutated": "7981acf6637bfe398456cc08ff9aac85",
+    "md5After": "380dfb4a9af5f212d17fe00a27edf1cf",
+    "restored": true
+  }
+]
