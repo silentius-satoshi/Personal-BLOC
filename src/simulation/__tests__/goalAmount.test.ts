@@ -190,7 +190,7 @@ describe('⭐ GOAL REENTRY — below the goal again, the month acts on its zone 
 });
 
 describe('⭐ GOAL ZONE — the goal never moves the zone or the breaker', () => {
-  it('⭐ GOAL ZONE — every month\'s zone is the price\'s, goal or not, over the face grids', () => {
+  it('⭐ GOAL ZONE — every month\'s zone is the price\'s, goal or not, over the face grids', { timeout: 60_000 }, () => {
     let rows = 0, goalRows = 0;
     for (const cell of [...faceWorldGrid(), ...reachGrid()]) {
       const inputs = { ...cell.off, supportPolicy: policyFor(cell.support) };

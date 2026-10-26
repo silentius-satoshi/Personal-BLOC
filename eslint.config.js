@@ -4,7 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'dev-dist/**', 'node_modules/**', 'coverage/**', 'playwright-report/**', 'test-results/**'] },
+  { ignores: ['dist/**', 'dev-dist/**', 'node_modules/**', 'coverage/**', 'playwright-report/**', 'test-results/**', 'Claude outputs/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   // Vercel serverless functions: plain Node ESM/CJS, not part of the TS program.

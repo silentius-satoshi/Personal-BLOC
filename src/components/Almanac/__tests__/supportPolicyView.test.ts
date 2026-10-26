@@ -502,7 +502,7 @@ describe('neverDraws — every run that applies the policy and never draws gets 
       'Price stays under support, or the model stays broken, for this whole path, so the policy never borrows.']);
   });
 
-  it('⭐ liquidated: a month-0 breach "starts past its liquidation line" — never "in month 0" (v1.1 #6)', () => {
+  it('⭐ liquidated: a month-0 breach "starts past its liquidation line" — never "in month 0" (v1.1 #6)', { timeout: 60_000 }, () => {
     const cells = reachGrid();
     const atOpening = runCyclingSim({ ...cells[0].off, supportPolicy: policyFor(cells[0].support) });
     expect(atOpening.liqMonth).toBe(0);

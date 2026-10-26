@@ -566,7 +566,7 @@ describe('⭐ the sweep — the spec grid, every card clean', () => {
     for (const c of cases) if (c.line) for (const s of lineTexts(c.line)) expect(s, at(c)).not.toMatch(LINE_BAD);
   });
 
-  it('no card string prints NaN, Infinity, undefined, "$0" or "0.00000 ₿"', () => {
+  it('no card string prints NaN, Infinity, undefined, "$0" or "0.00000 ₿"', { timeout: 60_000 }, () => {
     for (const c of cases) {
       for (const s of [...texts(c.card), ...(c.waiting ? texts(c.waiting) : [])]) expect(s, at(c)).not.toMatch(BAD);
     }

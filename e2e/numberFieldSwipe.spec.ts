@@ -103,7 +103,7 @@ test.describe('number fields — leaving the page (BL34–BL35, F1)', () => {
     await touchSwipeBack(page);
     await expect(page.getByRole('button', { name: /Strike Strategy/ }), 'HELD back on the menu').toBeVisible();
     expect(await saved(page, 'advisorActualBlocBalance'), 'HELD nothing saved').toEqual([]);
-    await page.getByRole('button', { name: /Strike Strategy/ }).tap();
+    await page.getByRole('button', { name: /Strike Strategy/ }).click();
     await expect(drawn, 'HELD the saved figure again').toHaveValue('20000');
     await expect(page.getByRole('button', { name: 'Save — dated today' }), 'HELD no Save left over').toHaveCount(0);
   });
