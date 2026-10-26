@@ -216,7 +216,8 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
   stay inert (no swipe).
 - **Undo (`Snackbar` + store `undoDayEventDeletion(event)`)** — DailyModeView holds the deleted `DayEvent` (the
   store discarded it) and shows a 5s Snackbar; UNDO calls `undoDayEventDeletion` which re-adds the event with a
-  FRESH `ts=Date.now()` + strips the `deletedDayEvents` tombstone (mirrors add/delete's cache/reroll/publish tail).
+  FRESH `ts=Date.now()` — and `at`, the ts it was first logged with, so it keeps its place in its day (Hotfix 1, A2-3) —
+  and strips the `deletedDayEvents` tombstone (mirrors add/delete's cache/reroll/publish tail).
   **LWW guarantee:** `deleteDayEvent` publishes the tombstone via the 400ms-debounced `publishRecordsNow`, so it
   likely reaches relays within the window; undo does NOT need to beat it — per `mergeRecords` a dayLog event is
   suppressed only when `tombstone.ts > event.ts` (strict), so a `ts=Date.now()`≥tombstone restore SURVIVES on

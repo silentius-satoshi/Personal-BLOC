@@ -49,6 +49,9 @@ const isStringNumberMap = (v: unknown): v is Record<string, number> =>
 function validateDayEvent(e: unknown): boolean {
   if (!isObject(e)) return false;
   if (typeof e.id !== 'string' || typeof e.date !== 'string' || typeof e.ts !== 'number') return false;
+  // Hotfix 1 — `at` (the ts an edited or restored event was first logged with — its place in its day) is optional; when
+  // present it must be a finite number, or the journal's order rules would compare it as junk.
+  if (e.at !== undefined && !(typeof e.at === 'number' && Number.isFinite(e.at))) return false;
   if (typeof e.kind !== 'string' || !DAY_EVENT_KINDS.has(e.kind)) return false;
   if (e.kind === 'draw' || e.kind === 'paydown') {
     // target is OPTIONAL (absent = Strike — every pre-CB backup); when present it must be a known venue.
@@ -71,9 +74,14 @@ function validateMonthEntry(m: unknown): boolean {
   if (typeof m.date !== 'string') return false;
   if (typeof m.loggedAt !== 'number') return false;
   // required numerics on a real entry
-  for (const k of ['btcBought', 'income', 'paydown', 'strikeBal', 'strikeLtv', 'expensesActual']) {
+  for (const k of ['btcBought', 'income', 'paydown', 'strikeBal', 'expensesActual']) {
     if (typeof (m as Record<string, unknown>)[k] !== 'number') return false;
   }
+  // strikeLtv — required: a number, or null. JSON writes a non-finite number as null, and Strike debt with no Strike
+  // collateral recorded is an LTV of ∞ (ltvOf), so the app's own export (and its own localStorage) carries null.
+  // ⚠ Hotfix 1 (audit A2-2): requiring a number refused that whole backup — every month, event and setting.
+  const strikeLtv = (m as Record<string, unknown>).strikeLtv;
+  if (strikeLtv !== null && typeof strikeLtv !== 'number') return false;
   // btcHeld is OPTIONAL (recorded Strike collateral — absent when the month never stated it). ⚠ It must NOT be in the
   // required list above, or a backup exported by this build is rejected by its own restore. Present → a finite number.
   const btcHeld = (m as Record<string, unknown>).btcHeld;

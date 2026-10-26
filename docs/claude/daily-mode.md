@@ -19,14 +19,16 @@ store, no UI, no sync.
   chained. (P1-era: btcHeld was store-owned via a chain — SUPERSEDED: a reading's `strikeCollateral` anchors current
   collateral (v20), and `rollupMonth` records it as the month's `btcHeld` (spec v3).)
 - **LD7 — CB collateral = a reading, not a chain:** `cbCollateralBtc` is DERIVED (latest `cbCollateral`-bearing event
-  by `ts` — `balanceReading` or `cbCollateralReading`), wired in P2; it is NOT a synced setting and is NEVER placed in
+  by date, then `orderTs` (Hotfix 1, A2-1) — `balanceReading` or `cbCollateralReading`), wired in P2; it is NOT a
+  synced setting and is NEVER placed in
   the rollup entry.
 - **`target` semantics:** `deposit`/`withdraw` `target:'strike'` feeds `collateralDelta` (the P2 collateral seam);
   `target:'cb'` is **journal-only** (ignored by rollup — CB collateral comes from the reading).
 - **`rollupMonth(dayLog, month, advisorStartDate, priorStocks?)` → `{ entry: Partial<MonthlyLogEntry>, collateralDelta }`:**
   flows accumulate (`draw`→`expensesActual`, `buy`→`btcBought` [+`income` iff `usd`], `paydown`→`paydown`);
   `collateralDelta` = net `target:'strike'` BTC, **signed by kind** (deposit +, withdraw −); stocks from the LATEST
-  `balanceReading` by `ts` (`strikeBal`/`strikeLtv` always, `cbBal`/`cbLtv` iff present). `entry` NEVER carries
+  `balanceReading` by date, then `orderTs` (Hotfix 1, A2-4): `strikeBal`/`strikeLtv` always, `cbBal`/`cbLtv` iff
+  present. `entry` NEVER carries
   `collateralAdjustment`/`source`/`confirmed`/`cbCollateral` (spec v3: it carries `btcHeld` iff the reading states
   `strikeCollateral`). **Carry-forward** (LD6 backfill exception):
   flows present but no `balanceReading` + `priorStocks` given → stocks borrowed from `priorStocks` + `provisional:true`.
@@ -62,7 +64,7 @@ via dayLog records sync in P3).
     `target:'cb'` move would flip a manual month to `source:'daily'` and trip the M2 guard (BUG1 class).
   - **Route 2 (monthly-meaningful) — draw/buy/paydown + `target:'strike'` deposit/withdraw + balanceReading:**
     `rerollMonth(month)` (update across a month boundary re-rolls BOTH old + new). `priorStocks` = the prior
-    strategy-month's last `balanceReading` by ts.
+    strategy-month's last `balanceReading` by date, then `orderTs` — its close, `rollupMonth`'s own rule (Hotfix 1).
 - **Partial→Full bridge** (`rerollMonth`): spread the `rollupMonth` Partial onto the EXISTING month entry (preserve
   miningSats/ndpPaid/loggedAt) or a full numeric seed for a new month (never `{}`); stamp `source:'daily'`,
   `confirmed: existing.confirmed===true ? false : (existing.confirmed ?? false)` (reopen-on-edit, LD4). The new-month seed carries
@@ -77,7 +79,8 @@ via dayLog records sync in P3).
   collateralDelta)`. Subtracting `existingAdj` (the just-graduated amount) before adding the WHOLE-month net
   `target:'strike'` delta prevents double-counting earlier same-month deposits. `target:'cb'` contributes 0 (journal-only).
 - **Seam 2 (cbCollateral clock)** — `deriveCbCollateral(dayLog, cache)` (logUtils) = latest `cbCollateral`-bearing event
-  by ts across `balanceReading` + `cbCollateralReading`, fallback to the cache (never undefined). `setCbCollateralBtc(v)`
+  by date, then `orderTs` (Hotfix 1, audit A2-1: by ts alone, an older reading edited, restored or backfilled became the
+  current one) across `balanceReading` + `cbCollateralReading`, fallback to the cache (never undefined). `setCbCollateralBtc(v)`
   now **emits a `cbCollateralReading`** (clock path) + sets the field — NO `syncSettingsToNostr`. The cache is recomputed
   in `migrate` AND `onRehydrateStorage` (every reload).
 - **M2 guard** (centralized in `upsertLogEntry`): a write with `entry.source !== 'daily'` against an existing
@@ -102,9 +105,18 @@ discipline verbatim.
   thrash). Therefore **`updateDayEvent` MUST bump `ts` to `Date.now()` on every edit** (`addDayEvent` uses
   the event's creation ts; `deleteDayEvent` already stamps `Date.now()` on its tombstone). A preserved-ts
   edit would tie with the stale remote copy on every other device → tie→local → the edit loses everywhere
-  → permanent split-brain (the P3 edit-propagation bug — fixed). Acceptable consequences: an edited event
-  moves to edit-time in same-day ts ordering, and an edited `balanceReading` becomes the date-latest
-  reading (§5b re-anchors from it) — both correct, since the edit is the freshest statement.
+  → permanent split-brain (the P3 edit-propagation bug — fixed). **Hotfix 1 reverses the old "acceptable
+  consequences"** — an edited event moving to edit-time in same-day ts ordering, an edited `balanceReading` becoming
+  the date-latest reading. An edit corrects what an event said; it is not a new statement. Every order rule read ts as
+  occurrence, so an edited, restored or backfilled older event acted as the newest (audit A2-1, A2-3, A2-4: the CB
+  collateral, a month's close, a Strike move counted twice). Now `updateDayEvent` (off the STORED copy — the sheet
+  rebuilds the event, and its ts may be an earlier edit's) and `undoDayEventDeletion` stamp `at` — the ts the event was
+  first logged with (`orderTs` of the copy they start from) — and every "latest reading" and "after the anchor" rule
+  orders by (date, then `orderTs` = `at ?? ts`). ts stays
+  the version in the merge, the journal's pages and `monthEntryCurrent`. `at` is optional (absent = ts): no store bump.
+  An edited Strike move carries its own reading (the one its Save wrote: same date, same place, states collateral —
+  `ownReadingAfterEdit`) by the change, in whole sats, so the sheet's "Strike held after" holds while that reading is
+  the anchor (a later reading's total stands); a delete or an Undo moves no reading.
 - **State (`useStore.ts`):** `deletedDayEvents: Record<string, number>` (event id → deletedAt ms, default `{}`)
   + raw `setDeletedDayEvents` (plain `set`, non-emitting, mirrors `setDeletedMonths`). **Persisted-not-synced**
   (NOT in `partializeState`'s omit → rides the rest; NOT in `SETTINGS_FIELDS`). 90-day GC happens in `mergeRecords`.

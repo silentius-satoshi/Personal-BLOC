@@ -2,7 +2,7 @@
 // purpose — there is no render harness (zero .test.tsx), so logic left inside a .tsx cannot be tested.
 
 import type { DayEvent, MonthlyLogEntry } from '../../simulation/types';
-import { bucketEventToMonth, priorStocksForMonth } from '../../simulation/logUtils';
+import { bucketEventToMonth, priorStocksForMonth, orderTs } from '../../simulation/logUtils';
 
 /**
  * The editor's "Strike collateral" field → an entry fragment. MonthlyLogEntry.btcHeld is RECORDED Strike collateral:
@@ -60,8 +60,9 @@ export type CorrectionDurability = 'stated' | 'stable' | 'fragile';
 
 /**
  * What the NEXT re-roll of `month` does to a hand-entered btcHeld — mirrors rollupMonth's branch choice exactly:
- * the LATEST in-month balanceReading by ts (the same `b.ts >= a.ts ? b : a` rule) decides stated/stable; with no
- * in-month reading, priorStocksForMonth (the exact priorStocks rerollMonth passes) decides fragile/stable.
+ * the LATEST in-month balanceReading by (date, then orderTs) — rollupMonth's own rule, a tie going to the later in the
+ * list — decides stated/stable; with no in-month reading, priorStocksForMonth (the exact priorStocks rerollMonth passes)
+ * decides fragile/stable.
  * (A daily month with no in-month reading always holds a flow, so the carry-forward's `hasFlow` condition holds.)
  * ⚠ It describes the next re-roll GIVEN TODAY'S dayLog: deleting the month's reading, or backfilling a prior-month
  *   reading that states collateral, moves the month to `fragile` — which is why DURABILITY_HINT.stable names both.
@@ -72,7 +73,7 @@ export function correctionDurability(dayLog: DayEvent[], advisorStartDate: strin
   const readings = dayLog.filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> =>
     e.kind === 'balanceReading' && bucketEventToMonth(e.date, advisorStartDate) === month);
   if (readings.length > 0) {
-    const latest = readings.reduce((a, b) => (b.ts >= a.ts ? b : a));
+    const latest = readings.reduce((a, b) => (b.date > a.date || (b.date === a.date && orderTs(b) >= orderTs(a)) ? b : a));
     return latest.reading.strikeCollateral !== undefined ? 'stated' : 'stable';
   }
   return priorStocksForMonth(dayLog, advisorStartDate, month)?.strikeCollateral !== undefined ? 'fragile' : 'stable';

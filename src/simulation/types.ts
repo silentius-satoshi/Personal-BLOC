@@ -75,7 +75,10 @@ export interface StrategyResult {
 
 export type DayEventKind = 'draw' | 'buy' | 'paydown' | 'minPayment' | 'deposit' | 'withdraw' | 'balanceReading' | 'cbCollateralReading';
 
-interface DayEventBase { id: string; date: string; /* ISO yyyy-mm-dd */ ts: number; /* ms */ }
+// ts is the MERGE VERSION CLOCK — every edit and every Undo moves it (updateDayEvent, undoDayEventDeletion). Where an event
+// falls is its `date`, then, within the day, when it was first logged: orderTs(e) = e.at ?? e.ts (logUtils). `at` is that
+// first ts, stamped by the edit or Undo that moves ts; absent = ts never moved. Hotfix 1 — no store bump: absent reads as ts.
+interface DayEventBase { id: string; date: string; /* ISO yyyy-mm-dd */ ts: number; /* ms */ at?: number; /* ms — the ts it was first logged with, once ts has moved */ }
 
 export type DayEvent =
   | (DayEventBase & { kind: 'draw' | 'paydown'; amount: number /* USD */;
@@ -94,10 +97,10 @@ export type DayEvent =
         price?: number;                             // optional spot price at reading time
       } });
 // NOTE: Strike collateral (btcHeld) is READING-ANCHORED (Collateral-Truth v20) — DERIVED via
-//       deriveStrikeCollateral = the strikeCollateral-bearing reading latest by (date, then ts) + target:'strike'
+//       deriveStrikeCollateral = the strikeCollateral-bearing reading latest by (date, then orderTs) + target:'strike'
 //       deposit/withdraw moves strictly after it. NOT synced as a setting (local derived cache strikeCollateralBtc,
 //       converges cross-device via the dayLog on the records channel). Buys NEVER count toward Strike collateral.
-//       cbCollateralBtc is DERIVED = latest cbCollateral-bearing event by ts (balanceReading or cbCollateralReading); NOT synced as a setting.
+//       cbCollateralBtc is DERIVED = latest cbCollateral-bearing event by (date, then orderTs) (balanceReading or cbCollateralReading); NOT synced as a setting.
 //       deposit/withdraw target:'strike' feeds collateralDelta (rollup report-only) + the strike derive; target:'cb' is journal-only (CB collateral comes from the reading).
 //       target:'cold' feeds deriveColdStorage (the owner's anchor + cold moves after it) and is journal-only for the monthly
 //       rollup — it is the ONLY source of cold movement, because cold has no statement and therefore no reading.

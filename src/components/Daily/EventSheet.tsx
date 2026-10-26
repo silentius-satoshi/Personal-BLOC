@@ -10,7 +10,7 @@ import { NumberInput } from '../ui/NumberInput';
 import {
   readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, COLLATERAL_TARGET_RULES, collateralAvailableFor,
   totalHoldingsAfter, DEBT_TARGET_RULES, rebuildEditedFlow, staleCbBalanceNote, buyUsdGuess, impliedBtcPrice, rebuildEditedBuy,
-  type SheetType, type SheetState, type CollateralTarget, type DebtTarget,
+  rebuildEditedReading, latestReadingForPrefill, type SheetType, type SheetState, type CollateralTarget, type DebtTarget,
 } from './eventSheetModel';
 import { minPaymentStatus } from '../../simulation/simpleModePlan';
 import { fmtDayOrdinal } from '../Almanac/planMonthView';
@@ -158,7 +158,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           setType('setBalance');
           setStrikeBal(editEvent.reading.strikeBal);
           setStrikeLtv(editEvent.reading.strikeLtv * 100);   // fraction → percent for display
-          setStrikeCollateral(editEvent.reading.strikeCollateral ?? currentBtcHeld);   // v20 — venue truth on edit
+          setStrikeCollateral(readingCollateralPolicy(false, currentBtcHeld, editEvent).fallback);   // N1 — as recorded: its figure, or none
           setStrikeCollTouched(true);
           setCbBal(editEvent.reading.cbBal ?? null);
           setCbLtv(editEvent.reading.cbLtv != null ? editEvent.reading.cbLtv * 100 : null);
@@ -192,13 +192,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
       setCbLtv(null);
       setCbCollateral(null);
     } else {
-      // Today: pre-fill from the latest reading for convenience (LD6 reading still required).
-      const latest = dayLog
-        .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> => e.kind === 'balanceReading')
-        .reduce<Extract<DayEvent, { kind: 'balanceReading' }> | null>(
-          (best, e) => (!best || e.ts > best.ts ? e : best),
-          null,
-        );
+      // Today: pre-fill from the latest reading for convenience (LD6 reading still required) — the latest by date,
+      // then by when it was logged (Hotfix 1: never a backfilled or just-edited older one).
+      const latest = latestReadingForPrefill(dayLog);
       if (latest) {
         setStrikeBal(latest.reading.strikeBal);
         setStrikeLtv(latest.reading.strikeLtv * 100);   // fraction → percent for display
@@ -230,12 +226,16 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   // early return below — a hook after a conditional return violates the Rules of Hooks (React #310).
   useEffect(() => {
     if (!open) return;
+    // N1 — an edit never tracks: its field holds what the reading records (readingCollateralPolicy's edit case). The
+    // touched flag the prefill sets can't stop this: on the open render this effect still sees the closed sheet's
+    // touched=false, and its write lands after the prefill's — every reading edit showed today's total.
+    if (isEdit) return;
     // A past-dated add never states Strike collateral — the only figure this sheet knows is TODAY's
     // (readingCollateralPolicy). Checked BEFORE `touched`: the field is hidden on a past date, so it can't be edited.
     if (pastAdd) { setStrikeCollateral(null); return; }
     if (strikeCollateralTouched) return;
     setStrikeCollateral(autoStrikeCollateral(currentBtcHeld, { type, collateralDir, effectiveTarget, amount, pledgeToStrike }));
-  }, [open, pastAdd, type, effectiveTarget, collateralDir, amount, pledgeToStrike, strikeCollateralTouched, currentBtcHeld]);
+  }, [open, isEdit, pastAdd, type, effectiveTarget, collateralDir, amount, pledgeToStrike, strikeCollateralTouched, currentBtcHeld]);
 
   // 5d (BL13) — the dollars field PREFILLS with the app's guess (the BTC at today's price) and follows the BTC amount
   // until the owner types a figure of their own; from then on it is theirs. Above the early return (Rules of Hooks).
@@ -251,7 +251,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const effectiveDate = targetDate ?? today;
   const isPast = !isEdit && effectiveDate < today;   // yyyy-mm-dd string compare; past = strictly before today
   // Past add → the reading never states Strike collateral (not required; no today-figure fallback). Today → unchanged.
-  const collPolicy = readingCollateralPolicy(isPast, currentBtcHeld);
+  // An edit of a reading → as recorded (N1): a figure stays required; none stays none (hidden, and Save without one).
+  const collPolicy = readingCollateralPolicy(isPast, currentBtcHeld, editEvent && editEvent.kind === 'balanceReading' ? editEvent : undefined);
   const month = isEdit && editEvent
     ? bucketEventToMonth(editEvent.date, advisorStartDate)
     : bucketEventToMonth(effectiveDate, advisorStartDate);
@@ -297,7 +298,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
 
   let canSave: boolean;
   if (isEdit && editEvent) {
-    if      (editEvent.kind === 'balanceReading') canSave = readingComplete(state, showCbReading);
+    if      (editEvent.kind === 'balanceReading') canSave = readingComplete(state, showCbReading, collPolicy.required);   // N1 — none saves without one
     else if (editEvent.kind === 'deposit' || editEvent.kind === 'withdraw')
                                                    // only a CB move needs a liq price (was `target === 'strike' || …` → a cold edit could never save)
                                                    canSave = amountValid && (!COLLATERAL_TARGET_RULES[editEvent.target].needsLiqPrice || cbLiqOk) && !withdrawTooLarge;
@@ -407,18 +408,12 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
         case 'withdraw':
           updated = { id, date, ts, kind: 'withdraw', amount: amount ?? 0, target: editEvent.target };
           break;
-        case 'balanceReading': {
-          const reading: { strikeBal: number; strikeLtv: number; strikeCollateral?: number; cbBal?: number; cbLtv?: number; cbCollateral?: number; cbLiqPrice?: number; price?: number } =
-            { strikeBal: strikeBal ?? 0, strikeLtv: (strikeLtv ?? 0) / 100, strikeCollateral: strikeCollateral ?? currentBtcHeld, price: btcPrice };   // v20 — Strike collateral (outside the CB block)
-          if (editEvent.reading.cbBal != null) {   // CB-bearing reading → keep CB fields
-            reading.cbBal = cbBal ?? 0;
-            reading.cbLtv = (cbLtv ?? 0) / 100;
-            reading.cbCollateral = cbCollateral ?? 0;
-            if (cbLiqPriceReading !== null && cbLiqPriceReading > 0) reading.cbLiqPrice = cbLiqPriceReading;   // §5b — preserve/edit the reading's liq
-          }
-          updated = { id, date, ts, kind: 'balanceReading', reading };
+        case 'balanceReading':
+          // N1 — rebuildEditedReading keeps the reading's Strike collateral as recorded: the field's figure if it records
+          // one, none if it records none. The old inline `strikeCollateral ?? currentBtcHeld` stamped today's total on an
+          // earlier reading, and every Strike move dated after it then counted twice.
+          updated = rebuildEditedReading(editEvent, state, btcPrice);
           break;
-        }
         default:
           reset(); onClose(); return;   // cbCollateralReading — not editable via the sheet
       }
@@ -790,7 +785,10 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
               // Hidden, not blank: NumberInput renders null as "0", and a figure typed there would be stamped on the past
               // date (since BL34 an untouched focus-and-leave saves nothing).
               <div className={styles.note}>
-                Strike collateral isn&apos;t recorded for a past date — this sheet only knows today&apos;s figure.
+                {/* N1 — an edit of a reading that records none keeps none (readingCollateralPolicy's edit case). */}
+                {isEdit
+                  ? <>This reading doesn&apos;t record Strike collateral — an edit keeps it that way.</>
+                  : <>Strike collateral isn&apos;t recorded for a past date — this sheet only knows today&apos;s figure.</>}
               </div>
             )}
             {showCbReading && (

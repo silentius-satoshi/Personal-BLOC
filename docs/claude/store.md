@@ -165,7 +165,7 @@ plan-event fields + the 4 prefs, 108 persisted blob keys, 41 trusted settings ke
 
 > **Collateral-Truth Consolidation — C-P1→C-P4 COMPLETE (store v20):** Current Strike collateral is **reading-anchored**,
 > NOT computed from the log chain. `getCurrentBtcHeld() = deriveStrikeCollateral(dayLog, strikeCollateralBtc)`
-> — the `strikeCollateral`-bearing `balanceReading` latest by (date, then ts) + `target:'strike'`
+> — the `strikeCollateral`-bearing `balanceReading` latest by (date, then `orderTs` — Hotfix 1) + `target:'strike'`
 > deposit/withdraw moves STRICTLY after it (see the §deriveStrikeCollateral in `logUtils.ts`). **RETIRED:**
 > `pendingCollateralAdjustment`, `adjustCurrentCollateral`, graduation (`upsertLogEntry`), restore-on-delete
 > (`deleteLogEntry`), and rerollMonth's Seam-1. `collateralAdjustment` is **never written again** (existing
@@ -227,9 +227,10 @@ and the v20 back-solve drove the baseline negative on a real install.
   - To repair a DAILY month's collateral, use **"Set collateral"** in the monthly-log editors — the correction path
     below (`daily-month-collateral-edit-spec-v2`). ⚠ The old route, a backdated FULL reading carrying
     `strikeCollateral`, is GONE from the EventSheet: a past-dated add never states collateral
-    (`readingCollateralPolicy`, `provisional-clears-on-reading-spec-v1` 3b). A backdated reading still restates the
-    month's `strikeBal`/`strikeLtv` (`rollupMonth` picks the reading by `ts`, so it supersedes every stock), and it
-    turns a `fragile` month `stable`, so a correction made after it holds.
+    (`readingCollateralPolicy`, `provisional-clears-on-reading-spec-v1` 3b). A backdated reading restates the month's
+    `strikeBal`/`strikeLtv` only when it is the month's latest by date (`rollupMonth` picks by date, then `orderTs` —
+    Hotfix 1, A2-4; by `ts` it superseded every stock), and it turns a `fragile` month `stable`, so a correction made
+    after it holds.
   - ⚠ **Mixed-version hazard:** a device still on an old build recomputes and republishes, so update every device.
 - **Correcting a DAILY month's collateral (`daily-month-collateral-edit-spec-v2`).** `btcHeld` is RECORDED, not rolled,
   so it is the ONE field a daily month lets the owner edit. Every rolled-up field stays read-only, and the wide Edit form

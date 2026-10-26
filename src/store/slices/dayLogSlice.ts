@@ -1,7 +1,7 @@
 // dayLogSlice (Phase 1c) — dayLog mutators + emitBalanceReading. Helpers receive set/get; getState()→get() only.
 import type { StoreState, StoreSet, StoreGet } from '../types';
 import type { DayEvent } from '../../simulation/types';
-import { deriveCbCollateral, deriveStrikeCollateral } from '../../simulation/logUtils';
+import { deriveCbCollateral, deriveStrikeCollateral, orderTs, ownReadingAfterEdit } from '../../simulation/logUtils';
 import { computeStrikeLtv } from '../../simulation/strikeCredit';
 import { accruedCbBalance, cbMetrics } from '../../simulation/cbMetrics';
 import { todayLocalISO } from '../../utils/format';
@@ -36,15 +36,20 @@ export const createDayLogSlice = (set: StoreSet, get: StoreGet): DayLogSlice => 
   updateDayEvent: (event) => {
     if (refuseWithoutPlan(get(), 'day event write')) return;   // 5c
     // ts is the MERGE VERSION CLOCK — every edit must bump it or the edit ties with (and loses to) the
-    // stale copy on other devices; date carries occurrence.
-    const bumped = { ...event, ts: Date.now() };
+    // stale copy on other devices; date carries occurrence. Hotfix 1 — `at` keeps the event's place in its day
+    // (orderTs), read off the STORED copy: the sheet rebuilds the event from scratch, and its ts may be an earlier edit's.
     const before = get().dayLog.find((e) => e.id === event.id);
+    const ts = Date.now();
+    const bumped = (before ? { ...event, ts, at: orderTs(before) } : { ...event, ts }) as DayEvent;
+    // Hotfix 1 (A2-3) — a corrected Strike move carries its own reading (the one its Save wrote), so the total that
+    // reading states moves with it; same version clock, one write.
+    const own = before ? ownReadingAfterEdit(get().dayLog, before, bumped, ts) : null;
     // 5d — decided BEFORE the write: a dollars-only buy edit (buyDollarsOnlyEdit) on a month whose stored entry is current
     // (monthEntryCurrent) gets Income → BTC alone; any other edit, the full re-roll.
     const mBefore = monthOf(get, before);
     const dollarsRule = buyDollarsOnlyEdit(before, bumped);
     const dollarsOnly = dollarsRule && mBefore !== null && monthEntryCurrent(get, mBefore);
-    set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? bumped : e)), recordsDirty: true }));
+    set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? bumped : own !== null && e.id === own.id ? own : e)), recordsDirty: true }));
     refreshCbCollateralCache(set, get);
     refreshStrikeCollateralCache(set, get);   // Collateral-Truth v20 — reading-anchored Strike collateral cache
     // §5b — editing a reading re-anchors; a moved/changed source falls back via the ctx proxy. 5d: never on a dollars-only
@@ -75,10 +80,11 @@ export const createDayLogSlice = (set: StoreSet, get: StoreGet): DayLogSlice => 
   // passes the retained DayEvent. Re-add with a FRESH ts (Date.now()) + strip the tombstone — the canonical
   // edit-after-delete revive (mergeRecords: an event survives iff tombstone.ts is NOT strictly > event.ts, so a
   // bumped-ts restore beats any tombstone already published within the 5s window on every device). Mirrors the
-  // add/delete mutators' cache/reroll/publish tail.
+  // add/delete mutators' cache/reroll/publish tail. Hotfix 1 (A2-3) — `at` keeps its place in its day, so every figure is
+  // as before the delete (a Strike move restored after its own reading isn't counted twice); a month it reopened stays open (LD4).
   undoDayEventDeletion: (event) => {
     if (refuseWithoutPlan(get(), 'day event write')) return;   // 5c
-    const restored = { ...event, ts: Date.now() };
+    const restored = { ...event, ts: Date.now(), at: orderTs(event) } as DayEvent;
     set((s) => {
       const rest = { ...s.deletedDayEvents };
       delete rest[event.id];

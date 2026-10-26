@@ -326,10 +326,11 @@ describe('5d — KILL2: a dollars-only edit changes nothing else in the store', 
       expect(buyAfter.usd).toBe(f.usd);
       expect(buyAfter.ts).toBeGreaterThan(buyBefore.ts);   // the merge clock moved
       expect(monthAfter.income).toBe(f.usd);               // the month's only buy
-      // The whole store, before → after: only the buy's usd and ts, the month's income and updatedAt, and the records flag.
+      // The whole store, before → after: only the buy's usd and ts (and `at`, its place in its day — Hotfix 1: the ts it
+      // had), the month's income and updatedAt, and the records flag.
       expect(after).toEqual({
         ...before,
-        dayLog: (before.dayLog as DayEvent[]).map((e) => (e.id === b.id ? { ...e, usd: f.usd, ts: buyAfter.ts } : e)),
+        dayLog: (before.dayLog as DayEvent[]).map((e) => (e.id === b.id ? { ...e, usd: f.usd, ts: buyAfter.ts, at: buyBefore.ts } : e)),
         monthlyLog: (before.monthlyLog as MonthlyLogEntry[]).map((e) => (e.month === month ? { ...e, income: f.usd, updatedAt: monthAfter.updatedAt } : e)),
         recordsDirty: true,
       });

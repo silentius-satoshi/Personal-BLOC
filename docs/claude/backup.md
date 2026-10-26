@@ -85,7 +85,9 @@ union+tombstones (`mergeRecords`), so the next relay pull unions back any day/mo
   and TYPE-only `PlanBackup` (so it never pulls useStore). Checks (all before any store touch): format
   string · `schemaVersion===1 && storeVersion===CURRENT_STORE_VERSION` (**lean-reject** mismatch,
   version-honest message) · every settings key ∈ `VALIDATE_WHITELIST` (unknown/transport → reject) ·
-  four record collections present + per-event/entry shape-checks · **tombstone maps accepted as
+  four record collections present + per-event/entry shape-checks (Hotfix 1: a month's `strikeLtv` is a number OR
+  null — JSON's form of an ∞ LTV, Strike debt with no collateral recorded, which the app's own export carries; a day
+  event's optional `at` is a finite number) · **tombstone maps accepted as
   `Record<string,number>`** (JSON stringifies `deletedMonths`' numeric keys — do NOT reject on key
   typeof) · counts capped ≤100k (OOM guard) · `ImportSummary` (exportedAt + counts + income/expenses/
   balances preview).

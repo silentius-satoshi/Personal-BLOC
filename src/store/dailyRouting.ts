@@ -120,7 +120,7 @@ export function rerollMonth(get: StoreGet, month: number, opts?: { dollarsOnly?:
     return;
   }
 
-  // priorStocks = the prior strategy-month's LAST balanceReading by ts (shared with the reconcile — no drift).
+  // priorStocks = the prior strategy-month's LAST balanceReading by date, then orderTs (shared with the reconcile — no drift).
   const priorStocks = priorStocksForMonth(s.dayLog, start, month);
 
   const { entry: rollupEntry } = rollupMonth(s.dayLog, month, start, priorStocks);   // collateralDelta retired (v20) — Strike collateral is reading-anchored, not chained from rollup
