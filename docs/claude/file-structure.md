@@ -96,7 +96,7 @@ src/
                                 # the plan of record's Run 4 the Smart BLOC sidebar shows THIS figure in its place, as
                                 # "Your plan's suggested line").
                                 # PURE LEAF: supportPolicy + cbDefense + cbMetrics + strikeCredit + runCoinbaseLoan
-                                # + emergencyModel + ltv. No belief, no store, no React, no components/
+                                # + emergencyModel + ltv + goal. No belief, no store, no React, no components/
     planSearch.ts               # Path evaluation for the Decision face (§4.3) — a CONSUMER of runCyclingSim (runAdvisor,
                                 # the other, left in 5e); paths arrive as plain number[]. evaluatePaths → per-path outcome +
                                 # worstIndex + worstBy. WORST = CLOSEST TO A FORCED SALE (W1): any liquidation >
@@ -146,8 +146,8 @@ src/
                                 # Pays Coinbase's origination fee (cbBorrowFee) on EVERY sweep and CAPITALISES
                                 # it; totals surface as totalCbFees/cbFeeCount.
                                 # 🔴 §2 wall side B: imports ONLY CB_LLTV/CB_LIF/cbBorrowFee/cbLiquidationPrice + the
-                                # fee-bracket constants (runCoinbaseLoan, a leaf) + defendCbLtv/topUpToCbLtv (cbDefense) +
-                                # the zero-import ltvOf (./ltv) + the leaf ./supportPolicy (the opt-in SUPPORT-
+                                # fee-bracket inverse cbMaxDrawForHeadroom (runCoinbaseLoan, a leaf) + defendCbLtv/topUpToCbLtv and the other defense leaves (cbDefense) +
+                                # the zero-import ltvOf (./ltv) + the zero-import ./goal + the leaf ./supportPolicy (the opt-in SUPPORT-
                                 # ANCHORED POLICY, `supportPolicy?` — see § Support-anchored policy; absent ⇒
                                 # byte-identical, pinned by the G1 golden; TEST-ONLY incomePath and
                                 # modelStrikeLiquidation) — NOTHING from powerLaw/cycleModel/store. The
@@ -211,7 +211,7 @@ src/
                                 # byte-identical) SEEDS the cold pool with the owner's REAL unpledged reserve,
                                 # so the top-up's "cold FIRST" can spend coins the sim never swept; it is also
                                 # added to the never-draw baseline (the owner holds it in that world too).
-                                # WIRED from the three engine faces (real-cold spec v1): each passes
+                                # WIRED from the four engine faces (real-cold spec v1): each passes
                                 # getCurrentColdBtc(). ⚠ Under the policy the emergency CB top-up IS doom-gated
                                 # (adopted, default on) — same-month: cold topped in while Coinbase was savable can
                                 # be lost to a later liquidation; policy off, it is NOT (that arm is unchanged)
@@ -493,6 +493,14 @@ src/
       monthlyLog.test.ts
       aprAnchors.test.ts
       strikeCredit.test.ts
+      strikeCreditHardening.test.ts   # Hardening 1 — HS-01
+      cbMetricsHardening.test.ts   # Hardening 1 — HS-02, HS-03
+      safetyViewHardening.test.ts   # Hardening 1 — HS-04…HS-11
+      runCoinbaseLoanHardening.test.ts   # Hardening 1 — HS-13, HS-14
+      logUtilsHardening.test.ts   # Hardening 1 — HJ-05, HJ-06, HJ-07, HJ-25, HJ-26
+      cyclingSimHardening.test.ts   # Hardening 1 — HE-02, HE-06, HE-07, HE-10, HE-11, HE-27…HE-31
+      supportPolicyHardening.test.ts   # Hardening 1 — HE-26
+      crashPlaybookHardening.test.ts   # Hardening 1 — HE-12, HE-13
 
   hooks/
     useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick). Each store push goes through setBtcPrice, which now ALSO stamps btcPriceUpdatedAt (per-device staleness clock — DevPanel readout). Poll gated on the now-self-correcting usePageVisibility. MOUNTED AT AppShell ROOT so the poll runs for the whole session (Simple Mode mounts no price-consuming sidebar — without this, btcPrice froze at its last persisted value in Simple Mode); per-tab sidebar calls remain (harmless co-mounts)
@@ -513,7 +521,7 @@ src/
                                 # (the inverse of "never close shared sockets" — correct because they're ours). Effect
                                 # keyed on the STABLE urls.join(',') (no re-subscribe thrash); functional setState
                                 # early-returns on no-change. Probes ONLY the urls passed in (SettingsMain gates on
-                                # settingsPage==='network' ? nostrRelays : EMPTY_RELAYS — no sockets unless viewing it)
+                                # settingsPage==='network' && !backupGated ? nostrRelays : EMPTY_RELAYS — no sockets unless viewing it)
     usePlanLoading.ts           # 5e (F1) — the "Loading your plan…" screen's state for AppShell ({ up, slow }), from
                                 # lib/nostr/firstPull through useSyncExternalStore (the server snapshot too, so a static
                                 # render works). Tested in src/lib/nostr/__tests__/firstPull.test.ts (GATE)
@@ -620,6 +628,7 @@ src/
                                 # `persistOptions` (annotated PersistOptions<StoreState, ReturnType<typeof partializeState>>
                                 # so its standalone merge/onRehydrate callbacks keep param types). Imports bootstrap +
                                 # leaves; does NOT import useStore
+                                # + __tests__/persistConfigHardening.test.ts (HJ-08…HJ-13, HY-17…HY-20, HK-13, HK-14 — Hardening 1: each migration keeps what is stored)
     slices/                     # Phase 1c — 9 domain slice files, each `type XSlice = Pick<StoreState,…>` + a
                                 # `createXSlice(set, get): XSlice` creator (mining takes _get, unused). ui · planInputs ·
                                 # mining · cbLoan (incl. Strike-API display fields) · advisorJournal (advisor+monthlyLog) ·
@@ -658,7 +667,7 @@ src/
                                 # 7 confirmed source:'manual' months (≥1 paydown), a Month-8 dayLog with a
                                 # strikeCollateral-bearing balanceReading, monthBucketReconcileDone:true (or the
                                 # one-shot reconcile deletes the seeded history), NO identity/viewer fields.
-                                # ⚠ Imports ONLY utils/format + type-only shapes — must never pull useStore (main.tsx
+                                # ⚠ Imports ONLY utils/format, lib/storeVersion, simulation/runCoinbaseLoan + type-only shapes — must never pull useStore (main.tsx
                                 # imports it FIRST, before the store's module-init IIFEs read localStorage)
     planEvents/                 # Phase 4b — event-sourced plan core (PURE leaves; ZERO wiring — no store/sync/
                                 # publish/d-tag/emitter yet, all 4c). Runtime import ONLY from store/settingsFields
@@ -785,6 +794,14 @@ src/
                                 # in wipeLocalPlanData's inventory: kept on "Remove local key". Tested in
                                 # src/lib/__tests__/btcCandlesCache.test.ts (OLD, EDGE, NEWER, FUTURE, SHAPE, LABEL, STORE,
                                 # OWN KEY, RANGE, MONEY)
+                                # + src/lib/__tests__/ledgerCsvHardening.test.ts (HJ-23, HJ-24 — Hardening 1: CB bal / CB LTV under their own headers; RFC 4180 quote doubling)
+
+    nostr/__tests__/            # Hardening 1 — the keys tests (HK-01, HK-02, HK-06, HK-07, HK-08; each title names its identity.md row)
+      keyVaultHardening.test.ts   # Hardening 1 — HK-01, HK-02
+      establishOwnerHardening.test.ts   # Hardening 1 — HK-06
+      sessionHardening.test.ts   # Hardening 1 — HK-07, HK-08
+    crypto/__tests__/
+      cryptoClientHardening.test.ts   # Hardening 1 — HK-03, HK-04 (src/lib/crypto/__tests__/; its title names its identity.md row)
 
   utils/
     format.ts                   # fmtUSD, fmtMining (sats-aware) + DUST_USD / shownUsd — THE one $0.50 dust floor
@@ -1011,7 +1028,7 @@ src/
                                 # one run per crossing; 8 runs over 9 quotes 0.15% apart without the grid)
       futures.worker.ts         # The futures worker: futuresFor off the main thread. The crypto worker's pattern — `declare
                                 # const self: DedicatedWorkerGlobalScope`, a local message contract, compiled by
-                                # tsconfig.worker.json and excluded from tsconfig.app.json; a precache entry (8 since)
+                                # tsconfig.worker.json and excluded from tsconfig.app.json; a precache entry (14 at c7f709e)
       futuresClient.ts          # runFuturesJob(job) → Promise<FuturesSummary | null> (null = superseded). The crypto client's
                                 # pattern: one lazy module worker, `new Worker(new URL('./futures.worker.ts',
                                 # import.meta.url), { type: 'module' })` (precache-safe); a `typeof Worker` check; a worker
@@ -1349,16 +1366,16 @@ src/
                                 # field's mode; AWAY) + e2e/numberField.spec.ts, numberFieldAway.spec.ts
       Toggle.tsx
       PassphraseInput.tsx       # R2c-7a-2-polish — THE masked-entry widget (+ .module.css). A controlled input +
-                                # focus-guarded Show/Hide toggle, adopted at ALL 16 RENDERED masked fields:
-                                # NostrAuthGate (remediation encrypt · ncryptsec unlock · PIN · Confirm PIN),
+                                # focus-guarded Show/Hide toggle, adopted at ALL 18 RENDERED masked fields:
+                                # NostrAuthGate (remediation encrypt · saved-key PIN unlock · ncryptsec unlock · PIN · Confirm PIN),
                                 # RecoveryKeyCeremony (PIN unlock · encrypt · verify re-entry), ViewerLoginFlow
                                 # (token pass · PIN ×2), OwnerKeySetup (PIN ×2), ViewerUnlockGate (PIN ×2),
-                                # RevealRecoveryKey (PIN), SharingPage (PIN). ⚠ NOT AppUnlockGate/StoreMigrationGate
+                                # RevealRecoveryKey (PIN), SharingPage (PIN), LocalUnlockGate (PIN). ⚠ NOT AppUnlockGate/StoreMigrationGate
                                 # — both UNRENDERED (retained verbatim as the Option-3a rebuild basis), so a
                                 # `grep type="password" src` should show exactly those two and nothing else.
                                 # ⚠ THE FOUR iOS SUPPRESSIONS ARE BAKED IN (autoComplete/autoCorrect/autoCapitalize/
                                 # spellCheck), not props — iOS autocapitalizes an unsuppressed field, which would make
-                                # the encrypt and decrypt sides permanently disagree. One default beats 16 chances to
+                                # the encrypt and decrypt sides permanently disagree. One default beats 18 chances to
                                 # forget one. ⚠ FOCUS GUARD: the toggle is `onPointerDown` + `preventDefault()` (the
                                 # WordGrid suggestion-strip idiom) + tabIndex={-1} — an onClick-only toggle blurs the
                                 # field first, and on iOS the keyboard collapses and the caret is lost mid-passphrase.
@@ -2045,6 +2062,7 @@ src/
                                 # 'reading' any balanceReading; 'cbCollateral' a deposit target:'cb', ADDITIVE to logged). ALL
                                 # date math UTC (new Date(iso)=UTC midnight; getUTCDay, not getDay → tz-safe). Tested in
                                 # __tests__/calendarModel.test.ts (every monthDateRange date buckets back to its month — load-bearing)
+                                # + __tests__/calendarModelHardening.test.ts (HJ-21, HJ-22 — Hardening 1: the minimum is balance-neutral; a withdraw-only day carries the logged pip)
       Calendar.tsx              # Daily Mode P4c-1a — the Week|Month calendar. RENDER + SELECT only (does NOT yet drive the
                                 # activity card — P4c-1b). Props {dayLog,advisorStartDate,currentMonth,scope,selectedDay,
                                 # monthLabel,onScopeChange,onSelectDay}. .seg Week|Month toggle; .calcard title (Week→"This week",
@@ -2329,6 +2347,9 @@ src/
                                # 'personal-bloc-v1' cache. NO runtime caching (cross-origin price/candles/relays stay
                                # network-only). Compiled by tsconfig.worker.json (WebWorker lib, no DOM); registered from
                                # main.tsx via registerSW({ immediate: true })
+
+tsconfig.e2e.json            # Hardening 1 G2 — tsconfig.node.json's flags + DOM, types node; includes e2e/**/*.ts + playwright.config.ts;
+                                # referenced from the root tsconfig.json, so `tsc -b` (the build) type-checks the e2e specs too
 ```
 
 ---

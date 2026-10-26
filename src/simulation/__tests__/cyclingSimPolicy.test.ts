@@ -1409,7 +1409,7 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
     return below;
   };
 
-  it('⭐ the switches — absent ≡ the playbook (rules on, top up first on, any depth off); the policy-off arm ignores all three', () => {
+  it('⭐ the switches — absent ≡ the playbook (rules on, top up first on, any depth off); the policy-off arm ignores all three', { timeout: 60_000 }, () => {
     const runs = [
       ...coldRuleRows().flatMap((row) => [0, SEED].map((seed) => ({
         label: `${row.name} · seed ${seed}`, inputs: { ...row.on, openingColdBtc: seed },

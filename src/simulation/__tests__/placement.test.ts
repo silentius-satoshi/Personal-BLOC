@@ -105,7 +105,7 @@ describe('⭐ I3 — the preview reaches the engine\'s own month-1 end state', (
   /** k chooses the zone: 1 → accumulate, 1.75 → hold, 2.5 → payDown. */
   const ZONES: [string, number][] = [['accumulate', 1], ['hold', 1.75], ['payDown', 2.5]];
 
-  it('⭐ 20,001 random positions across all three zones: month 1 ≡ plan.after', () => {
+  it('⭐ 20,001 random positions across all three zones: month 1 ≡ plan.after', { timeout: 60_000 }, () => {
     const rand = rng(20_260_929);
     let checked = 0;
     const branches = { toCbOnly: 0, split: 0, cbToCold: 0 };

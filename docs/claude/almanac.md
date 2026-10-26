@@ -378,7 +378,7 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   `strikeCapNote` (a modelled call reads the policy card's own call sentence). ⚠ **COPY TRUTH:** the yield
   sentence says "gave way to **keep Coinbase alive**" ONLY when Coinbase survived; otherwise it says Coinbase
   was liquidated anyway — and since a run can be BOTH called and yielded, the liquidated branch must survive
-  being appended to the call (three unit cases pin it). `defended` must never read as a margin call.
+  being appended to the call (four unit cases pin it). `defended` must never read as a margin call.
 - **Zone colours** reuse the shared gauge (`cbBarLevel` + `LEVEL_COLOR`) but band against **`CB_LLTV`**, the
   LTV this projection actually liquidates at — NOT the dashboard's `cbLiqFrac`, which comes from the owner's
   entered liq price, a TODAY anchor that says nothing about a position five years out. The trigger boundary
@@ -394,7 +394,7 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   fires only when the owner taps "Check live rate" / "Refetch". It writes to the SESSION OVERLAY, never the
   store, so the faces stay zero-store-write. The polling `useMorphoRate` is still confined to Settings and
   the SafetyDashboard.
-- Tests: `src/simulation/__tests__/cyclingSim.test.ts` (26) + `powerLaw.test.ts` (10, all RELATIONAL against
+- Tests: `src/simulation/__tests__/cyclingSim.test.ts` (100) + `powerLaw.test.ts` (18, all RELATIONAL against
   a fixed UTC date — absolute band dollars grow daily and would rot). Suite 968 → **1004**.
 
 #### Inspection layer — month scrubber · price lens · BTC gained · holdings (UI-only, NO engine change)
@@ -409,7 +409,7 @@ component state; no store bump. The pure helpers live in **`src/components/Alman
 - **`debtSplit(row)`** → `{ strikeUsd, coinbaseUsd, combinedUsd, shiftedUsd }`: where the DOLLAR debt sits.
   The refinance/debt-shift moves no coins, so this is the venue card's debt line (`shiftedUsd` = the month's
   `defenseDrawnUsd`).
-- **`btcGained(row, base, rowPriceOverride?)`** → `{gross, net}`. Gross is price-independent (BTC counts);
+- **`btcGained(row, base, rowPriceOverride?)`** → `{gross, yours}`. Gross is price-independent (BTC counts);
   net is `btcHeld − debt/price` on both sides. ⚠ **The override re-prices the ROW side ONLY** — `base` keeps
   its own real price (base is *today*).
 - **`holdingsSplit(row)`** → Strike / Coinbase / Cold / Combined BTC counts.
@@ -454,7 +454,7 @@ TEST, not a comment:** `src/components/Almanac/__tests__/resetMirror.test.ts` ex
 each face and fails if any engine input except `startDate` is missing from the reset list. The comment alone
 had let `coldBufferPct` drift out on BOTH faces — a pre-existing bug: moving the cold slider under an engaged
 lens kept a stale scenario. The guard was proven red against the unfixed faces before the fix went in.
-⚠ `FACES` now covers **all three** engine faces (Cycling, Ownership, **UnifiedFace.tsx**) — a face outside
+⚠ `FACES` now covers **all four** engine faces (Cycling, Ownership, **UnifiedFace.tsx**, **DecisionFace.tsx**) — a face outside
 that list escapes the mirror entirely, which is the single easiest way to reintroduce the stale-scenario bug.
 It was run RED on all three (each naming `strikeCapPct`) before the Strike cap reached the reset arrays.
 
@@ -467,7 +467,7 @@ The reset effect is CORRECT and is UNCHANGED — a run measured against inputs t
 the wrong position. The defect was that a background quote is not an owner input, and a what-if measured
 against a drifting anchor is not reproducible anyway.
 
-`useStressLens(livePrice, priceMode)` (**`src/components/Almanac/useStressLens.ts`**, both faces) owns
+`useStressLens(livePrice, priceMode)` (**`src/components/Almanac/useStressLens.ts`**, all four engine faces) owns
 `lens` and the anchor. Which side each number sits on IS the invariant:
 
 | reads the ANCHOR (`anchorPrice`) | reads SPOT (`livePrice`) |
@@ -497,7 +497,7 @@ still.
 - Tests: **`src/components/Almanac/__tests__/stressAnchor.test.ts`** (16) — the truth tables, the
   engage-race case, an end-to-end reproduction of the old defect, and a **mutation-tested grep guard** that
   fails if either face is reverted to `plConvergencePath(s.btcPrice, …)`. Suite → **1170**. ⚠ Its
-  expected-callers list now names THREE faces (Cycling, Ownership, UnifiedFace) — it caught the new face
+  expected-callers list now names FOUR faces (Cycling, Ownership, UnifiedFace, DecisionFace) — it caught the new face
   before the list was updated, which is the guard working.
 
 **BTC gained:** both the tile and the Milestones column read the displayed (base or stressed) run
@@ -525,7 +525,7 @@ support line, the below-support warning) stay where it was. ⚠ The dock's range
 faces are Run 2). ⚠ The cold-storage / unpledged reserve IS modeled too — see **§ Cold-storage sweep** (the third
 pool + the Strike→Coinbase→cold cascade).
 
-- Tests: `src/components/Almanac/__tests__/cyclingFaceView.test.ts` (19). ⚠ **The seizure test asserts at
+- Tests: `src/components/Almanac/__tests__/cyclingFaceView.test.ts` (136). ⚠ **The seizure test asserts at
   `liqMonth + 1`, NOT at the first `postLiquidation` row** — `cyclingSim` pushes the BREACHING row and
   applies the seizure afterwards while setting `postLiquidation: true` on that same row, so `rows[liqMonth]`
   still holds the intact pre-seizure position and a naive assertion there passes vacuously. A sibling case
@@ -582,7 +582,7 @@ line still leaves LTV above the stop, the FALLBACK top-up moves collateral into 
   must keep footing) and is ALSO added to the never-draw `baselineBtc`: ⚠ the baseline compares against
   "the untouched opening position" and the owner holds that reserve in the never-draw world too, so
   omitting it would credit the strategy with coins it never earned, inflating the verdict by exactly the
-  seed. **Wired (real-cold spec v1):** all three engine faces pass `getCurrentColdBtc()` — see **Real cold in
+  seed. **Wired (real-cold spec v1):** all four engine faces pass `getCurrentColdBtc()` — see **Real cold in
   the projections** under § Cold ledger for what it fixed (the cold split's third origin, the moves sentence, the
   opening figures, `coldShown`, the policy-off slider gate). ⚠ **Under the support policy the emergency Coinbase
   top-up IS doom-gated** (the doom gate, adopted — § "The cold rules below support" below): in a month Coinbase cannot
@@ -602,7 +602,7 @@ line still leaves LTV above the stop, the FALLBACK top-up moves collateral into 
   (`unheldMonth`: a top-up-first step that falls short is normal there, so `topUpExhaustedMonth` would never fire for
   it — § Support policy — Faces → "The crash playbook on the faces"); the venue card gains ONE quiet
   debt line (`Debt · $X Strike · $Y Coinbase [· $Z shifted this month]`, `debtSplit`); the Cycling cold
-  split adds a `− ₿X retrieved for the top-up` row so the origins still reconcile to the net headline; and
+  split adds a `− X ₿ used to defend the loans` row so the origins still reconcile to the net headline; and
   the selected month's Support marker (`plBandAt`, NEW in `powerLaw.ts`) with an amber "below the support
   line" note when the stress crosses it (range kept, never clamped). No banners, no new cards, no toggle.
 - Tests: `cbDefense.test.ts` (incl. the top-up: worked example / cold-first / margin-bounded Strike / both
@@ -2159,7 +2159,7 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   screen only: the printout has no keep column. **C2:** the
   WHOLE row is the button (`<tr role="button" tabIndex={0}>`, Enter / Space → the inspected month, the dock's Month); a crash row's note
   (`crashNote`, D13 — the SAME sentence the printout carries) and its "→ Emergency Console" link go on a SIBLING row
-  beneath, never inside the button; the link appears only when `hasCbLoan && ltvTriggered` (the only time the defense
+  beneath, never inside the button; the link appears only when `consoleRuns` (the only time the defense
   face exists and the console runs — `consoleRuns`, which is `hasCbLoan` alone since the plan of record's Run 4, D3)
   and its accessible name carries the month (`consoleLinkLabel`). ⚠ A 60-month plan
   of wrapped moves runs to ~20,000 px on a phone, so the table scrolls in a 460px box of its own (sticky header,
@@ -2262,7 +2262,7 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   months)`, never `pricePath`; C2's row shape; C1's listeners and the no-synchronous-clear rule; no buffer / stop /
   mode control; I19; I20; the hub (I21); I28; I31 (its non-vacuity anchor is the JSX text 'Moves' since D2 moved the
   keep header into `decisionView`). ⚠ **`resetMirror.test.ts`'s cold regex is
-  WIDENED** to `/\bopeningColdBtc: (?:[^,\n]*? : )?s\.openingColdBtc\b/` — the bare form or a ternary whose ELSE
+  WIDENED** to `/\b(?:openingColdBtc|coldBtc): (?:[^,\n]*? : )?s\.openingColdBtc\b/` — the bare form or a ternary whose ELSE
   branch is the store's reserve (G1); an inverted ternary and a seed with no fallback both fail it. `coldWiring` and
   `stressAnchor` list the face too; the forbidden-input grep covers it with no change.
 
@@ -2442,7 +2442,7 @@ badge + an off-mode `~`/`est.` precision marker differ.
   `Toggle`, so a viewer can flip it). OFF: muted "date-only · live off"; LIVE: green "live · {ago} ·
   {source}" (amber when stale). Tap = the toggle: enabled→off (silent); else consented→on (silent); else →
   open the consent sheet. a11y `aria-label`. The badge is shared by both faces (single fetch in AlmanacView).
-- **`AlmanacConsentSheet.tsx`** (NEW) — one-time consent on FIRST enable (createPortal scrim/sheet mirroring
+- **`AlmanacConsentSheet.tsx`** (NEW) — one-time consent on FIRST enable (the shared `DraggableSheet`, as
   `EventSheet`): title + the four hosts as mono pills + a green "block height only — no holdings, no
   identity" reassurance + Stay-offline / Turn-on (`--btc`). Confirm → consent+enable; cancel → stays off.
 - **`AlmanacView.tsx`** — dropped the static `height`/`mode` props; calls `useChainTip()` ONCE and feeds
