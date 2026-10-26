@@ -461,6 +461,31 @@ src/
                                 # Per-month entries: newest updatedAt/loggedAt wins, tombstones, 90-day GC. P3: dayLog
                                 # union-by-id (higher ts wins, exact tie→local) + dayLogDeletions tombstone suppression
                                 # (strict >, edit-after-delete drops the stale tombstone, 90-day GC); deterministic sort by ts,id
+    fire.ts                     # Batch 1 build 3 — THE FIRE ENGINE, the sell lane (spec pbloc-spec-batch-1-v1 §2.3; engines.md
+                                # § The FIRE engine). fireTimeline(x, prices) → one row a month (the price, the inflation step,
+                                # ₿ and the other assets at the month's start, the market portfolio, afterTaxUsd — the run-out
+                                # test's value, FI's and the scale's — the two needs, needBtc, yearsFunded / needYears, the
+                                # savings, the draw, ₿ bought or sold, the tax, the phase) + the stop month used, FI against
+                                # each need, the run-out month and the lowest point; withdrawalCapacity (the $10 search from the
+                                # owner's stop month, held fixed; hi binding said); fundedSpending (E3), fireTargets (E4),
+                                # yearsOfFundedSpending (the scale). 🔴 + − × ÷ only and ONE import, ./taxes (D-1 A): no belief,
+                                # no engine; prices a plain number[], the horizon its length. Tested in __tests__/fire.test.ts
+                                # (PARITY against goldens/fireParity.golden.json — the reference model's; G-FIRE against
+                                # goldens/fireTimeline.golden.json — fire.ts's own, exact)
+    fireBreakEven.ts            # Batch 1 build 3 — the break-even growth (the FIRE plan's M3): breakEvenGrowth(x, prices) — the
+                                # face's stop month held fixed, steady paths p0 × (1 + g)^(m/12) bisected in −50% … +100% a
+                                # year; null when nothing lasts. ⚠ Math.pow, so outside fire.ts's exact core and tolerance-tested
+                                # only (__tests__/fireBreakEven.test.ts — M3, MONOTONE)
+    taxes.ts                    # Batch 1 build 3 — ONE capital-gains formula (the FIRE plan's R1(d)): CAPITAL_GAINS_TAX_RATE 0.30
+                                # (Living's; useLivingSimulation passes it), capitalGainsTax (Living's formula, lifted from
+                                # runSellToLive's two sites in their own order — the Living tab bit for bit) and sellToNet (the
+                                # sell lane's closed form). Zero imports, + − × ÷. Tested in __tests__/taxes.test.ts (LIVING)
+    cycleReplays.ts             # Batch 1 build 3 — the bear-market replays, a BELIEF leaf beside cyclePath (imports only
+                                # ./powerLaw): deriveReplays(history, today) — each cycle's top (the late 2013, Dec 2017 and
+                                # Nov 2021 windows) and every month-end close after it ÷ the top, through the reclaim;
+                                # monthEndCloses (breakerFromHistory's rule, restated — MONTH-END ≡ BREAKER pins the two equal);
+                                # replayPath (spliced at the stop month's price, then the trend tail: plConvergencePath at
+                                # Infinity). No price series is committed (D-2). Tested in __tests__/cycleReplays.test.ts
     __tests__/
       smartBloc.test.ts
       living.test.ts

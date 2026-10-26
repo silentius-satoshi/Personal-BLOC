@@ -5,6 +5,7 @@ import { runNoBitcoin } from '../simulation/runNoBitcoin';
 import { runSellToLive } from '../simulation/runSellToLive';
 import { runSmartBLOC_Living } from '../simulation/runSmartBLOC_Living';
 import { runMaxLeverage } from '../simulation/runMaxLeverage';
+import { CAPITAL_GAINS_TAX_RATE } from '../simulation/taxes';
 
 const LTV_TYPE_MAP = {
   target:  0.02,
@@ -38,7 +39,7 @@ export function useLivingSimulation() {
       inflationRate:       inflationRate / 100,
       timeHorizonMonths:   timeHorizonYears * 12,
       ltvCeiling:          LTV_TYPE_MAP[ltvType],
-      capitalGainsTaxRate: 0.30,
+      capitalGainsTaxRate: CAPITAL_GAINS_TAX_RATE,
       bearMarket,
       bearPeriodMonths: bearPeriodYears * 12,
       annualDecline:    annualDecline / 100,

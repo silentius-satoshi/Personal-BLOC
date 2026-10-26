@@ -1,5 +1,6 @@
 import type { LivingInputs, StrategyResult, StrategyMonthData } from './types';
 import { getBtcPrice } from './livingUtils';
+import { capitalGainsTax } from './taxes';
 
 export function runSellToLive(
   inputs: LivingInputs,
@@ -48,8 +49,7 @@ export function runSellToLive(
 
     cumulativeInflation *= (1 + monthlyInflation);
 
-    const totalGains = Math.max(0, cumulativeDollarSold - cumulativeBtcSold * startPrice);
-    const taxesPaid  = totalGains * capitalGainsTaxRate;
+    const taxesPaid  = capitalGainsTax(cumulativeDollarSold, cumulativeBtcSold, startPrice, capitalGainsTaxRate);
 
     const netWorthNominal = btc * btcPrice - taxesPaid;
     monthlyData.push({
@@ -68,8 +68,7 @@ export function runSellToLive(
     timeHorizonMonths, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth,
     inputs.bearPeriodMonths, inputs.annualDecline,
   );
-  const totalGains = Math.max(0, cumulativeDollarSold - cumulativeBtcSold * startPrice);
-  const finalTaxesPaid = totalGains * capitalGainsTaxRate;
+  const finalTaxesPaid = capitalGainsTax(cumulativeDollarSold, cumulativeBtcSold, startPrice, capitalGainsTaxRate);
   const btcSoldForTaxes = finalTaxesPaid / finalBtcPrice;
   const finalBtcHeld = btc - btcSoldForTaxes;
   const finalNetWorthNominal = finalBtcHeld * finalBtcPrice;

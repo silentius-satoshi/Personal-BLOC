@@ -764,3 +764,121 @@ the words: `almanac.md` § BL14 and § BL32; the Dashboard tile: `viewer.md` § 
 
 ---
 
+## The FIRE engine — the sell lane (`fire.ts`, `fireBreakEven.ts`, `taxes.ts`, `cycleReplays.ts`; batch 1 build 3; no store, no screen)
+
+Spec `pbloc-spec-batch-1-v1` v0.28 §2.3 and the FIRE plan `pbloc-spec-fire-face-v1` v0.2 (its Appendix D and the batch
+spec's §1 answers override its body — BL31). The engine of the thirteenth Almanac face: how many years of spending a
+portfolio funds, and when it funds enough. The Compass's free engine (the FIRE plan's §1.2, E1–E9) is re-derived from the
+plan's own formulas — never its code, its multiplier arrays or its copy (R0). The face is build 4; the borrow lane, build 5.
+
+- **The modules.**
+  - `fire.ts` — the timeline, the two needs, the scale and the capacity. 🔴 + − × ÷ and `Math.max` / `min` / `floor` /
+    `abs` only; its ONE import is `./taxes` (D-1 A), itself zero-import: no belief and no engine. Prices arrive as a plain
+    `number[]` the view builds, and the horizon is that array's length — no cap (the face passes 240 prices for 240 months;
+    `plConvergencePath(…, 240, …)` returns 241).
+  - `fireBreakEven.ts` — the break-even growth (M3). Its steady paths use `Math.pow`, so it stays out of the exact core
+    (`fire.ts` never imports it) and is tested to a tolerance (R7).
+  - `taxes.ts` — the one capital-gains formula (R1(d)): `CAPITAL_GAINS_TAX_RATE` (0.30, Living's), `capitalGainsTax`
+    (Living's formula, lifted from `runSellToLive` in its own order — the Living tab bit for bit what it was) and
+    `sellToNet` (the closed form for a sale that nets a given amount after the tax).
+  - `cycleReplays.ts` — the bear-market replays: a belief leaf beside `cyclePath.ts`, importing only `./powerLaw`.
+- **The inputs** (`FireInputs`; rates are decimals, never percents; "today's" dollars are month 0's, "nominal" a month's
+  own): `btc` (₿ yours — `deriveOwnership`'s `yoursBtc`, no 4th argument; below 0, underwater) · `otherUsd` ·
+  `savingsUsd` (a working month's income − expenses, today's dollars; negative is a gap) · `spendUsd` and
+  `retirementIncomeUsd` (a month, today's dollars; the view folds any buffer into the spending) · `stopMonth` (a month, or
+  `'atFi'`) · `inflation` (a year) · `otherMonthlyFactor` (1 + a month's return, from the view) · `wBtc`, `wOther` ·
+  `taxRate` · `basisUsdPerBtc` (null = the month-0 price).
+- **The rows and the result.** One `FireRow` a month, at its start: the price; the inflation step; ₿ and the other
+  assets; the portfolio (market value); `afterTaxUsd` (the other assets + the coins' net after the tax selling all of them
+  would owe); the BTC-adjusted and traditional needs, nominal; `needBtc`; `otherCoverNeed`; `yearsFunded` and `needYears`
+  (the scale and its mark); the savings, the draw, what the other assets paid, the ₿ bought or sold, the tax; the phase
+  (`working` · `retired` · `runsOut` · `depleted`). `FireResult` adds the stop month used, `stopInHorizon`, the FI month
+  against each need, the run-out month, `runsOutWhileWorking`, the lowest point and its month, the funded spending,
+  `covered`, `underwater` and `uncoveredDebtUsd`. The face and its Milestones read these and never re-derive a rule.
+- **The conventions**, one sentence each (the build-3 plan's point 3, as its go amended it):
+  - a. Inflation steps every 12 months counted from month 0, as a running factor — never `Math.pow`, never from the stop
+    month — and every dollar flow and the need is today's figure × that step, so shown dollars are nominal ÷ the row's
+    step (F8).
+  - b. A working month's savings buy bitcoin at its price (the pool's cost rises by the dollars), a negative figure is a
+    gap drawn like a withdrawal — never floored at 0, so a plan can run out before it stops — and the other assets grow
+    every month, working or retired.
+  - c. From the stop month each month draws (spending − retirement income, never below 0) × the step, at its start and its
+    price: the income counts from then only, and a surplus is never invested.
+  - d. A month that draws grows the other assets a month, pays from them first, and sells bitcoin for the rest (E8's
+    order).
+  - e. Each sale is taxed by `capitalGainsTax` on its gain over the pool's average cost — seeded at ₿ × the month-0 price
+    or at the owner's own cost, raised by each buy, lowered pro rata by each sale — and `sellToNet` sizes it to net its
+    share exactly (F7).
+  - f. The BTC-adjusted need is a year's funded spending × step × (1/wOther + share × (1/wBtc − 1/wOther)) at that
+    month's share (C4) — the traditional need's multiplier form, so equal rates give equal bits — and FI is the first whole
+    month whose start-of-month after-tax value meets it, read on the keep-working path before that month's savings and
+    growth, which `'atFi'` makes the first retired month.
+  - g. A month that draws runs out when its after-tax value − the draw ≤ 0 (an exact zero runs out), tested before its
+    growth — it then pays nothing, and every later month holds nothing — or when, after the growth, the rest exceeds the
+    coins' after-tax net (a return below 0): ONE value, read in dollars, so no rounding tie ends a plan early, and the
+    coins sold are clamped to the coins held.
+  - h. The capacity is the largest monthly spending, in today's dollars, that lasts from the owner's own stop month held
+    fixed — lo 0, hi 2 × the spending unless given; lasting at hi returns hi and says it binds (C7); otherwise a $10
+    bisection that keeps lo.
+  - i. The scale is years of funded spending — the after-tax value ÷ a year's funded spending — marked at 1/wOther and at
+    the BTC-adjusted multiple, one mark at equal rates (D13).
+  - j. The lowest point is the lowest start-of-month market value, nominal, through the run-out month inclusive.
+- **FI, the scale and ₿ needed read the after-tax value, the run-out test's; the lowest point is market value, before the
+  tax a sale would owe** (the build's go, change 1). The need is net spending and each sale pays its tax, so a pre-tax FI
+  counted the tax a sale would owe as spendable: on the review's household with a 30% tax, FI came 13–25 months early. At a
+  tax of 0 the after-tax value IS the portfolio, bit for bit, so parity, M3 and Appendix A are unmoved.
+- **E1–E9 as re-derived.** E1's ten named levels → the app's own scale in years of funded spending, with no borrowed
+  names (F2). E2 → ₿ yours through `deriveOwnership`, net of the loans (C3), plus the other assets. E3 → funded =
+  max(0, spending − retirement income), from the stop month. E4 → both needs, the share re-read monthly, 4% / 4% the
+  face's default (D13). E5 → the monthly timeline on the Almanac's path, in whole months, never interpolated (M4). E6 →
+  dropped: the path is the Almanac's — no static CAGR and no held growth (R3, C2, C5). E7 → the face's spending, any buffer
+  the view's, never the t ÷ (1 − t) gross-up (C8). E8 → the derived replays, in E8's order. E9 → the same search, its hi
+  said when it binds. E10–E12 (Goalseek, the DCA ladder, snapshots) are not ported (D2 A′).
+- **C1–C8.** C1 fixed (inflation steps every flow and the need). C2 dropped (the trend tail). C3 fixed (`deriveOwnership`).
+  C4 half fixed (the share re-read monthly; the rate stays typed, and the break-even shows the belief behind it). C5
+  dropped. C6 not ported. C7 fixed (one loop over the whole horizon; hi binding said). C8 fixed (Living's rule on
+  realized gains, per sale, over an average-cost pool, only on what the portfolio funds).
+- **D1 A′ — no simulation sets or shows a sell-lane figure.** The 1,000 simulations carry the power-law trend, so their
+  odds read rosier than the face's own default path (the FIRE plan's F1). The sell lane reads the four Paths, the replays
+  and the break-even; the simulations appear only on the borrow lane, as its seizure chance (build 5).
+- **The edges** — never NaN, ∞ or a negative ₿. `'atFi'` not met within the horizon → no stop month, every row working,
+  no capacity or break-even (`'noStopMonth'`). Underwater → 0 ₿, the excess debt repaid from the other assets at month 0,
+  what they can't cover in `uncoveredDebtUsd`. 0 ₿ → the traditional need, no basis read: the two 0 ÷ 0 reads (the basis at
+  0 ₿, the share at a $0 portfolio) are guarded. ₿ needed ≤ 0 → 0 with `otherCoverNeed`. Covered, or spending ≤ 0 → nothing
+  funded, no scale figure, FI at month 0. A gap → it can run out while working (`runsOutWhileWorking`; the capacity says
+  `'runsOutWhileWorking'`). A stop at or past the horizon → every row working (`'stopBeyondHorizon'`). A return below 0 →
+  (g)'s shortfall. An empty path, a junk price or a junk rate → `valid: false` (`'path'`, `'price'`, `'input'`) with no rows;
+  junk amounts read as 0; junk search options → `'invalid'`, and both searches stop at 200 steps.
+- **The capacity** is in spending terms (the withdrawal + the retirement income). The Compass's E9 figure is the
+  withdrawal: passed as spending = the funded figure, income 0 and `hiUsd` = twice the gross spending, the search is its
+  search.
+- **The break-even** (`breakEvenGrowth(x, prices)`): the face's stop month, read off its own path and held fixed; steady
+  paths `p0 × (1 + g)^(m/12)` from its month-0 price over its length; the bracket −50% to +100% a year; `atFloor` when it
+  lasts at the floor, `null` (`'nothingLasts'`) when nothing in the bracket lasts; the lasting end kept, so "lasts as long
+  as bitcoin grows at least X% a year" holds at X. It reproduces M3 under M3's setup: 4% → −0.267 / 3.225, 8% → 7.287 /
+  9.362, 12% → 13.265 / 14.524, 25% → 30.799 / 31.010 (% a year, 240 / 360 months).
+- **The replays** (`deriveReplays(history, today)`, then `replayPath(base, startDate, stopMonth, replay)`). Each cycle is
+  named by its top's window — late 2013, Dec 2017, Nov 2021: dates, never multipliers. Month 0 is its top, the highest
+  point in the window in the finest data given, never a month-end; month k is the k-th month-end close strictly after the
+  top ÷ the top, through the first close at or above it — every month-end after the top, nothing dropped. A close is
+  `breakerFromHistory`'s (the last point strictly before the next month's first UTC midnight, junk at 7 days or more),
+  restated in the leaf because the breaker's copy is private, and pinned equal (MONTH-END ≡ BREAKER). A replay is spliced
+  in at exactly the stop month's price, then the trend tail (`plConvergencePath` at Infinity, taken as a ratio on the
+  face's own calendar). **No price series is committed; the face derives the replays from the history the app loads
+  (D-2).** Offline, or before that history lands, there are no replays — build 4 says so.
+- **Parity** (R0, F10). `fireParity.golden.json` (md5 `2b17c3ae…`) holds the outputs of the reference model behind the
+  FIRE plan's §1.3 — which stays outside the repo — on round invented paths: five cases (a run-out in the recovery, a run
+  that lasts, hi binding, an exact zero, the test before the growth). `fire.ts` matches every row to 1e-12, and every
+  month, lasts, hiBinds and the capacity exactly. A case it can't match is a stop-and-report, never a regenerated golden.
+  Appendix A's two needs reproduce to the cent: $1,641,176.47 traditional, $1,263,546.06 BTC-adjusted at 8% / 4%.
+- **What the engine leaves out — named, not built.** The tax is on bitcoin sold only — the other assets are drawn untaxed.
+  The loans `deriveOwnership` nets at month 0 are repaid untaxed (exact at the default basis; with the owner's own basis,
+  that tax is left out). Retirement income counts from the stop month, so a pension or Social Security that starts later
+  reads as starting then. A surplus of retirement income isn't invested. An underwater position's debt beyond the other
+  assets is left out (`uncoveredDebtUsd`).
+- Tests: `src/simulation/__tests__/fire.test.ts` (43), `fireBreakEven.test.ts` (10), `taxes.test.ts` (8),
+  `cycleReplays.test.ts` (13), `fireWalls.test.ts` (5) and the goldens `fireParity.golden.json` and
+  `fireTimeline.golden.json` — § Test Suite → "Batch 1 build 3 — the FIRE engine".
+
+---
+

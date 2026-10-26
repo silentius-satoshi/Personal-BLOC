@@ -1661,6 +1661,32 @@ goes red.)
     nothing when the page is shown) · HIDE (the page turning hidden alone saves) · CLEARED (an emptied field saves nothing,
     stays empty, and saves only what is typed after) · UNTOUCHED (focused, not typed: nothing) · HELD (a typed dated
     figure keeps its typing and its Save, and saves nothing).
+- **Batch 1 build 3 — the FIRE engine** (spec `pbloc-spec-batch-1-v1` v0.28 §2.3 — the FIRE plan v0.2's Run 1; its plan
+  `Claude outputs/batch-1/build-3-plan.md` and the go appended to it; five new unit files and two goldens;
+  `runSellToLive.ts` and `useLivingSimulation.ts` changed by the tax lift only; the suite 2,914 → 2,993 (+6 skipped),
+  190 → 195 files; e2e 115 (+2 skipped), unchanged. 31 planted bugs, each an exact-once edit, red at its listed tests, the
+  files restored and md5-checked: `Claude outputs/batch-1/build-3-mutations.json` and `build-3-report.md`):
+  - `src/simulation/__tests__/fire.test.ts` (43; SYNTHETIC round figures — Appendix A's household is the FIRE plan's own
+    invention): ⭐ E4 TARGETS (Appendix A to the cent; equal rates, equal bits) · ⭐ E3 FUNDED · ⭐ SCALE (after tax; it
+    meets its mark in the FI month) · ⭐ INFLATION · ⭐ WORKING · ⭐ GAP · ⭐ RETIRED · ⭐ ORDER · ⭐ POOL · ⭐ NEED (this
+    month's share; ₿ owned meets ₿ needed in the FI month) · ⭐ FI · ⭐ FI AFTER TAX (the pre-tax reading comes earlier, so
+    it can't pass vacuously) · ⭐ RUN OUT · ⭐ NO TIE (one value, in dollars: over 40,000 seeded fixtures and the 68 doubles
+    at the start test's boundary no passing draw runs out, and both wrong forms would) · ⭐ CAPACITY (the stop held fixed;
+    within $10; monotone) · ⭐ LOWEST · ⭐ PARITY (`goldens/fireParity.golden.json`, its md5 pinned — the reference model
+    behind the FIRE plan's §1.3, never regenerated from fire.ts) · ⭐ EDGES · ⭐ NEVER NaN · ⭐ G-FIRE
+    (`goldens/fireTimeline.golden.json`, fire.ts's own rows, exact).
+  - `src/simulation/__tests__/fireBreakEven.test.ts` (10; tolerance only — Math.pow): ⭐ M3 (the eight values, ±0.001) ·
+    ⭐ MONOTONE (8 fixtures × 2 horizons over a 301-point growth grid, each one crossing; the break-even rising with the
+    withdrawal) · ⭐ NULL · ⭐ STOP FIXED · ⭐ REASONS.
+  - `src/simulation/__tests__/taxes.test.ts` (8): ⭐ TAX RATE · ⭐ TAX FORMULA (bit for bit against the pre-lift expression)
+    · ⭐ TAX NET · ⭐ TAX LIVING (every row's tax over 500 Living runs is the pre-lift expression with the literal 0.30, bit
+    for bit; both sites call it) · TAX JUNK. `living.test.ts` unchanged and green.
+  - `src/simulation/__tests__/cycleReplays.test.ts` (13; synthetic histories — no price series is committed): ⭐ PEAK ·
+    ⭐ MONTH-END · ⭐ MONTH-END ≡ BREAKER (1,500 seeded histories against `breakerFromHistory`) · ⭐ TROUGH and RECLAIM ·
+    ⭐ SPLICE · ⭐ TAIL · ⭐ EDGES · ⭐ WINDOWS.
+  - `src/simulation/__tests__/fireWalls.test.ts` (5): ⭐ APPROX (fire.ts's and taxes.ts's import graph, comments stripped) ·
+    ⭐ IMPORTS · ⭐ BELIEF (one belief importer; no simulations; the risk core imports no FIRE module) · ⭐ TEST-ONLY (the
+    survival-guard grep's list, found by its pattern).
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
