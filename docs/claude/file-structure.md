@@ -1916,10 +1916,10 @@ src/
                                 # the ORIGINAL reading's cbBal!=null via showCbReading, NOT current hasCbLoan). The reading
                                 # section renders ONLY in add mode OR for a balanceReading edit — a flow edit never shows
                                 # it (no LD6 re-enforcement). Title "Edit event"; month via bucketEventToMonth(editEvent.date).
-                                # canSave branches by kind (reading→readingComplete(state,showCbReading); cb-deposit→
+                                # canSave branches by kind (reading→readingComplete(state,showCbReading,collPolicy.required) — N1; cb-deposit→
                                 # amount>0 && liq>0; else amount>0; a buy: + its dollars, 5d). The open useEffect keys on [open, editEvent?.id] and
                                 # seeds fields from editEvent (LTV ×100 for display). handleSave reconstructs ONE event
-                                # preserving id/date/ts → updateDayEvent (LTV ÷100 on reading edits; cb-deposit edit also
+                                # preserving id/date/ts → updateDayEvent (LTV ÷100 on reading edits — rebuildEditedReading since N1; cb-deposit edit also
                                 # re-anchors cbLiquidationPrice/AsOf) — NO buildEventsFromSheet, no second event. Delete
                                 # (edit only) → an inline .confirmBox (copy names the month + provisional warning) →
                                 # deleteDayEvent(id). Exports isEditableKind(k) (draw/paydown/buy/deposit/balanceReading)
@@ -1929,7 +1929,8 @@ src/
                                 # so it doesn't double-count (the edited deposit is already in currentBtcHeld via the C1
                                 # seam); add mode + non-deposit edits subtract 0 — readout only, no data effect.
                                 # v20 (C-P3): a REQUIRED "Strike collateral (BTC)" NumberInput after the Strike-LTV field on
-                                # every reading-bearing sheet (readingComplete gates strikeCollateral!==null). AUTO-TRACK: an
+                                # every reading-bearing sheet (readingComplete gates strikeCollateral!==null) — not a past-dated add's (3b) nor
+                                # an edit's of a reading that records none (N1), both below. AUTO-TRACK (an ADD's — never an edit's, N1): an
                                 # untouched field = autoStrikeCollateral(getCurrentBtcHeld(), move) = the POST-move total
                                 # (current±amount for a strike collateral move, current+amount for a pledged buy, else
                                 # current) — via a track useEffect gated on !strikeCollateralTouched; a manual edit sets
@@ -1943,12 +1944,26 @@ src/
                                 # would STATE 0), not required, and the builder gets fallback null → the reading OMITS
                                 # strikeCollateral. The only figure the sheet knows is TODAY's: stamping it on a past date is
                                 # the app inferring history, and a past reading that becomes the latest-dated anchor makes
-                                # deriveStrikeCollateral count every later Strike move twice. Today + every edit unchanged. A
+                                # deriveStrikeCollateral count every later Strike move twice. Today's add unchanged. A
                                 # past Set balance's label reads "Balances on that day · required to log" (the "optional"
-                                # note is hidden for it). RESIDUAL (pre-existing): editing a reading with no strikeCollateral
-                                # seeds today's figure (`?? currentBtcHeld`) and stamps it on save — the double count above, once
-                                # that past reading is the latest-dated anchor (queued). CB collateral is date-first since Hotfix 1
-                                # (A2-1), so a past reading's typed CB collateral no longer becomes the current one.
+                                # note is hidden for it). CB collateral is date-first since Hotfix 1 (A2-1), so a past
+                                # reading's typed CB collateral no longer becomes the current one.
+                                # ⚠ AN EDIT KEEPS A READING'S STRIKE COLLATERAL AS RECORDED (N1, BL39 — spec
+                                # pbloc-spec-n1-reading-collateral-v1): readingCollateralPolicy(isPast, current, the edited
+                                # reading). A reading that records a figure → the field shows it (the prefill reads the
+                                # policy's fallback), required, and Save writes the field's figure. One that records none (a
+                                # past-dated add's, a balance saved from the Safety card or Quick Setup, any reading from
+                                # before v20) → the field HIDDEN with "This reading doesn't record Strike collateral — an edit
+                                # keeps it that way." (the past date's note element, keyed on isEdit), the gate waived
+                                # (readingComplete(…, collPolicy.required)), and rebuildEditedReading writes none whatever the
+                                # field holds. Was: the prefill and Save fell back to today's total (`?? currentBtcHeld`) —
+                                # the double count above, once that reading was the latest-dated to state collateral (₿1.5
+                                # for ₿1.3). The collateral track never runs on an edit (`if (isEdit) return`): the touched
+                                # flag the prefill sets couldn't stop its first run — that effect still saw the closed sheet's
+                                # touched=false and wrote after the prefill — so every reading edit showed today's total, a
+                                # reading that records a figure included, and an untouched Save stamped it (₿1.4 for ₿1.2).
+                                # To state Strike collateral for a reading that records none, log a reading for today — an
+                                # edit never adds one.
                                 # The plan of record's Run 2.1 (BL19): every readout to the cent (fmtUSDCents) — a Coinbase
                                 # borrow's origination fee, Strike's minimum, the dry-powder estimate, the last liquidation
                                 # price; the minimum's estimate is `toCents` (balance × APR ÷ 12), so a minimum logged from
@@ -1957,7 +1972,8 @@ src/
       eventSheetModel.ts        # PURE builders for EventSheet (no React/store; named eventSheetModel to avoid the macOS
                                 # case-collision with EventSheet.tsx): SheetType/SheetState (v20 += strikeCollateral:number|null
                                 # + pledgeToStrike:boolean) + readingComplete(s,hasCbLoan,requireStrikeCollateral=true) (Save
-                                # gate — a past add passes false via readingCollateralPolicy; otherwise v20 ALSO requires
+                                # gate — a past add, and an edit of a reading that records none (N1), pass false via
+                                # readingCollateralPolicy; otherwise v20 ALSO requires
                                 # strikeCollateral!==null) + autoStrikeCollateral(base,s) (v20 PURE — POST-move total: strike
                                 # collateral move → base±amount, pledged buy → base+amount, else base; shared by the sheet's
                                 # auto-track + its tests) + buildEventsFromSheet(s,hasCbLoan,btcPrice,today,ts,idFn,
@@ -1973,7 +1989,14 @@ src/
                                 # and the suggested balance — to the cent since Run 2.1; tested in cbDebtSheet.test.ts).
                                 # + latestReadingForPrefill (Hotfix 1 — the today sheet's prefill: the latest reading by
                                 # date, then orderTs, never a backfilled or just-edited older one; journalOrder.test.ts).
-                                # Tested in __tests__/eventSheet.test.ts
+                                # + readingCollateralPolicy(isPastAdd,current,edited?) — N1: the edit case, as recorded (a
+                                # figure → required, its own as the fallback; none → not required, no fallback) — and
+                                # rebuildEditedReading(ev,s,btcPrice) (N1 — the edit's rebuild of a reading, was inline in
+                                # handleSave: none stays none whatever the field holds; a figure stores the field's, else its
+                                # own; id/date/ts kept, the LTVs ÷100, today's price, the CB block only on a reading that has
+                                # one).
+                                # Tested in __tests__/eventSheet.test.ts (+ N1: src/store/__tests__/editedReadingStore.test.ts,
+                                # e2e/editedReading.spec.ts)
       ReviewSheet.tsx           # The month review — Daily's sign-off (Logging Consolidation §2): the month's rolled-up
                                 # totals ("Drawn (expenses)", "BLOC paydown"), a note when the month also has a Coinbase
                                 # borrow or paydown (journal-only, so outside the totals), and the SIGN-OFF DETAILS —

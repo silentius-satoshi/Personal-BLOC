@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, roundUsdCents, buyUsdGuess, impliedBtcPrice, rebuildEditedBuy, type SheetState } from '../eventSheetModel';
+import { readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, roundUsdCents, buyUsdGuess, impliedBtcPrice, rebuildEditedBuy, rebuildEditedReading, type SheetState } from '../eventSheetModel';
 import type { DayEvent } from '../../../simulation/types';
 
 const TODAY = '2026-06-28';
@@ -233,7 +233,7 @@ describe('readingCollateralPolicy — past-dated adds never state Strike collate
   });
   it('readingComplete can waive the collateral field — and only when asked', () => {
     const noColl = { ...FULL, strikeCollateral: null };
-    expect(readingComplete(noColl, false)).toBe(false);          // default: still required (today + edits unchanged)
+    expect(readingComplete(noColl, false)).toBe(false);          // default: still required (today's add; an edit passes its own, N1)
     expect(readingComplete(noColl, false, false)).toBe(true);
     expect(readingComplete({ ...noColl, strikeBal: null }, false, false)).toBe(false);   // the balances still gate it
   });
@@ -296,5 +296,66 @@ describe('5d — a buy\'s dollars (BL13)', () => {
     expect(impliedBtcPrice(650, null)).toBeNull();
     expect(impliedBtcPrice(0, 0.01)).toBeNull();
     expect(impliedBtcPrice(650, 0)).toBeNull();
+  });
+});
+
+// N1 (BL39) — an edit keeps a reading's Strike collateral as recorded. The old edit prefilled and saved
+// `strikeCollateral ?? currentBtcHeld`: a reading that records none — a past-dated add's (3b), a balance saved from the
+// Safety card or Quick Setup, any reading from before v20 — took today's total at its own date, and once it was the
+// latest-dated reading to state collateral every Strike move dated after it counted twice (₿1.5 for ₿1.3 — the store's
+// own figures are in editedReadingStore.test.ts, the sheet's in e2e/editedReading.spec.ts).
+describe('N1 — an edit keeps a reading\'s Strike collateral as recorded', () => {
+  type Reading = Extract<DayEvent, { kind: 'balanceReading' }>;
+  const ev = (reading: Reading['reading']): Reading => ({ id: 'r1', date: '2026-06-02', ts: 7, kind: 'balanceReading', reading });
+  const NONE = ev({ strikeBal: 5000, strikeLtv: 0.1 });
+  const FIGURE = ev({ strikeBal: 5000, strikeLtv: 0.1, strikeCollateral: 0.5 });
+  const ZERO = ev({ strikeBal: 0, strikeLtv: 0, strikeCollateral: 0 });
+  const TODAY_TOTAL = 0.6;   // getCurrentBtcHeld() — no reading's figure here
+  // The sheet's fields on an edit. Round percents, so every figure below is exact.
+  const EDIT: SheetState = { ...FULL, strikeBal: 5500, strikeLtv: 25, strikeCollateral: null, cbBal: 62_000, cbLtv: 50, cbCollateral: 1.5, cbLiqPriceReading: null };
+  const readingOf = (e: DayEvent) => (e as Reading).reading;
+
+  it('⭐ N1 POLICY none: an edit of a reading that records none — not required, no fallback (the field hidden)', () => {
+    expect('strikeCollateral' in NONE.reading).toBe(false);   // premise: it records none
+    expect(readingCollateralPolicy(false, TODAY_TOTAL, NONE)).toEqual({ required: false, fallback: null });
+  });
+
+  it('⭐ N1 POLICY figure: an edit of a reading that records a figure — required, falling back to that figure, never today\'s total', () => {
+    expect(readingCollateralPolicy(false, TODAY_TOTAL, FIGURE)).toEqual({ required: true, fallback: 0.5 });
+    expect(readingCollateralPolicy(false, TODAY_TOTAL, ZERO)).toEqual({ required: true, fallback: 0 });   // 0 is a figure
+  });
+
+  it('N1 POLICY adds: today\'s add and a past-dated add as before, with no edited reading', () => {
+    expect(readingCollateralPolicy(false, TODAY_TOTAL)).toEqual({ required: true, fallback: TODAY_TOTAL });
+    expect(readingCollateralPolicy(true, TODAY_TOTAL)).toEqual({ required: false, fallback: null });
+    expect(readingCollateralPolicy(false, TODAY_TOTAL, undefined)).toEqual({ required: true, fallback: TODAY_TOTAL });
+  });
+
+  it('⭐ N1 SAVE none: a reading that records none keeps none, whatever the field holds', () => {
+    for (const held of [TODAY_TOTAL, 0, null]) {
+      const r = readingOf(rebuildEditedReading(NONE, { ...EDIT, strikeCollateral: held }, PRICE));
+      expect('strikeCollateral' in r).toBe(false);
+      expect(r.strikeBal).toBe(5500);   // the edit itself lands
+    }
+  });
+
+  it('⭐ N1 SAVE figure: a reading that records a figure stores the field\'s figure, else its own — never today\'s total', () => {
+    expect(readingOf(rebuildEditedReading(FIGURE, { ...EDIT, strikeCollateral: 0.73 }, PRICE)).strikeCollateral).toBe(0.73);
+    expect(readingOf(rebuildEditedReading(FIGURE, EDIT, PRICE)).strikeCollateral).toBe(0.5);   // an empty field
+    expect(readingOf(rebuildEditedReading(ZERO, EDIT, PRICE)).strikeCollateral).toBe(0);       // 0 stays 0
+  });
+
+  it('N1 SAVE as before: id, date and ts kept, the LTVs ÷100, today\'s price, the Coinbase fields only on a reading that has them', () => {
+    // Byte for byte the old inline rebuild, key order included. A Strike-only reading takes no Coinbase field even with
+    // the sheet's filled: the block keys on the reading, not the loan switch.
+    expect(JSON.stringify(rebuildEditedReading(FIGURE, { ...EDIT, strikeCollateral: 0.5 }, PRICE))).toBe(JSON.stringify(
+      { id: 'r1', date: '2026-06-02', ts: 7, kind: 'balanceReading', reading: { strikeBal: 5500, strikeLtv: 0.25, strikeCollateral: 0.5, price: PRICE } }));
+    const cb = ev({ strikeBal: 5000, strikeLtv: 0.1, strikeCollateral: 0.5, cbBal: 60_000, cbLtv: 0.4, cbCollateral: 1.5, cbLiqPrice: 61_000 });
+    expect(JSON.stringify(rebuildEditedReading(cb, { ...EDIT, strikeCollateral: 0.5, cbLiqPriceReading: 61_000 }, PRICE))).toBe(JSON.stringify(
+      { id: 'r1', date: '2026-06-02', ts: 7, kind: 'balanceReading',
+        reading: { strikeBal: 5500, strikeLtv: 0.25, strikeCollateral: 0.5, price: PRICE, cbBal: 62_000, cbLtv: 0.5, cbCollateral: 1.5, cbLiqPrice: 61_000 } }));
+    for (const cbLiqPriceReading of [null, 0]) {   // a blank liquidation price keeps none
+      expect('cbLiqPrice' in readingOf(rebuildEditedReading(cb, { ...EDIT, strikeCollateral: 0.5, cbLiqPriceReading }, PRICE))).toBe(false);
+    }
   });
 });

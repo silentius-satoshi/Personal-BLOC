@@ -146,6 +146,37 @@ export function rebuildEditedBuy(ev: Extract<DayEvent, { kind: 'buy' }>, amount:
 }
 
 /**
+ * N1 — EDIT-mode rebuild of a balance reading (was inlined in EventSheet.handleSave). An edit keeps the reading's Strike
+ * collateral as recorded: one that records a figure stores the field's figure (else its own — never today's total); one
+ * that records none stores none, whatever the field holds. The old inline `strikeCollateral ?? currentBtcHeld` stamped
+ * today's total on an earlier date, and once that reading was the latest-dated to state collateral, every Strike move
+ * dated after it counted twice. The rest as before: id/date/ts kept (updateDayEvent bumps ts), the balances as typed
+ * (LTV percent ÷100 → fraction), today's price, the Coinbase fields only on a reading that has them (the reading's own,
+ * not the loan switch), its liquidation price only when positive.
+ */
+export function rebuildEditedReading(
+  ev: Extract<DayEvent, { kind: 'balanceReading' }>,
+  s: Pick<SheetState, 'strikeBal' | 'strikeLtv' | 'strikeCollateral' | 'cbBal' | 'cbLtv' | 'cbCollateral' | 'cbLiqPriceReading'>,
+  btcPrice: number,
+): DayEvent {
+  const { id, date, ts } = ev;
+  const recorded = ev.reading.strikeCollateral;
+  const reading: Extract<DayEvent, { kind: 'balanceReading' }>['reading'] = {
+    strikeBal: s.strikeBal ?? 0,
+    strikeLtv: (s.strikeLtv ?? 0) / 100,   // percent → fraction
+    ...(recorded !== undefined ? { strikeCollateral: s.strikeCollateral ?? recorded } : {}),   // none stays none
+    price: btcPrice,
+  };
+  if (ev.reading.cbBal != null) {   // a CB-bearing reading keeps its CB fields
+    reading.cbBal = s.cbBal ?? 0;
+    reading.cbLtv = (s.cbLtv ?? 0) / 100;
+    reading.cbCollateral = s.cbCollateral ?? 0;
+    if (s.cbLiqPriceReading !== null && s.cbLiqPriceReading > 0) reading.cbLiqPrice = s.cbLiqPriceReading;   // §5b — kept or edited
+  }
+  return { id, date, ts, kind: 'balanceReading', reading };
+}
+
+/**
  * Hotfix 1 — the reading the today sheet prefills its balances from: the latest by date, then by when it was logged
  * (orderTs). By ts alone, a reading backfilled to an earlier date, or an older one just edited or restored, prefilled
  * the sheet — and a Save left unedited re-stated its old balances, and its Coinbase collateral, under today's date.
@@ -163,8 +194,8 @@ export function latestReadingForPrefill(dayLog: DayEvent[]): Extract<DayEvent, {
 
 /**
  * The Save gate's reading half (D1): the balance-reading fields must be non-empty.
- * strikeBal + strikeLtv always; strikeCollateral (v20) unless `requireStrikeCollateral` is false (a past-dated add —
- * see readingCollateralPolicy); + cbBal + cbLtv + cbCollateral iff hasCbLoan.
+ * strikeBal + strikeLtv always; strikeCollateral (v20) unless `requireStrikeCollateral` is false (a past-dated add, or
+ * an edit of a reading that records none — see readingCollateralPolicy); + cbBal + cbLtv + cbCollateral iff hasCbLoan.
  * The flow/collateral amount>0 gate is checked in the component (a separate clause of the Save gate).
  */
 export function readingComplete(s: SheetState, hasCbLoan: boolean, requireStrikeCollateral = true): boolean {
@@ -175,16 +206,24 @@ export function readingComplete(s: SheetState, hasCbLoan: boolean, requireStrike
 }
 
 /**
- * What a reading built on this sheet may say about Strike collateral (provisional-clears-on-reading-spec-v1, 3b).
- *  - TODAY (and every edit): the auto-tracked total is REQUIRED and is the builder's fallback — load-bearing, see
+ * What a reading built on this sheet may say about Strike collateral (provisional-clears-on-reading-spec-v1, 3b; N1).
+ *  - TODAY's add: the auto-tracked total is REQUIRED and is the builder's fallback — load-bearing, see
  *    autoStrikeCollateral.
  *  - A PAST-dated ADD: never. The only figure the sheet knows is TODAY's (getCurrentBtcHeld). Stamping it on a past
  *    date is the app inferring history; and if that reading becomes the latest-dated collateral anchor,
  *    deriveStrikeCollateral counts every Strike move logged after it a SECOND time. The field is hidden, and the
  *    reading omits strikeCollateral (absent = never recorded — the month's btcHeld is the owner's to state).
+ *  - An EDIT (N1, `edited`): as recorded. A reading that records a figure requires one and falls back to its own — the
+ *    field starts there, never at today's total; a reading that records none keeps none: hidden, not required, no
+ *    fallback. Today's total stamped on an earlier reading is the same double count. Save: rebuildEditedReading.
  */
-export function readingCollateralPolicy(isPastAdd: boolean, currentStrikeCollateral: number):
-  { required: boolean; fallback: number | null } {
+export function readingCollateralPolicy(
+  isPastAdd: boolean, currentStrikeCollateral: number, edited?: Extract<DayEvent, { kind: 'balanceReading' }>,
+): { required: boolean; fallback: number | null } {
+  if (edited) {
+    const recorded = edited.reading.strikeCollateral;
+    return recorded !== undefined ? { required: true, fallback: recorded } : { required: false, fallback: null };
+  }
   return isPastAdd ? { required: false, fallback: null } : { required: true, fallback: currentStrikeCollateral };
 }
 
