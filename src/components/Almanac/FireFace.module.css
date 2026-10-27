@@ -39,6 +39,8 @@
 .disclaimer { composes: disclaimer from './CyclingFace.module.css'; }
 .fold { composes: fold from './CyclingFace.module.css'; }
 .link { composes: link from './CyclingFace.module.css'; }
+.lineMark { composes: lineMark from './CyclingFace.module.css'; }
+.lineMarkDash { composes: lineMarkDash from './CyclingFace.module.css'; }
 
 /* The face's end is the dock's (sticky controls): flush on the edge under 1024px, the bar's 12px float from it. */
 .faceDocked.faceDocked { padding-bottom: 0; }

@@ -2137,7 +2137,8 @@ goes red.)
     undefined, "all N years").
   - `src/components/Almanac/__tests__/fireReplays.test.ts` (4; a synthetic history, a flat level an era under invented
     tops): ⭐ SPLICE AT STOP · ⭐ NO STOP · ⭐ REASONS · ⭐ HORIZON.
-  - `src/components/Almanac/__tests__/fireWiring.test.ts` (23, source-reading): ⭐ C8 · ⭐ LAST and UNGATED · ⭐ THIRTEEN ·
+  - `src/components/Almanac/__tests__/fireWiring.test.ts` (23, source-reading): ⭐ C8 · ⭐ LAST and UNGATED (build 4b:
+    ⭐ DEPLOY GATE) · ⭐ THIRTEEN ·
     ⭐ BELIEF · ⭐ NO SIM · ⭐ NO FETCH · ⭐ WRITES · ⭐ RESET · ⭐ SHARED INFLATION · ⭐ TEST-ONLY (the survival-guard grep's
     list, read by its pattern, over every FIRE file — sources, CSS, tests and the e2e) · ⭐ POSITION · ⭐ ANCHOR · ⭐ HORIZON ·
     ⭐ CLAMP · ⭐ STABLE (the read memoised on `s.fireInputs`; no call or literal in the engine-input or reset dependencies)
@@ -2163,6 +2164,31 @@ goes red.)
     was moved aside, the test run red, and the file restored by md5. The fix-up's three tests came with the reviewer's
     prototype; its six planted bugs each undo one fix and turn its test red (M36–M37 CAPACITY STATES, M38 TINY, M39
     WORDS, M40–M41 FOLD and LINK and e2e PILL).
+- **Batch 1 build 4b — the FIRE face off the public app, and its hover box** (spec `pbloc-spec-batch-1-v1` v0.39–v0.40
+  §2.3 — BL42, BL41; its plan `Claude outputs/batch-1/build-4b-plan.md`, with the go appended; Light, no planted bugs; one
+  new unit file; the suite 3,178 → 3,182 (+6 skipped), 219 → 220 files; e2e unchanged, 128 (+2 skipped)):
+  - `src/lib/__tests__/fireDeploy.test.ts` (2): ⭐ DEPLOY RULE ×2 — shown with neither flag, and with a value other than
+    '1' (`'0'`, `'true'`, `''`, `' 1'`, `'11'` — as App.tsx's and AppShell's own `=== '1'` reads); hidden at `VITE_LANDING`
+    '1', `VITE_DEMO` '1', both, and either one with the other `'0'`.
+  - `fireWiring.test.ts` 23 → 24: ⭐ LAST and UNGATED became ⭐ DEPLOY GATE — the entry last and spread on
+    `FIRE_ON_THIS_DEPLOY`, the one FIRE entry, never on `hasCbLoan`, `halving` first; the env read once, where the pill is
+    built (the rule's call in the hub, `import.meta` twice there, the rule's one call across `src/`, no FIRE source reading
+    `import.meta` — every env check on comment-stripped code, so a doc comment can't turn it red); unreachable where hidden
+    (the fallback effect; the constant read three times). New ⭐ ONE DEFINITION — the two `<Line>`s' `stroke` and
+    `strokeDasharray`, the legend's two spans and `FireTip` read `FIRE_LINES`; `LineMark` dashed only for a dashed line; no
+    colour literal in any of them, and no `var(--btc)` or `var(--text-secondary)` in the face; the view, comments stripped,
+    spells each once, inside `FIRE_LINES` (the Milestones' ₿ owned cell reads it too); the marks composed from
+    `CyclingFace.module.css` (14 px, a 2 px top border in `currentColor`; dashed). `SOURCES` gains `lib/fireDeploy.ts` and
+    `FIRE_FILES` its test, so NO SIM, NO FETCH and TEST-ONLY read them.
+  - `fireFaceView.test.ts` 26 → 27: ⭐ HOVER BOX — `FIRE_LINES` (₿ owned: `--btc`, solid; ₿ needed: `--text-secondary`,
+    `'5 4'`); on month 0 and on a gap month, the two ₿ rows carry those same objects and the dollar rows `null`; a gap row
+    keeps its line.
+  - Moved on purpose: `fireWiring.test.ts`'s LAST and UNGATED — its expected last entry, now the spread (BL42). Nothing
+    else moved.
+  - Red first (the four test changes alone, on `2e4d351`): `fireDeploy.test.ts` didn't load, its module missing;
+    `fireWiring.test.ts`'s DEPLOY GATE and ONE DEFINITION red, and NO SIM and TEST-ONLY through their non-empty checks while
+    `lib/fireDeploy.ts` was missing (NO FETCH green); `fireFaceView.test.ts`'s HOVER BOX red — `FIRE_LINES` read as
+    `undefined`, so the file loaded; the other 46 green (`build-4b-logs/red-first.log`).
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

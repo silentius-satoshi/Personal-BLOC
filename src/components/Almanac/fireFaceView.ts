@@ -453,6 +453,19 @@ export const CHART_EMPTY = 'Nothing to draw on this path.';
 export const CHART_GAP_NOTE =
   'Where a line breaks there is nothing to draw: no bitcoin owned, or none needed because your other assets cover the need.';
 
+/** One of the chart's two lines: its name, its colour and its SVG dash (`undefined` — a solid line). */
+export interface FireLine { name: string; color: string; dash: string | undefined }
+/**
+ * The chart's two lines, by their point's field — ONE definition of each one's colour and dash, which the chart's `<Line>`s,
+ * the legend above it, the hover box and the Milestones' ₿ owned cell all read, so they can never disagree (the Power Law
+ * chart's PL_SERIES; batch 1 build 4b — BL41). ₿ needed's colour is the hover box's own text colour, so there its dashed
+ * mark is what tells it apart.
+ */
+export const FIRE_LINES: Readonly<Record<'owned' | 'needed', FireLine>> = {
+  owned: { name: CHART_OWNED, color: 'var(--btc)', dash: undefined },
+  needed: { name: CHART_NEEDED, color: 'var(--text-secondary)', dash: '5 4' },
+};
+
 export interface FirePoint {
   m: number;
   label: string;
@@ -492,13 +505,14 @@ export function fireChartDomain(points: readonly FirePoint[]): [number, number] 
 /** True when either line has a gap inside the horizon — the gap note shows. */
 export const chartHasGap = (points: readonly FirePoint[]): boolean => points.some((p) => p.owned === null || p.needed === null);
 
-/** The tooltip's lines for one point — "—" for a zero. */
-export function fireTooltipLines(p: FirePoint): { name: string; value: string }[] {
+/** The tooltip's lines for one point — "—" for a zero. The two ₿ rows are the chart's lines and say which, for their
+ *  colour and their mark; the two dollar rows are no line. */
+export function fireTooltipLines(p: FirePoint): { name: string; value: string; line: FireLine | null }[] {
   return [
-    { name: CHART_OWNED, value: p.owned === null ? NONE : `₿${p.owned.toFixed(3)}` },
-    { name: CHART_NEEDED, value: p.needed === null ? NONE : `₿${p.needed.toFixed(3)}` },
-    { name: 'Portfolio, today\'s dollars', value: p.portfolio },
-    { name: 'Price, today\'s dollars', value: p.price },
+    { name: FIRE_LINES.owned.name, value: p.owned === null ? NONE : `₿${p.owned.toFixed(3)}`, line: FIRE_LINES.owned },
+    { name: FIRE_LINES.needed.name, value: p.needed === null ? NONE : `₿${p.needed.toFixed(3)}`, line: FIRE_LINES.needed },
+    { name: 'Portfolio, today\'s dollars', value: p.portfolio, line: null },
+    { name: 'Price, today\'s dollars', value: p.price, line: null },
   ];
 }
 
@@ -663,7 +677,7 @@ export function fireMilestoneCells(r: FireResult, m: number): FireMsCell[] {
   const d = (v: number) => usdOrNull(todayUsd(v, row.inflationStep)) ?? NONE;
   return [
     { label: 'Price', value: d(row.priceUsd) },
-    { label: '₿ owned', value: btcOrNull(row.btc) ?? NONE, color: 'var(--btc)' },
+    { label: '₿ owned', value: btcOrNull(row.btc) ?? NONE, color: FIRE_LINES.owned.color },
     { label: 'Other assets', value: d(row.otherUsd) },
     { label: 'Portfolio', value: d(row.portfolioUsd) },
     { label: 'Years funded', value: yearsOrNull(row.yearsFunded)?.replace(' years', '') ?? NONE },

@@ -2366,19 +2366,31 @@ A THIRTEENTH face **FIRE** (`◎ FIRE`, `src/components/Almanac/FireFace.tsx` + 
 spending the owner's bitcoin and other assets fund if the owner sells to live, on the Almanac's own price paths.** Spec:
 `pbloc-spec-batch-1-v1` v0.33–v0.35 §2.3 and the FIRE plan `pbloc-spec-fire-face-v1` v0.2 §4.5–4.6 (its Appendix D and
 the batch spec's §1 answers override its body); the plan `Claude outputs/batch-1/build-4-plan.md`, with the go and the
-fix-up (v0.35) appended.
+fix-up (v0.35) appended. Build 4b — the deploy gate and the hover box (v0.39–v0.40 §2.3, BL42 and BL41): the plan
+`Claude outputs/batch-1/build-4b-plan.md`, with the go appended.
 It reads build 3's engine as built (`docs/claude/engines.md` § The FIRE engine — no engine module changed). The sell lane
-only: build 5 adds the borrow lane, and the batch merges once, after build 5 (F6). No simulation (D1 A′), no chart zoom,
-no committed price series. Its inputs are one device-local key (`docs/claude/store.md` § FIRE's own inputs).
+only: the borrow lane is its own item after Batch 1 (BL42) — its engine change first, since today's engine drops a bill
+income can't pay outside the buy zone (spec v0.38) — and until it ships the face is hidden on the public deploy and the
+sandbox (F6; Identity, below). No simulation (D1 A′), no chart zoom, no committed price series. Its inputs are one
+device-local key (`docs/claude/store.md` § FIRE's own inputs).
 
-- **Identity.** Key `fire`, **UNGATED**, **appended LAST**, after Decision's pill (`halving` stays first, the default).
+- **Identity.** Key `fire`, **appended LAST**, after Decision's pill (`halving` stays first, the default) — **on the
+  owner's deploy and in dev only** (build 4b, BL42): the pill shows only where neither `VITE_LANDING` nor `VITE_DEMO` is
+  '1', so never on the public deploy or the sandbox (`commercialization.md`'s table), and dev — so the e2e — keeps it.
+  One pure rule, `fireFaceOnDeploy` (`src/lib/fireDeploy.ts`, zero imports); the hub reads the two flags once, at module
+  scope, into `FIRE_ON_THIS_DEPLOY`, which the pill's entry is spread on — never `hasCbLoan` — and a fallback effect
+  reads, as the loan-gated faces' do, so the face is unreachable where its pill is hidden. The face's code still ships
+  in every bundle: hidden, not tree-shaken (the C8 branch below is unconditional). Never lift the gate before the
+  borrow lane ships.
   ⚠ `renderFace` has an explicit `if (f === 'fire')` branch ABOVE the Converter fallback (the C8 trap); the hub's
   header counts THIRTEEN faces.
 - **The files.** `FireFace.tsx` composes: every word, figure and tone comes from `fireFaceView.ts`, and the face writes
   no sentence (I31). `fireReplays.ts` is the replays' one belief crossing (D-3, as `supportPolicyInputs.ts` is the
   support line's). `FireScale.tsx` is wordless. `FireFace.module.css` composes CyclingFace's classes only; its one
-  declaration is the doubled `.faceDocked.faceDocked` pair. The fold and the link it needed (the fix-up) are classes in
-  `CyclingFace.module.css` — `.fold` and `.link` — that it composes, so the compose-only rule stands.
+  declaration is the doubled `.faceDocked.faceDocked` pair. The fold and the link it needed (the fix-up), and the line
+  marks of its legend and hover box (build 4b — `.lineMark` and `.lineMarkDash`: 14 px, a 2 px top border in
+  `currentColor`, dashed for a dashed line, after the Decision face's swatch), are classes in `CyclingFace.module.css`
+  that it composes, so the compose-only rule stands.
 - **What it reads.**
   - **₿ yours today** — the four faces' reads, as the parents' selector has them (`getCurrentBtcHeld()`,
     `advisorActualBlocBalance`, `planCbCollateralOf`, `getCurrentColdBtc()`, `planCbLoanBalanceOf` and the accrual),
@@ -2408,7 +2420,12 @@ no committed price series. Its inputs are one device-local key (`docs/claude/sto
     point a month on a log axis with an explicit domain (`fireChartDomain`, × 0.8 / × 1.25; nothing to draw → "Nothing to
     draw on this path.") and abbreviated ticks. A point with nothing to draw is a GAP (null), never 0 — the Decision
     chart's rule — with a quiet note when a line breaks. The stop month is an amber reference line. The tooltip gives the
-    month, both ₿ figures, and the portfolio and price in today's dollars. Under the chart, the scrubber's notes: the
+    month, both ₿ figures, and the portfolio and price in today's dollars. Each ₿ row is a line (build 4b, BL41): its
+    name in the line's colour, after a short mark drawn like it — ₿ owned, selling: solid `--btc`; ₿ needed: dashed
+    `--text-secondary`, the box's own text colour, so its mark is what tells it apart — and the dollar rows, which are no
+    line, stay plain. The legend line above the chart takes the same marks. One definition of the two lines, `FIRE_LINES`
+    (`fireFaceView.ts`: name, colour, dash), is read by the two `<Line>`s, the legend, `fireTooltipLines` (each row's
+    `line`, or null) and the Milestones' ₿ owned cell. Under the chart, the scrubber's notes: the
     inspected month, "Anchored $X · spot $Y ±Z%" while the anchor is held, the stress, and — once on the face — "Dollars
     here are today's: each month's figure ÷ inflation since today (2% a year, stepped yearly)."
   - **Six tiles**: Years of spending funded today · You'd need · FI, on this path · From your stop, on this path ·
@@ -2598,8 +2615,9 @@ face pager (Gesture P3/P3.1) is GONE, along with everything that existed to arbi
 data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still page).
 - **`visibleFaces: { key: Face; label: string }[]`** remains the SINGLE source for the sub-nav pill map — now
   the only face-switching surface. Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`,
-  cycling and strategy iff `hasCbLoan`) are simply absent from the array. Thirteen faces in all; the last is the
-  ungated FIRE face (batch 1 build 4). `idx`/`onPage`/`canPage`/`renderPane`/
+  cycling and strategy iff `hasCbLoan`, FIRE iff `fireFaceOnDeploy` — the owner's deploy and dev) are simply absent
+  from the array. Thirteen faces in all; the last is the FIRE face (batch 1 build 4), off the public deploy and the
+  sandbox until its borrow lane ships (build 4b — BL42). `idx`/`onPage`/`canPage`/`renderPane`/
   `shouldStart` are deleted; the host renders `{renderFace(face)}` directly.
 - **ONE face mounts at a time.** The P3.1 real-neighbour panes are gone, so a heavy face (Power Law/Mining
   hooks) mounts exactly when its pill is tapped — never on a peek. `useChainTip` still lives at the hub and is

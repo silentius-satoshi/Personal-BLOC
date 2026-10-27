@@ -770,7 +770,8 @@ the words: `almanac.md` § BL14 and § BL32; the Dashboard tile: `viewer.md` § 
 Spec `pbloc-spec-batch-1-v1` v0.28 §2.3 and the FIRE plan `pbloc-spec-fire-face-v1` v0.2 (its Appendix D and the batch
 spec's §1 answers override its body — BL31). The engine of the thirteenth Almanac face: how many years of spending a
 portfolio funds, and when it funds enough. The Compass's free engine (the FIRE plan's §1.2, E1–E9) is re-derived from the
-plan's own formulas — never its code, its multiplier arrays or its copy (R0). The face is build 4; the borrow lane, build 5.
+plan's own formulas — never its code, its multiplier arrays or its copy (R0). The face is build 4; the borrow lane is its own
+item after Batch 1 (BL42).
 
 - **The modules.**
   - `fire.ts` — the timeline, the two needs, the scale and the capacity. 🔴 + − × ÷ and `Math.max` / `min` / `floor` /
@@ -841,7 +842,8 @@ plan's own formulas — never its code, its multiplier arrays or its copy (R0). 
   realized gains, per sale, over an average-cost pool, only on what the portfolio funds).
 - **D1 A′ — no simulation sets or shows a sell-lane figure.** The 1,000 simulations carry the power-law trend, so their
   odds read rosier than the face's own default path (the FIRE plan's F1). The sell lane reads the four Paths, the replays
-  and the break-even; the simulations appear only on the borrow lane, as its seizure chance (build 5).
+  and the break-even; the simulations appear only on the borrow lane, as its seizure chance (its own item after Batch 1 —
+  BL42).
 - **The edges** — never NaN, ∞ or a negative ₿. `'atFi'` not met within the horizon → no stop month, every row working,
   no capacity or break-even (`'noStopMonth'`). Underwater → 0 ₿, the excess debt repaid from the other assets at month 0,
   what they can't cover in `uncoveredDebtUsd`. 0 ₿ → the traditional need, no basis read: the two 0 ÷ 0 reads (the basis at

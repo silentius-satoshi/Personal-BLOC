@@ -529,3 +529,15 @@
   text-underline-offset: 2px;
 }
 .link:hover { color: var(--text-primary); }
+/* A line's mark — a short stroke drawn like its chart line, before the line's name: 14px, a 2px top border in the text's
+   colour (currentColor), dashed for a dashed line. The Decision face's .legendSwatch / .legendDash, sized for a line of
+   text rather than a flex item. The FIRE face's legend and hover box (batch 1 build 4b — BL41); composed by
+   FireFace.module.css. */
+.lineMark {
+  display: inline-block;
+  width: 14px;
+  border-top: 2px solid currentColor;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.lineMarkDash { border-top-style: dashed; }

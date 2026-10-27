@@ -7,7 +7,7 @@ import {
   anchoredLine, stressLine, dollarsNote, fireScale, fireMilestoneMonths, fireMilestoneRows, firePathName, firePathHead,
   UNDERWATER_LINE, NONE, MS_VIEWS_FIRE, MS_COLS_FIRE, STOP_CARD, MODEL_RULES, MODEL_LIMITS, MODEL_CREDITS, FIRE_DISCLAIMER,
   FIRE_TITLE, FIRE_FRAMING, REPLAYS_TITLE, REPLAYS_INFO, CHART_TITLE, CHART_OWNED, CHART_NEEDED, CHART_EMPTY, CHART_GAP_NOTE,
-  TILE_LABEL, spendHint, NOTHING_OWNED, LESS_THAN_A_MONTH,
+  TILE_LABEL, spendHint, NOTHING_OWNED, LESS_THAN_A_MONTH, FIRE_LINES,
   type FireFacts, type FireRun, type HistoryState, type ReplayPathReading, type ReplayRun,
 } from '../fireFaceView';
 import { FIRE_INPUT_DEFAULTS, type FireFaceInputs } from '../../../lib/fireInputs';
@@ -327,6 +327,23 @@ describe('⭐ the chart, the scale and the Milestones', () => {
     const d = fireChartDomain(sp) as [number, number];
     expect(d[0] > 0 && d[1] > d[0], 'GAPS a positive domain').toBe(true);
     expect(fireTooltipLines(sp[sp.length - 1]).map((l) => l.value).slice(0, 2), 'GAPS the tooltip').toEqual([NONE, expect.stringMatching(/^₿\d/)]);
+  });
+
+  it('⭐ HOVER BOX — the two ₿ rows are the chart\'s lines, with their colour and dash; the dollar rows are no line (BL41)', () => {
+    expect(FIRE_LINES.owned, 'HOVER BOX ₿ owned: solid --btc').toStrictEqual({ name: CHART_OWNED, color: 'var(--btc)', dash: undefined });
+    expect(FIRE_LINES.needed, 'HOVER BOX ₿ needed: dashed --text-secondary').toStrictEqual({ name: CHART_NEEDED, color: 'var(--text-secondary)', dash: '5 4' });
+    const run = runOn(crash(100_000, 30_000), { openingBtc: 1, coldBtc: 0, incomeUsd: 4000, expensesUsd: 4000 }, { stopChoice: 'now' });
+    const pts = fireChartPoints(run.result, START);
+    const gap = pts.find((p) => p.owned === null);
+    expect(gap, 'HOVER BOX premise: a gap month').toBeDefined();
+    for (const p of [pts[0], gap!]) {
+      const rows = fireTooltipLines(p);
+      expect(rows.map((r) => r.name), `HOVER BOX the rows, month ${p.m}`).toEqual([CHART_OWNED, CHART_NEEDED, 'Portfolio, today\'s dollars', 'Price, today\'s dollars']);
+      expect(rows[0].line, `HOVER BOX ₿ owned is its line, month ${p.m}`).toBe(FIRE_LINES.owned);
+      expect(rows[1].line, `HOVER BOX ₿ needed is its line, month ${p.m}`).toBe(FIRE_LINES.needed);
+      expect(rows.slice(2).map((r) => r.line), `HOVER BOX the dollar rows are no line, month ${p.m}`).toEqual([null, null]);
+    }
+    expect(fireTooltipLines(gap!)[0].value, 'HOVER BOX a gap row keeps its line, its value "—"').toBe(NONE);
   });
 
   it('⭐ TODAY\'S DOLLARS — every dollar shown is nominal ÷ the row\'s inflation step', () => {

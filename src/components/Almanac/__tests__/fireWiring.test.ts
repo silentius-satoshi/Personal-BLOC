@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { FIRE_INPUT_DEFAULTS } from '../../../lib/fireInputs';
 
@@ -21,15 +21,21 @@ const VIEW = read('src/components/Almanac/fireFaceView.ts');
 const SCALE = strip(read('src/components/Almanac/FireScale.tsx'));
 const SOURCES = [
   FACE_PATH, 'src/components/Almanac/fireFaceView.ts', 'src/components/Almanac/fireReplays.ts',
-  'src/components/Almanac/FireScale.tsx', 'src/lib/fireInputs.ts',
+  'src/components/Almanac/FireScale.tsx', 'src/lib/fireInputs.ts', 'src/lib/fireDeploy.ts',
 ];
 /** Every FIRE file — sources, styles and tests — for the walls that read text. */
 const FIRE_FILES = [
   ...SOURCES, 'src/components/Almanac/FireFace.module.css', 'src/components/Almanac/FireScale.module.css',
   'src/components/Almanac/__tests__/fireFaceView.test.ts', 'src/components/Almanac/__tests__/fireReplays.test.ts',
   'src/components/Almanac/__tests__/fireWiring.test.ts', 'src/lib/__tests__/fireInputs.test.ts',
-  'src/store/__tests__/fireInputsStore.test.ts', 'e2e/fire.spec.ts',
+  'src/lib/__tests__/fireDeploy.test.ts', 'src/store/__tests__/fireInputsStore.test.ts', 'e2e/fire.spec.ts',
 ];
+/** Every source file under src/, tests excluded (fireWalls' walker). */
+const srcFiles = (dir = join(ROOT, 'src')): string[] => readdirSync(dir).flatMap((f) => {
+  const p = join(dir, f);
+  if (statSync(p).isDirectory()) return f === '__tests__' ? [] : srcFiles(p);
+  return /\.(ts|tsx)$/.test(f) ? [p] : [];
+});
 /** A memo's (or effect's) dependency list, by its opening text. */
 const depsAfter = (src: string, opener: string): string[] => {
   const at = src.indexOf(opener);
@@ -48,11 +54,28 @@ describe('⭐ the hub', () => {
     expect(branch, 'C8 above the fallback').toBeLessThan(fallback);
   });
 
-  it('⭐ LAST and UNGATED — the pill is appended last, ungated; halving stays first', () => {
+  it('⭐ DEPLOY GATE — appended last on the deploy rule, never the loan; the env read once, where the pill is built; unreachable where hidden (BL42)', () => {
     const list = HUB.slice(HUB.indexOf('const visibleFaces'), HUB.indexOf('];', HUB.indexOf('const visibleFaces')));
     const entries = list.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{') || l.startsWith('...'));
-    expect(entries[entries.length - 1], 'LAST and UNGATED').toBe("{ key: 'fire' as Face, label: '◎ FIRE' },");
-    expect(entries[0], 'LAST halving first').toBe("{ key: 'halving',  label: '◔ Halving Clock' },");
+    expect(entries[entries.length - 1], 'DEPLOY GATE last, on the rule').toBe("...(FIRE_ON_THIS_DEPLOY ? [{ key: 'fire' as Face, label: '◎ FIRE' }] : []),");
+    expect(entries.filter((e) => e.includes("key: 'fire'")), 'DEPLOY GATE one FIRE entry').toHaveLength(1);
+    expect(entries[0], 'DEPLOY GATE halving first').toBe("{ key: 'halving',  label: '◔ Halving Clock' },");
+    // Every env check reads code, never a comment: a doc comment can't turn the gate red.
+    const hub = strip(HUB);
+    expect(hub, 'DEPLOY GATE never the loan').not.toMatch(/face === 'fire' && !hasCbLoan/);
+    expect(hub, 'DEPLOY GATE the rule\'s import').toContain("import { fireFaceOnDeploy } from '../../lib/fireDeploy';");
+    expect(hub, 'DEPLOY GATE the env, read once where the pill is built').toMatch(
+      /const FIRE_ON_THIS_DEPLOY = fireFaceOnDeploy\(\{\s*VITE_LANDING: import\.meta\.env\.VITE_LANDING, VITE_DEMO: import\.meta\.env\.VITE_DEMO,\s*\}\);/);
+    expect(count(hub, 'import.meta'), 'DEPLOY GATE the hub reads the env only there').toBe(2);
+    const calls = srcFiles().flatMap((f) => {
+      const code = strip(readFileSync(f, 'utf8')).replace(/function fireFaceOnDeploy\(/g, '');
+      return Array.from({ length: count(code, 'fireFaceOnDeploy(') }, () => f.slice(ROOT.length + 1).split('\\').join('/'));
+    });
+    expect(calls, 'DEPLOY GATE the rule\'s one call, in the hub').toEqual(['src/components/Almanac/AlmanacView.tsx']);
+    for (const f of SOURCES) expect(strip(read(f)), `DEPLOY GATE ${f} reads no env`).not.toContain('import.meta');
+    expect(hub, 'DEPLOY GATE unreachable where hidden: the fallback').toMatch(
+      /useEffect\(\(\) => \{\s*if \(face === 'fire' && !FIRE_ON_THIS_DEPLOY\) setFace\('halving'\);\s*\}, \[face\]\);/);
+    expect(count(hub, 'FIRE_ON_THIS_DEPLOY'), 'DEPLOY GATE one constant: declared, the pill, the fallback').toBe(3);
   });
 
   it('⭐ THIRTEEN — the union carries the face and the header counts it', () => {
@@ -207,6 +230,49 @@ describe('⭐ the face\'s shape', () => {
     expect(base, 'FOLD the pointer').toMatch(/\.fold > summary \{[^}]*cursor: pointer;/);
     expect(base, 'FOLD the marker').toMatch(/\.fold > summary::after \{ content: ' ›'; \}/);
     expect(base, 'LINK a readable token').toMatch(/\.link \{[^}]*color: var\(--text-secondary\);/);
+  });
+
+  it('⭐ ONE DEFINITION — the chart\'s <Line>s, the legend and the hover box read FIRE_LINES; the marks are CyclingFace\'s (BL41)', () => {
+    const lines = [...FACE.matchAll(/<Line\b[^>]*\/>/g)].map((m) => m[0]);
+    expect(lines.length, 'ONE DEFINITION two lines').toBe(2);
+    for (const k of ['owned', 'needed']) {
+      const tag = lines.find((t) => t.includes(`dataKey="${k}"`)) ?? '';
+      expect(tag, `ONE DEFINITION the ${k} line's colour`).toContain(`stroke={FIRE_LINES.${k}.color}`);
+      expect(tag, `ONE DEFINITION the ${k} line's dash`).toContain(`strokeDasharray={FIRE_LINES.${k}.dash}`);
+    }
+    const legend = FACE.slice(FACE.indexOf('{CHART_TITLE}'), FACE.indexOf('{domain === null'));
+    for (const k of ['owned', 'needed']) {
+      expect(legend, `ONE DEFINITION the legend's ${k}`).toContain(
+        `<span style={{ color: FIRE_LINES.${k}.color }}><LineMark line={FIRE_LINES.${k}} />{FIRE_LINES.${k}.name}</span>`);
+    }
+    const tip = FACE.slice(FACE.indexOf('function FireTip('), FACE.indexOf('export default function FireFace('));
+    expect(tip, 'ONE DEFINITION the hover box: a line\'s name in its colour, after its mark').toContain(
+      '<span style={l.line ? { color: l.line.color } : undefined}>{l.line && <LineMark line={l.line} />}{l.name}</span>');
+    const mark = FACE.slice(FACE.indexOf('function LineMark('), FACE.indexOf('function FireTip('));
+    expect(mark, 'ONE DEFINITION the mark is drawn like its line').toContain(
+      'line.dash === undefined ? styles.lineMark : `${styles.lineMark} ${styles.lineMarkDash}`');
+    for (const [where, src] of [['the lines', lines.join('\n')], ['the legend', legend], ['the hover box', tip], ['the mark', mark]]) {
+      expect(src.length, `ONE DEFINITION ${where} found`).toBeGreaterThan(40);
+      expect(src, `ONE DEFINITION no colour literal in ${where}`).not.toMatch(/var\(--|#[0-9a-fA-F]{3,8}\b|rgba?\(/);
+    }
+    expect(FACE, 'ONE DEFINITION the two colours live in the view').not.toMatch(/var\(--btc\)|var\(--text-secondary\)/);
+    // The view spells each colour once, inside FIRE_LINES; the Milestones' ₿ owned cell reads the definition too.
+    const view = strip(VIEW);
+    const defn = view.slice(view.indexOf('export const FIRE_LINES'), view.indexOf('};', view.indexOf('export const FIRE_LINES')));
+    for (const c of ["'var(--btc)'", "'var(--text-secondary)'"]) {
+      expect(count(view, c), `ONE DEFINITION the view spells ${c} once`).toBe(1);
+      expect(count(defn, c), `ONE DEFINITION ${c} inside FIRE_LINES`).toBe(1);
+    }
+    expect(view, 'ONE DEFINITION the Milestones\' ₿ owned cell').toContain(
+      "{ label: '₿ owned', value: btcOrNull(row.btc) ?? NONE, color: FIRE_LINES.owned.color },");
+    const css = read('src/components/Almanac/FireFace.module.css');
+    for (const c of ['lineMark', 'lineMarkDash']) {
+      expect(css, `ONE DEFINITION .${c} composed`).toContain(`.${c} { composes: ${c} from './CyclingFace.module.css'; }`);
+    }
+    const base = read('src/components/Almanac/CyclingFace.module.css');
+    expect(base, 'ONE DEFINITION the mark: 14px, a 2px top border in the text\'s colour').toMatch(
+      /\.lineMark \{[^}]*width: 14px;[^}]*border-top: 2px solid currentColor;[^}]*\}/);
+    expect(base, 'ONE DEFINITION the dashed mark').toMatch(/\.lineMarkDash \{ border-top-style: dashed; \}/);
   });
 
   it('⭐ DOCK LAST — one dock, the face\'s last child, after the disclaimer; never position: fixed', () => {

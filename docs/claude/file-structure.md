@@ -753,6 +753,13 @@ src/
                                 # fireTaxRateOf. ⚠ The face memoises the read on the stored object, never once a render.
                                 # See store.md § FIRE's own inputs. Tested in src/lib/__tests__/fireInputs.test.ts
                                 # (DEFAULTS, READ RULE) and src/store/__tests__/fireInputsStore.test.ts
+    fireDeploy.ts               # Batch 1 build 4b (BL42) — where the FIRE face shows: PURE, ZERO imports.
+                                # fireFaceOnDeploy({ VITE_LANDING, VITE_DEMO }) — true only where neither flag is '1': the
+                                # owner's deploy and dev, never the public deploy or the sandbox, until the borrow lane
+                                # ships (F6). The hub reads the two flags once, at module scope, into FIRE_ON_THIS_DEPLOY;
+                                # the rule takes them as data, so it is tested without Vite. See almanac.md § FIRE face.
+                                # Tested in src/lib/__tests__/fireDeploy.test.ts (DEPLOY RULE) and
+                                # src/components/Almanac/__tests__/fireWiring.test.ts (DEPLOY GATE)
     recoveryGrid.ts             # R2b-3 — PURE logic for WordGrid's input mode (12-box capture). Imports wordlist
                                 # (@scure/bip39/wordlists/english.js) + validateWords (nostr-tools/nip06) + RECOVERY_WORD_COUNT.
                                 # distributePaste(tokens,focusedIndex) → 'fill-from-start' (12 exact) | [] (0/1 token →
@@ -1007,8 +1014,11 @@ src/
                                 # falls back to one tick PER DATA POINT, so the axis always takes explicit ticks.
                                 # + pathOnSupport(path, support, months) — the legend note's test: sameSeries over
                                 # months 1…horizon, bit for bit (month 0 is spot), never a tolerance
-      FireFace.tsx              # Batch 1 build 4 — the THIRTEENTH face, ◎ FIRE, ungated, appended last (+ .module.css:
+      FireFace.tsx              # Batch 1 build 4 — the THIRTEENTH face, ◎ FIRE, appended last — on the owner's deploy and
+                                # in dev only (build 4b: the hub's FIRE_ON_THIS_DEPLOY, lib/fireDeploy) (+ .module.css:
                                 # composes CyclingFace's classes only, plus the doubled .faceDocked pair): selling to live.
+                                # The chart's two <Line>s, the legend and FireTip read FIRE_LINES (LineMark — a line's
+                                # mark, composed .lineMark / .lineMarkDash; build 4b, BL41).
                                 # The four faces' position reads and the plan's income / expenses; the path from the held
                                 # anchor, .slice(0, months); the inputs read ONCE a change (useMemo on s.fireInputs); the
                                 # history from usePowerLawData as it is. The chart, six tiles, "Stop working" (eleven
@@ -1022,7 +1032,9 @@ src/
                                 # tax) · yoursAt — the ONE three-argument deriveOwnership call · fireRunOf · replayRunsOf
                                 # (the stop held: { ...x, stopMonth: stop }) · historyStateOf · capacityOf (the LOWEST, only
                                 # with all three, ÷ (1 + b ÷ 100)) · fireTiles · replaysCard · the chart (fireChartPoints —
-                                # a gap is null, never 0 — fireChartDomain, fireTooltipLines) · fireScale · the Milestones
+                                # a gap is null, never 0 — fireChartDomain; FIRE_LINES, the two lines' ONE definition —
+                                # name, colour, dash — read by the <Line>s, the legend, the Milestones' ₿ owned cell and
+                                # fireTooltipLines, each row's `line` or null; build 4b) · fireScale · the Milestones
                                 # (fireMilestoneMonths: m < n over the rows' own count; MS_VIEWS_FIRE) · the model card ·
                                 # fireMonthYear (one fixed month table, never ICU). ⚠ Zero is never printed: usdOrNull /
                                 # btcOrNull / yearsOrNull → "—". Tested in __tests__/fireFaceView.test.ts (BANNED sweeps it)

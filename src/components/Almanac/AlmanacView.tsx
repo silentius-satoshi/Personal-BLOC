@@ -19,6 +19,7 @@ import UnifiedFace from './UnifiedFace';
 import DecisionFace from './DecisionFace';
 import FireFace from './FireFace';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
+import { fireFaceOnDeploy } from '../../lib/fireDeploy';
 import styles from './AlmanacView.module.css';
 
 /**
@@ -33,7 +34,8 @@ import styles from './AlmanacView.module.css';
  * face (embeds the shared `CbDefenseTool` — the same Emergency Console gate used by the `liqsim` tab
  * in AppShell — hidden entirely when `!hasCbLoan`), plus the own-container Ledger / Scenario / Cycling /
  * Ownership / Strategy / Decision / FIRE faces (Cycling and Strategy `hasCbLoan`-gated; Strategy is one engine run read
- * through both the Ownership and the Cycling lens; FIRE is the sell lane — batch 1 build 4). Every embedded tool brings its OWN width — the hub adds none
+ * through both the Ownership and the Cycling lens; FIRE is the sell lane — batch 1 build 4 — shown on the owner's deploy and in
+ * dev only, build 4b). Every embedded tool brings its OWN width — the hub adds none
  * of its own (§8 toolContainer adoption is now CLOSED: EmergencyConsole, Mining/Converter, and
  * AlmanacView's own `.container` all compose from the same `toolShell.module.css`; the faces, Power Law's
  * included, compose CyclingFace's 960px `.face`). Holds the local face state (DEFAULT halving, §14.3 — nothing
@@ -56,6 +58,12 @@ import styles from './AlmanacView.module.css';
 type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership' | 'unified' | 'decision' | 'fire';
 /** A face the hub can be opened on — Run 3: the plan's "other price paths" link opens the Decision face. */
 export type AlmanacFace = Face;
+
+/** Where the FIRE face shows: the owner's deploy and dev, never the public deploy or the sandbox until its borrow lane
+ *  ships (batch 1 build 4b — BL42). The two flags are read here, once, where the pill is built; the rule is pure. */
+const FIRE_ON_THIS_DEPLOY = fireFaceOnDeploy({
+  VITE_LANDING: import.meta.env.VITE_LANDING, VITE_DEMO: import.meta.env.VITE_DEMO,
+});
 
 /** `initialFace` is read at mount only (the hub mounts each time it is opened); absent → the default, Halving. A gated
  *  face falls back by the effects below, as when its gate closes. */
@@ -94,6 +102,12 @@ export default function AlmanacView({ initialFace }: { initialFace?: AlmanacFace
     if (face === 'unified' && !hasCbLoan) setFace('halving');
   }, [face, hasCbLoan]);
 
+  // Same fallback for the FIRE face off this deploy (build 4b — BL42): its pill is hidden there, so nothing picks it, and
+  // an `initialFace` of 'fire' falls back here as a gated face's does.
+  useEffect(() => {
+    if (face === 'fire' && !FIRE_ON_THIS_DEPLOY) setFace('halving');
+  }, [face]);
+
   const handleBadgeTap = () => {
     if (almanacLiveEnabled) {
       setAlmanacLiveEnabled(false);            // off — silent
@@ -122,8 +136,9 @@ export default function AlmanacView({ initialFace }: { initialFace?: AlmanacFace
     ...(hasCbLoan ? [{ key: 'unified' as Face, label: '◈ Strategy' }] : []),
     // The TWELFTH face — UNGATED (decision 2: without a loan the whole schedule shows), and appended LAST.
     { key: 'decision' as Face, label: '◆ Decision' },
-    // The THIRTEENTH face — the FIRE face (batch 1 build 4), UNGATED (D4) and appended LAST.
-    { key: 'fire' as Face, label: '◎ FIRE' },
+    // The THIRTEENTH face — the FIRE face (batch 1 build 4), appended LAST, on the deploy rule (build 4b — BL42): the
+    // owner's deploy and dev only, never the public deploy or the sandbox until its borrow lane ships. Never the loan.
+    ...(FIRE_ON_THIS_DEPLOY ? [{ key: 'fire' as Face, label: '◎ FIRE' }] : []),
   ];
 
   // The face content for a face key. Pure presentation — switching faces never remounts the hub's

@@ -23,9 +23,9 @@ import {
   historyStateOf, capacityOf, fireTiles, replaysCard, fireChartPoints, fireChartDomain, chartHasGap, fireTooltipLines,
   stopMarkerLabel, fireYearTicks, fireYearTick, fireBtcTick, inspectedLine, anchoredLine, stressLine, dollarsNote,
   STOP_CARD, spendHint, SCALE_TITLE, SCALE_NONE, fireScale, REPLAYS_TITLE, REPLAYS_INFO, REPLAYS_INFO_LABEL, CHART_TITLE,
-  CHART_OWNED, CHART_NEEDED, CHART_EMPTY, CHART_GAP_NOTE, MS_VIEWS_FIRE, MS_LABEL, MS_SWITCH_LABEL, MS_YEAR_HEAD,
+  FIRE_LINES, CHART_EMPTY, CHART_GAP_NOTE, MS_VIEWS_FIRE, MS_LABEL, MS_SWITCH_LABEL, MS_YEAR_HEAD,
   fireMilestoneRows, MODEL_TITLE, MODEL_RULES, MODEL_LIMITS_TITLE, MODEL_LIMITS, MODEL_CREDITS, FIRE_DISCLAIMER, DOCK_WORDS,
-  FOUR_YEAR_LABEL, revertChipLabel, horizonDisplay, type FirePoint, type FireTile,
+  FOUR_YEAR_LABEL, revertChipLabel, horizonDisplay, type FirePoint, type FireTile, type FireLine,
 } from './fireFaceView';
 import { NumberInput } from '../ui/NumberInput';
 import { SliderInput } from '../ui/SliderInput';
@@ -43,7 +43,8 @@ import styles from './FireFace.module.css';
  * 🔴 It writes ONLY its own device-local inputs (`fireInputs`, D3 A) and the shared inflation (Living's input too) — and
  *    reads its inputs once a change, through `fireInputsOf` memoised on the stored object, so the lens reset never fires on
  *    a render. Its own buttons are inert for a viewer (D-1); its number fields already are.
- * ⚠ D1 A′: no simulation here — the four Paths, the replays and the break-even only. The borrow lane is build 5's.
+ * ⚠ D1 A′: no simulation here — the four Paths, the replays and the break-even only. The borrow lane is its own item after
+ *    Batch 1 (BL42); until it ships, the hub keeps this face off the public deploy and the sandbox.
  */
 
 type Overlay = { pathKind?: PathKind; convergeMonths?: number; phaseShiftMonths?: number; months?: number };
@@ -73,6 +74,12 @@ function PathPicker({ pathKind, onPick }: { pathKind: PathKind; onPick: (k: Path
   );
 }
 
+/** A line's mark in the legend and the hover box: a short stroke drawn like the chart's line — its colour (the text's)
+ *  and its dash (BL41). */
+function LineMark({ line }: { line: FireLine }) {
+  return <i className={line.dash === undefined ? styles.lineMark : `${styles.lineMark} ${styles.lineMarkDash}`} />;
+}
+
 function FireTip({ active, payload }: { active?: boolean; payload?: { payload: FirePoint }[] }) {
   if (!active || !payload || payload.length === 0) return null;
   const p = payload[0].payload;
@@ -80,7 +87,10 @@ function FireTip({ active, payload }: { active?: boolean; payload?: { payload: F
     <div className={styles.tooltip}>
       <div className={styles.tooltipHead}>{p.label}</div>
       {fireTooltipLines(p).map((l) => (
-        <div key={l.name} className={styles.tooltipRow}><span>{l.name}</span><strong>{l.value}</strong></div>
+        <div key={l.name} className={styles.tooltipRow}>
+          <span style={l.line ? { color: l.line.color } : undefined}>{l.line && <LineMark line={l.line} />}{l.name}</span>
+          <strong>{l.value}</strong>
+        </div>
       ))}
     </div>
   );
@@ -277,8 +287,8 @@ export default function FireFace() {
       <section className={styles.card}>
         <span className={styles.cardLabel}>{CHART_TITLE}</span>
         <p className={styles.noteQuiet}>
-          <span style={{ color: 'var(--btc)' }}>{CHART_OWNED}</span>{' · '}
-          <span style={{ color: 'var(--text-secondary)' }}>{CHART_NEEDED}</span>
+          <span style={{ color: FIRE_LINES.owned.color }}><LineMark line={FIRE_LINES.owned} />{FIRE_LINES.owned.name}</span>{' · '}
+          <span style={{ color: FIRE_LINES.needed.color }}><LineMark line={FIRE_LINES.needed} />{FIRE_LINES.needed.name}</span>
         </p>
         {domain === null ? (
           <p className={styles.note}>{CHART_EMPTY}</p>
@@ -296,8 +306,8 @@ export default function FireFace() {
                   label={{ value: stopLabel, fill: 'var(--amber)', fontSize: 10, position: 'insideTopLeft' }} />
               )}
               <ReferenceLine x={monthIdx} stroke="var(--text-faint)" />
-              <Line type="monotone" dataKey="owned" stroke="var(--btc)" dot={false} strokeWidth={2} connectNulls={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="needed" stroke="var(--text-secondary)" dot={false} strokeDasharray="5 4" connectNulls={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="owned" stroke={FIRE_LINES.owned.color} strokeDasharray={FIRE_LINES.owned.dash} dot={false} strokeWidth={2} connectNulls={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="needed" stroke={FIRE_LINES.needed.color} strokeDasharray={FIRE_LINES.needed.dash} dot={false} connectNulls={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         )}
