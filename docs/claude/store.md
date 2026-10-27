@@ -145,13 +145,17 @@ build is refused by an older build. **The counts:** 46 settings keys (`SETTINGS_
 plan-event fields + the 4 prefs, 108 persisted blob keys (109 with build 4's `fireInputs`), 41 trusted settings keys (46 − the 5 strips).
 - **Its one editor** is Settings → Your plan (`YourPlanSection`'s `GoalField`, owner-only under `!viewerMode`): "Your
   goal — net coins", saved when the field is left or Enter is pressed, never per keystroke (`parseGoalInput`: empty
-  clears; an amount above zero sets; anything else says what to type and changes nothing). After a save the field shows
+  clears; an amount above zero sets — a point or a comma for the decimal, since an iPhone's decimal keypad in a
+  comma-decimal region has no point (the follow-ups' D-2); anything else says what to type and changes nothing). The
+  field shows the goal fixed-point to the satoshi (`goalText`, never an exponent — the follow-ups' D-4), so a click in
+  and out writes nothing: the text parses back to the goal, and the setter's unchanged check (`planInputsSlice.ts:91`)
+  emits no event. After a save the field shows
   what the plan KEPT (`useStore.getState()`, read back), so an edit refused before the plan loads (5c) snaps back, as the
   sliders do (δ-L10). Its hint says what the engine does (δ-L9): "At your goal the plan buys nothing and borrows only to
   defend Coinbase in a crash: your paycheck pays the bills, then your cash reserve if you set one, and any they can't
   cover go unpaid; spare income repays a loan over its limit first, then Strike, then Coinbase, and once both are repaid
   it stays with you." Pinned by `planGoalStore.test.ts` (GOAL EDITOR — the setter only there; GOAL READ — every reader
-  through `planGoalOf`) and `yourPlanGoal.test.ts`. BL33: the GOAL group comes first on the page (`GoalGroup`), and the
+  through `planGoalOf`; GOAL TEXT — a blur with nothing typed writes no plan event) and `yourPlanGoal.test.ts`. BL33: the GOAL group comes first on the page (`GoalGroup`), and the
   hint is now a two-sentence lead (`GOAL_LEAD`: what net coins are; at the goal the plan buys nothing and borrows only to
   defend Coinbase in a crash) plus "What happens at your goal ›", folded (`GOAL_RULES`, one fact a line: δ-L9's bills and
   spare income, the stand-down's ONE phrase — "With both loans repaid, the plan keeps nothing on Strike or Coinbase: every

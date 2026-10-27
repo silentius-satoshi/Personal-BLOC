@@ -6,7 +6,7 @@ import type { DatedPrice } from '../../../simulation/cycleReplays';
  * The FIRE face's replays — their one belief crossing (batch 1 build 4, D-3): each cycle spliced into the face's own
  * displayed path at the face's own stop month, at exactly that month's price. Every history here is synthetic — round
  * invented prices on real calendar dates (no price series is committed, D-2). Each assertion carries its tag (SPLICE AT
- * STOP, NO STOP, REASONS, HORIZON).
+ * STOP, NO STOP, REASONS, HORIZON; LOW — the follow-ups' F-1).
  */
 
 const DAY = 86_400_000;
@@ -65,5 +65,16 @@ describe('⭐ the replays\' crossing', () => {
     for (const n of [240, 120, 30]) {
       for (const r of replayPathsAt(BASE.slice(0, n), START, 5, readings)) expect((r.path as number[]).length, `HORIZON ${r.id} ${n}`).toBe(n);
     }
+  });
+
+  it('⭐ LOW — each replayed path carries its replay\'s low, the leaf\'s troughMonth, as a plain number; a cycle that didn\'t replay, none', () => {
+    const lows = readings.map((r) => r.replay?.troughMonth);
+    expect(lows.every((l) => typeof l === 'number' && l > 0), 'LOW premise: three lows').toBe(true);
+    for (const stop of [0, 30, 239]) {
+      expect(replayPathsAt(BASE, START, stop, readings).map((r) => r.troughMonth), `LOW at ${stop}: the leaf's own, months after the stop`).toEqual(lows);
+    }
+    const late = history().filter((p) => p.timestamp >= utc('2016-01-01'));   // the 2013 window is gone
+    expect(replayPathsAt(BASE, START, 10, fireReplayReadings(late, TODAY)).map((r) => r.troughMonth), 'LOW none without a replay')
+      .toEqual([null, lows[1], lows[2]]);
   });
 });

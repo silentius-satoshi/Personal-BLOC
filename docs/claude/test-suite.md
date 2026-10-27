@@ -53,11 +53,13 @@ is exactly how LiqSimulator drifted. ⚠ `runCoinbaseLoan` was the one OUTLIER o
 it omitted the `collateral <= 0` term, so a zero *price* reported ∞ where every other surface reports
 0. Normalising it is inert only because `LiquidationModeler` returns early on
 `liquidationPrice === 0 || btcPrice === 0` — if that early return is ever removed, this becomes
-load-bearing. ✅ **The named follow-up is closed:** `emergencyModel`'s LTV routes through `ltvOf`, and the last copies
-of the flattering `x > 0 ? a / b : 0` shape left with their code — `AdvisorMain`'s in the plan of record's Run 4 (its
-Coinbase card reads Safety's `cbLtv`), `runAdvisor`'s four in 5e (batch 1, D5-A). The computation grep still matches
-only the `<= 0 ? Number.POSITIVE_INFINITY` shape; widening it to the flattering one is now free, and left for a later
-pass.
+load-bearing. ✅ **The named follow-up is closed:** `emergencyModel`'s LTV routes through `ltvOf`, and copies of the
+flattering `x > 0 ? a / b : 0` shape left with their code — `AdvisorMain`'s in the plan of record's Run 4 (its Coinbase
+card reads Safety's `cbLtv`), `runAdvisor`'s four in 5e (batch 1, D5-A). Three remain, older than the batch, in the
+strategy engines: `runBLOC.ts` (`btc * btcPrice > 0 ? loc / (btc * btcPrice) : 0`), `runMaxLeverage.ts` and
+`runSmartBLOC_Living.ts` (`btc * finalBtcPrice > 0 ? loc / (btc * finalBtcPrice) : 0`). The computation grep still
+matches only the `<= 0 ? Number.POSITIVE_INFINITY` shape; widening it to the flattering one needs those three fixed first
+(the queue's backlog; batch 1's follow-ups, C-2).
 
 ⚠ **`deriveOwnership`'s `coldBtc` has TWO caller conventions.** It is ADDED to `btcHeld`, which is right
 only when the caller's `btcHeld` EXCLUDES cold: the **viewer** passes strike+cb plus cold separately
@@ -2189,6 +2191,33 @@ goes red.)
     `fireWiring.test.ts`'s DEPLOY GATE and ONE DEFINITION red, and NO SIM and TEST-ONLY through their non-empty checks while
     `lib/fireDeploy.ts` was missing (NO FETCH green); `fireFaceView.test.ts`'s HOVER BOX red — `FIRE_LINES` read as
     `undefined`, so the file loaded; the other 46 green (`build-4b-logs/red-first.log`).
+- **Batch 1's follow-ups — the whole-branch review's findings** (spec `pbloc-spec-batch-1-v1` v0.44–v0.45 §5; its plan
+  `Claude outputs/batch-1/follow-ups-plan.md`, with the go appended; Standard, on `main`; no new files; the suite 3,182 →
+  3,194 (+6 skipped), 220 files; e2e 128 → 129 (+2 skipped). 14 planted bugs, each an exact-once edit, red at its listed
+  tests, the files restored and md5-checked: `Claude outputs/batch-1/follow-ups-mutations.json` and
+  `follow-ups-report.md`):
+  - `fireFaceView.test.ts` 27 → 33: ⭐ CUT · ⭐ CUT EDGE · ⭐ CUT ONE · ⭐ CUT ORDER · ⭐ CUT SWEEP (F-1 — through the
+    replays' crossing, on a month-end history of round prices whose lows are 10–14 month-ends after each top; the sweep's
+    shown side against the engine's own capacities on the same paths, in the same run — never a stored figure a tail
+    feeds) · ⭐ LIMITS (F-3). BANNED reaches the cut state (its three phrases among the texts); BREAK-EVEN's two lines
+    moved (F-2). Every fixture reading carries its own path's low (`lowAfter`), so none is cut.
+  - `fireReplays.test.ts` 4 → 5: ⭐ LOW — each replayed path carries the leaf's `troughMonth`; a cycle that didn't replay,
+    none.
+  - `planGoal.test.ts` 5 → 9: GOAL INPUT's '2,5' moved to 2.5 (D-2) · ⭐ GOAL INPUT — a comma decimal · ⭐ GOAL INPUT —
+    every input the field took before (the old rule frozen, over every string of up to five characters: it takes 4,817,
+    none moves) · ⭐ GOAL TEXT ×2 (D-4 — the cases; the round trip over every goal under 100 sats and a sweep to 21M ₿).
+  - `planGoalStore.test.ts` 12 → 13: ⭐ GOAL TEXT — a blur with nothing typed writes no plan event (the setter's unchanged
+    check, `planInputsSlice.ts:91`).
+  - `e2e/fire.spec.ts` 10 → 11: ⭐ CUT (the dock's Horizon at 120 months, At FI month 110: all three cut); REPLAYS'
+    break-even line moved.
+  - Moved on purpose: `planGoal.test.ts` L31, `fireFaceView.test.ts` L303–304, `e2e/fire.spec.ts` L116. Nothing else
+    moved.
+  - Red first (the five test files alone, on `c488c65`): vitest 13 red — CUT, CUT EDGE, CUT ONE and CUT SWEEP (the
+    capacity shown where it is cut), LIMITS, BREAK-EVEN, BANNED (at "reaches the cut state", its old checks green), LOW
+    (no lows), GOAL INPUT ×2 ('2,5' and '0,5' not goals), GOAL TEXT ×2 and the store's ("goalText is not a function") —
+    and 47 green, CUT ORDER and the frozen copy among them; e2e REPLAYS and CUT red, 9 green — CUT's first run red at its
+    own locator (the Horizon's value and its max label both read "20 yr"), fixed in the test and run again
+    (`follow-ups-logs/red-first*.log`).
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

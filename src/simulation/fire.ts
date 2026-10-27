@@ -30,8 +30,10 @@ import { capitalGainsTax, sellToNet } from './taxes';
  *
  * ⚠ What it leaves out — named, not built: the tax is on bitcoin sold only (the other assets are drawn untaxed); the loans
  * deriveOwnership nets at month 0 are repaid untaxed (exact at the default basis; with the owner's own basis that tax is
- * left out); retirement income counts from the stop month; a surplus of it isn't invested; an underwater position's
- * debt beyond the other assets (`uncoveredDebtUsd`). D1 A′: no simulation sets or shows a sell-lane figure.
+ * left out); retirement income counts from the stop month; a surplus of it isn't invested; savings while working and
+ * retirement income rise with inflation as the spending does — (b) and (c) step both — so a pension without cost-of-living
+ * raises would cover less each year (the follow-ups' F-3); an underwater position's debt beyond the other assets
+ * (`uncoveredDebtUsd`). D1 A′: no simulation sets or shows a sell-lane figure.
  */
 
 /** When work stops: a month index (0 = now), or 'atFi' — the first month whose start meets the BTC-adjusted need. */

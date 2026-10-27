@@ -113,8 +113,30 @@ test.describe('FIRE face', () => {
       await expect(page.getByText(`${id} bear: runs out in ${when}.`, { exact: true }), `REPLAYS ${id} now`).toBeVisible();
     }
     await expect(page.getByText('Spending that lasts all three: $1,771 a month (today\'s dollars) — the 2017 bear is the harshest.', { exact: true }), 'REPLAYS the lowest').toBeVisible();
-    await expect(page.getByText(/^On this path it lasts through Sep 2046 as long as bitcoin grows at least \d+\.\d% a year, steadily\.$/), 'REPLAYS the break-even').toBeVisible();
+    await expect(page.getByText(/^It lasts through Sep 2046 as long as bitcoin grows at least \d+\.\d% a year, steadily\.$/), 'REPLAYS the break-even').toBeVisible();
     expect((await tile(page, 'From your stop, on this path'))[0], 'REPLAYS lasts now').toBe('Runs out Aug 2032');
+  });
+
+  test('⭐ CUT — a 10-year horizon ends before each bear\'s low: no capacity, and each line says so (the follow-ups\' F-1)', async ({ page }) => {
+    await start(page);
+    await openFire(page);
+    await expect(page.getByText(`2013 bear: lasts through ${END}.`, { exact: true }), 'CUT premise: the replays landed').toBeVisible({ timeout: 8000 });
+    // The owner's way: the dock's Horizon, typed into its value field. At FI stays Dec 2035 (month 110); on this stub every
+    // low is 10 months after its top, so with 120 months (the last, month 119, is Sep 2036) all three fall past the horizon.
+    const dock = dockOf(page);
+    await dock.getByRole('button', { name: /^Path/ }).click();
+    const horizon = dock.locator('div', { has: page.getByText('Horizon', { exact: true }) }).filter({ has: page.locator('input[type="range"]') }).last();
+    await horizon.locator('div').filter({ hasText: /^20 yr$/ }).click();   // its value — the slider's max label says "20 yr" too
+    await horizon.locator('input[type="text"]').fill('120');
+    await page.keyboard.press('Enter');
+    await expect(horizon.getByText('10 yr', { exact: true }), 'CUT a 120-month horizon').toBeVisible();
+    await dock.getByRole('button', { name: /^Path/ }).click();   // the panel folds
+    expect(await tile(page, 'From your stop, on this path'), 'CUT premise: the stop, inside the horizon').toEqual(['Lasts through Sep 2036', 'You stop: Dec 2035 (at FI).']);
+    for (const id of ['2013', '2017', '2021']) {
+      await expect(page.getByText(`${id} bear: lasts through Sep 2036 — the horizon ends before its low.`, { exact: true }), `CUT ${id}`).toBeVisible();
+    }
+    await expect(page.getByText('No capacity: the horizon ends before a bear reaches its low.', { exact: true }), 'CUT the card').toBeVisible();
+    expect(await tile(page, 'Spending that lasts every replay'), 'CUT the tile').toEqual(['—', 'The horizon ends before a bear reaches its low.']);
   });
 
   test('⭐ FAILED — the history didn\'t load: no replays and no capacity, said in words', async ({ page }) => {

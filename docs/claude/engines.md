@@ -759,8 +759,8 @@ the words: `almanac.md` § BL14 and § BL32; the Dashboard tile: `viewer.md` § 
 - **Still open:** the build-1 engine's own no-goal tie (spec v0.6) — with no goal, a run that never acts (no Coinbase loan,
   the price under support for the whole horizon) IS the never-draw world too, and its verdict is residue; the tie rule
   without its goal gate fixes it, but moves no-goal screens, so it is queued as its own item.
-- Tests: `src/simulation/__tests__/goalAmount.test.ts` (22) and `src/lib/__tests__/planGoal.test.ts` (5) — § Test
-  Suite → "BL14 — the plan's goal amount"; the stand-down, `src/simulation/__tests__/goalStandDown.test.ts` (19) — § Test
+- Tests: `src/simulation/__tests__/goalAmount.test.ts` (22) and `src/lib/__tests__/planGoal.test.ts` (9) — § Test
+  Suite → "BL14 — the plan's goal amount" and "Batch 1's follow-ups"; the stand-down, `src/simulation/__tests__/goalStandDown.test.ts` (19) — § Test
   Suite → "BL32 — the stand-down".
 
 ---
@@ -877,8 +877,10 @@ item after Batch 1 (BL42).
 - **What the engine leaves out — named, not built.** The tax is on bitcoin sold only — the other assets are drawn untaxed.
   The loans `deriveOwnership` nets at month 0 are repaid untaxed (exact at the default basis; with the owner's own basis,
   that tax is left out). Retirement income counts from the stop month, so a pension or Social Security that starts later
-  reads as starting then. A surplus of retirement income isn't invested. An underwater position's debt beyond the other
-  assets is left out (`uncoveredDebtUsd`).
+  reads as starting then. A surplus of retirement income isn't invested. Savings while working and retirement income rise
+  with inflation as the spending does — the loop steps both (`c.savings * step`; `funded * step`, the spending less the
+  retirement income) — so a pension without cost-of-living raises would cover less each year (the follow-ups' F-3). An
+  underwater position's debt beyond the other assets is left out (`uncoveredDebtUsd`).
 - **How the face calls it (build 4)** — every call in `fireFaceView.ts` and `fireReplays.ts`, never in the face
   (`docs/claude/almanac.md` § FIRE face). The path is the face's displayed path, `.slice(0, months)`: 240 prices for
   months 0–239, so "lasts through" names month `months − 1`. `btc` is ₿ yours, netted ONCE at that path's month 0
@@ -888,8 +890,8 @@ item after Batch 1 (BL42).
   `fire.ts`'s exact core; `taxRate` is Living's `CAPITAL_GAINS_TAX_RATE` unless typed. The stop is the one
   `fireTimeline` resolved on the displayed path, held: every replay is spliced at it (`replayPath(path, startDate, stop,
   …)`) and run with `{ ...x, stopMonth: stop }`, as `breakEvenGrowth` holds its own. The capacity shown is the LOWEST
-  replay's, only when all three replayed, ÷ (1 + b ÷ 100) so it reads in the owner's own spending ("at least" when hi
-  binds). Measured: the face's whole computation — the timeline, three replays with their timeline and capacity, and the
+  replay's, only when all three replayed and each reached its low inside the horizon (the follow-ups' F-1),
+  ÷ (1 + b ÷ 100) so it reads in the owner's own spending ("at least" when hi binds). Measured: the face's whole computation — the timeline, three replays with their timeline and capacity, and the
   break-even — takes about 2.8 ms a render (Node 26, warm), all of it memoised on the path and the inputs; `deriveReplays`
   takes about 5 ms, once a history load.
 - Tests: `src/simulation/__tests__/fire.test.ts` (43), `fireBreakEven.test.ts` (10), `taxes.test.ts` (8),

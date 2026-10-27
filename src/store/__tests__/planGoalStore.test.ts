@@ -16,7 +16,7 @@ vi.hoisted(() => {
 import { useStore } from '../useStore';
 import { buildSettingsPayload, buildViewerSnapshotPayload } from '../payloads';
 import { PREFS_FIELDS } from '../settingsFields';
-import { PLAN_GOAL_FIELD } from '../../lib/planGoal';
+import { PLAN_GOAL_FIELD, PLAN_GOAL_MAX_BTC, planGoalOf, parseGoalInput, goalText } from '../../lib/planGoal';
 import { buildPlanBackup } from '../../lib/backup/exportPlan';
 import { validatePlanBackup } from '../../lib/backup/validatePlanBackup';
 import { foldPlanEvents } from '../../lib/planEvents/fold';
@@ -92,6 +92,19 @@ describe('⭐ GOAL STORE — the goal is a plan field, set one way', () => {
     expect(migrated.planGoalNetBtc, 'GOAL PERSIST absent').toBeNull();
     const kept = migrateState({ monthlyLog: [], planGoalNetBtc: 2.5 } as never) as unknown as Record<string, unknown>;
     expect(kept.planGoalNetBtc, 'GOAL PERSIST kept').toBe(2.5);
+  });
+
+  it('⭐ GOAL TEXT — a blur with nothing typed writes no plan event: the field\'s text, parsed, is the goal it shows (the follow-ups\' D-4)', () => {
+    for (const g of [0.00000001, 0.0000005, 0.00000099, 0.5, 2, 1.23456789, PLAN_GOAL_MAX_BTC]) {
+      useStore.getState().setPlanGoalNetBtc(g);
+      const before = goalEvents().length;
+      // GoalField's commit on a blur with nothing typed: the text it shows (the kept goal's), parsed as if typed.
+      const v = parseGoalInput(goalText(planGoalOf(useStore.getState().planGoalNetBtc)));
+      expect(v, `GOAL TEXT ${g}: the text it shows is a goal`).not.toBeUndefined();
+      useStore.getState().setPlanGoalNetBtc(v as number | null);
+      expect(goalEvents().length, `GOAL TEXT ${g}: no plan event`).toBe(before);
+      expect(useStore.getState().planGoalNetBtc, `GOAL TEXT ${g}: the goal as it was`).toBe(g);
+    }
   });
 });
 

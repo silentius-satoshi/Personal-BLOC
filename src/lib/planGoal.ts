@@ -28,14 +28,26 @@ export function planGoalOf(v: unknown): number | null {
 
 /**
  * What Settings' goal field holds, typed: empty (or only spaces) clears the goal; a number above zero sets it (through
- * `planGoalOf`); anything else is not a goal and changes nothing (`undefined`).
+ * `planGoalOf`); anything else is not a goal and changes nothing (`undefined`). One decimal separator, a point or a comma
+ * (the follow-ups' D-2): an iPhone's decimal keypad in a comma-decimal region has a comma and no point. A comma beside a
+ * point, or two of either, is not a goal; "1,000" reads as 1 — that keypad has no thousands separator, and after a save
+ * the field shows what the plan kept.
  */
 export function parseGoalInput(raw: string): number | null | undefined {
   const t = raw.trim();
   if (t === '') return null;
-  if (!/^\d*\.?\d+$|^\d+\.$/.test(t)) return undefined;
-  const v = Number(t);
+  if (!/^\d*[.,]?\d+$|^\d+[.,]$/.test(t)) return undefined;
+  const v = Number(t.replace(',', '.'));
   if (!Number.isFinite(v)) return undefined;
   if (v === 0) return null;
   return planGoalOf(v) ?? undefined;
+}
+
+/**
+ * The goal as Settings' field shows it (the follow-ups' D-4): empty for none, else fixed-point to the satoshi, trailing
+ * zeros trimmed — never an exponent, which `String` gives a goal under 100 sats ("5e-7") and `parseGoalInput` refuses.
+ * The text, parsed, is the goal to the satoshi, so a click in and out of the field writes nothing.
+ */
+export function goalText(g: number | null): string {
+  return g === null ? '' : g.toFixed(8).replace(/\.?0+$/, '');
 }

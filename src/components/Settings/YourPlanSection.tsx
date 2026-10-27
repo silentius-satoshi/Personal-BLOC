@@ -4,7 +4,7 @@ import { SupportPolicySliders } from '../Almanac/SupportPolicyCard';
 import { DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, GOAL_STAND_DOWN_WORDS } from '../Almanac/supportPolicyView';
 import { usePlanPolicy } from '../Almanac/usePlanPolicy';
 import { PLAN_CLAMP } from '../Almanac/planClamp';
-import { planGoalOf, parseGoalInput } from '../../lib/planGoal';
+import { planGoalOf, parseGoalInput, goalText } from '../../lib/planGoal';
 import { useNetCoinsToday, useViewerSafety } from '../Viewer/ViewerHomeView';
 import { goalNowView, type GoalNowView } from '../Viewer/goalTileView';
 import inputStyles from '../ui/NumberInput.module.css';
@@ -28,13 +28,11 @@ export const GOAL_RULES: readonly string[] = [
 export const GOAL_BAD = 'Type an amount of bitcoin above zero, like 2 or 0.5 — or leave it empty for no goal.';
 export const GOAL_CLEAR = 'No goal';
 
-/** The goal as the field shows it: empty for none, else the satoshi-exact figure without float noise. */
-const goalText = (g: number | null): string => (g === null ? '' : String(g));
-
 /**
  * BL14 (Batch 1, build 2) — "Your goal": one field, saved when it is left or Enter is pressed — never on each keystroke, so
  * typing "2.5" never sends "2" and "2." to the plan (and the sync). Empty clears it; anything that isn't an amount above
- * zero changes nothing and says so.
+ * zero changes nothing and says so. The follow-ups: a comma reads as the decimal point (D-2), and the field shows the goal
+ * through `goalText` (lib/planGoal — fixed-point to the satoshi), so a click in and out writes nothing (D-4).
  */
 function GoalField() {
   const goal = useStore((s) => planGoalOf(s.planGoalNetBtc));

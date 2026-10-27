@@ -497,8 +497,8 @@ still.
 - Tests: **`src/components/Almanac/__tests__/stressAnchor.test.ts`** (16) — the truth tables, the
   engage-race case, an end-to-end reproduction of the old defect, and a **mutation-tested grep guard** that
   fails if either face is reverted to `plConvergencePath(s.btcPrice, …)`. Suite → **1170**. ⚠ Its
-  expected-callers list now names FOUR faces (Cycling, Ownership, UnifiedFace, DecisionFace) — it caught the new face
-  before the list was updated, which is the guard working.
+  expected-callers list now names FIVE faces (Cycling, Ownership, UnifiedFace — the Strategy face —, Decision and FIRE)
+  — it caught the new face before the list was updated, which is the guard working.
 
 **BTC gained:** both the tile and the Milestones column read the displayed (base or stressed) run
 (`btcGained(selRow, rows[0])` / `btcGained(r, rows[0])`), so they agree by construction. Both show **gross
@@ -2444,17 +2444,20 @@ device-local key (`docs/claude/store.md` § FIRE's own inputs).
     equal rates (`btcAdjustedYears === traditionalYears`, bit for bit), two once a bitcoin rate is typed. Every label and
     the `aria-label` come from the view; no borrowed names (F2).
   - **The replays** — "If a 2013, 2017 or 2021 bear began the day you stopped working": a line a cycle ("2013 bear: runs
-    out in Jan 2034." · "2017 bear: lasts through Sep 2046."); a cycle that didn't replay is named (`'noPeak'`, `'gap'`),
-    never filled. Then the capacity, the break-even line and an ⓘ, whose last words are (b′)'s correction, pinned by
-    WORDS: "…a replay can read a little milder or a little harsher than on daily prices, and the month it runs out can
-    move by several months."
+    out in Jan 2034." · "2017 bear: lasts through Sep 2046."); a bear the horizon ends before its low says so when it
+    lasts ("2021 bear: lasts through Sep 2046 — the horizon ends before its low.") and keeps its line when it runs out
+    (the follow-ups' F-1); a cycle that didn't replay is named (`'noPeak'`, `'gap'`), never filled. Then the capacity, the
+    break-even line and an ⓘ, whose last words are (b′)'s correction, pinned by WORDS: "…a replay can read a little
+    milder or a little harsher than on daily prices, and the month it runs out can move by several months."
   - **The Milestones** — a row every 12 months strictly inside the horizon, its last month, and the stop, FI and run-out
     months, flagged "stop", "FI", "runs out". Year · Price · ₿ owned · Other assets · Portfolio · Years funded · ₿ needed
     — "Other assets" (D-2) shows the draw order. The table from 768 px; under it `MilestoneSwitchTable` with
     `MS_VIEWS_FIRE` (₿ · $ · Years). ⚠ The rows are months 0 … `months − 1`: the parents' `m <= horizon` would read
     `rows[months]` and crash, so the bound is `m < n` over the rows' own count.
-  - **"How this works"** — the rules in words, "What it leaves out" (build 3's named limits) and the credits: FIRE BTC's
-    Compass (a link to `https://calc.firebtc.io/`, never a fetch) and Santostasi's power law. The link is `.link`:
+  - **"How this works"** — the rules in words, "What it leaves out" (build 3's named limits, and the follow-ups' F-3:
+    savings and retirement income rise with inflation, so a pension without cost-of-living raises would cover less each
+    year) and the credits: FIRE BTC's Compass (a link to `https://calc.firebtc.io/`, never a fetch) and Santostasi's
+    power law. The link is `.link`:
     `--text-secondary`, underlined — 12.2:1 on the card, where the browser's default blue was 2.0:1, and 1.7:1 visited
     (the fix-up; e2e PILL checks its colour).
   - **The disclaimer** (amber): "A pattern, not a forecast. These are figures on a path you pick, never a recommendation.
@@ -2467,14 +2470,21 @@ device-local key (`docs/claude/store.md` § FIRE's own inputs).
   resolved on the displayed path, passed as that number to every replay (`replayPath(path, startDate, stop, …)`) and to
   its timeline and capacity (`{ ...x, stopMonth: stop }`), as `breakEvenGrowth` holds its own. The capacity shown is the
   LOWEST of the three, only when all three replayed (D-5: a missing cycle could be the harshest — 2013 binds in both
-  measured households), "at least" when the search's top binds (C7). It reads in the owner's own spending: the engine
-  searches the buffered spending, so the face shows its figure ÷ (1 + b ÷ 100), "at least" included, and with a buffer
-  says "Your N% buffer is kept on top."
+  measured households) and each reached its low inside the horizon (the follow-ups' F-1: a cut bear could be the harshest
+  too — measured on a synthetic history, every stop in the default horizon's last 13 months read "at least" with a bear
+  cut before its low, all three at In years 19), "at least" when the search's top binds (C7). It reads in the owner's
+  own spending: the engine searches the buffered spending, so the face shows its figure ÷ (1 + b ÷ 100), "at least"
+  included, and with a buffer says "Your N% buffer is kept on top."
   - **The capacity reads the stop first**, in the replays card's order — `capacityOf(r, runs, state, bufferPct)` takes
     the run's result: invalid inputs; then the stop's own states, whatever the history — no stop month ("No stop month
     to replay from.": At FI with FI past the horizon), a stop at or past the horizon's end ("You stop after this horizon
     ends.": In years at 20 on the default 240 months), a working gap that runs it out before the stop ("It runs out
-    before you stop working."); then the history's (loading, failed, offline); then a missing cycle; then the lowest.
+    before you stop working."); then the history's (loading, failed, offline); then a missing cycle; then a cut bear — its
+    low, `troughMonth` months after the stop (the leaf's, handed over by `fireReplays.ts` as a plain number), past the
+    horizon's last month: stop + troughMonth > months − 1, the ONE predicate `replayRunsOf` sets as each run's `cut`, which
+    the capacity and the card's lines read ("The horizon ends before a bear reaches its low." on the tile, "No capacity:
+    the horizon ends before a bear reaches its low." on the card); then the lowest. With no spending and a late stop the
+    cut words come before "No spending to test.", as a missing cycle's do (the follow-ups' F-1).
     ⚠ With no stop month inside the horizon the face hands `capacityOf` an EMPTY `runs` (`replayPathsAt` returns none).
     Until the fix-up that read as a missing cycle — "The one bear couldn't be replayed from this history." — while the
     card and the other tiles said the right thing. CAPACITY STATES builds the runs as the face does.
@@ -2507,7 +2517,7 @@ device-local key (`docs/claude/store.md` § FIRE's own inputs).
   module), and `decisionWiring.test.ts`'s last pill (now just before FIRE's). Not joined: `resetMirror.test.ts` and
   `controlDockWiring.test.ts`'s PARENTS (Policy-tab and `runCyclingSim`-specific — FIRE's wiring test carries the dock
   and the mirror); `navigation.spec.ts`'s pill list (no face whose fetch isn't stubbed, as for Decision).
-- Tests: § Test Suite → "Batch 1 build 4 — the FIRE face".
+- Tests: § Test Suite → "Batch 1 build 4 — the FIRE face" and "Batch 1's follow-ups".
 
 ### Milestones on a phone (the three parents' Milestones; store unchanged, NO bump)
 

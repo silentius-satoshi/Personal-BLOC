@@ -10,6 +10,9 @@ import type { ReplayPathReading } from './fireFaceView';
  *    resolved on that path, held — at exactly that month's price, wherever the cycle is (F9: harsh on purpose).
  * ⚠ No price series is committed (D-2): the history is the one the app loads (usePowerLawData — one fetch a visit). With
  *    no stop month, or one at or past the horizon, there is nothing to replay; a cycle with no top or a gap is named.
+ * 🔴 The follow-ups' F-1 — each replay hands the view its low as a plain number: `troughMonth`, months after the stop (the
+ *    leaf's own, unchanged by the splice), so the view can tell a replay the horizon ends before its low without importing
+ *    the leaf.
  */
 
 /** Each cycle's replay from the history the app loaded — the leaf's own rule, no other. */
@@ -17,12 +20,12 @@ export function fireReplayReadings(history: ReadonlyArray<DatedPrice>, today: Da
   return deriveReplays(history, today);
 }
 
-/** Each cycle spliced into the face's path at its stop month; none without a stop month inside the horizon. */
+/** Each cycle spliced into the face's path at its stop month, with its low; none without a stop month inside the horizon. */
 export function replayPathsAt(
   path: readonly number[], startDate: Date, stop: number | null, readings: readonly ReplayReading[],
 ): ReplayPathReading[] {
   if (stop === null || !(stop >= 0 && stop < path.length)) return [];
   return readings.map((r): ReplayPathReading => (r.replay === null
-    ? { id: r.id, path: null, reason: r.reason ?? 'gap' }
-    : { id: r.id, path: replayPath(path, startDate, stop, r.replay), reason: null }));
+    ? { id: r.id, path: null, reason: r.reason ?? 'gap', troughMonth: null }
+    : { id: r.id, path: replayPath(path, startDate, stop, r.replay), reason: null, troughMonth: r.replay.troughMonth }));
 }

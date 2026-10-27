@@ -19,8 +19,9 @@ import { shownBtc } from './supportPolicyView';
  * 🔴 Zero is never printed: a dollar, bitcoin or years figure that is zero, or would print as zero at its precision,
  *    prints "—" in a tile, a line, a Milestones cell and the tooltip, and no sentence states one. Rates aren't amounts.
  * 🔴 The replays and the capacity run from the face's own stop month, HELD: the number the timeline resolved on the
- *    displayed path. The capacity shown is the LOWEST of the three replays', only when all three replayed, in the
- *    owner's own spending (÷ the buffer, which stays on top), "at least" when the search's top binds (C7).
+ *    displayed path. The capacity shown is the LOWEST of the three replays', only when all three replayed and each
+ *    reached its low inside the horizon (the follow-ups' F-1), in the owner's own spending (÷ the buffer, which stays on
+ *    top), "at least" when the search's top binds (C7).
  * ⚠ D1 A′: no simulation sets or shows a figure here — the four Paths, the replays and the break-even only.
  */
 
@@ -120,8 +121,9 @@ export function fireRunOf(engine: FireEngine, path: readonly number[]): FireRun 
 // ── the replays: run from the held stop; the lowest capacity, all three or none ──────────────────────────────────
 
 export type FireCycleId = '2013' | '2017' | '2021';
-/** One cycle's replayed path — structurally fireReplays.ts's output, so this module never imports the belief leaf. */
-export interface ReplayPathReading { id: FireCycleId; path: number[] | null; reason: null | 'noPeak' | 'gap' }
+/** One cycle's replayed path — structurally fireReplays.ts's output, so this module never imports the belief leaf. Its
+ *  low comes as a plain number: `troughMonth`, months after the stop (the leaf's own); null when the cycle didn't replay. */
+export interface ReplayPathReading { id: FireCycleId; path: number[] | null; reason: null | 'noPeak' | 'gap'; troughMonth: number | null }
 
 export interface ReplayRun {
   id: FireCycleId;
@@ -129,15 +131,19 @@ export interface ReplayRun {
   lasts: boolean;
   runOutMonth: number | null;
   capacity: FireCapacity | null;
+  /** The horizon ends before this replay's low (the follow-ups' F-1) — set once, here; the capacity and the card read it. */
+  cut: boolean;
 }
 
 /** Each replay, run from the face's stop month — HELD, passed as that number, never re-resolved on the replay. */
 export function replayRunsOf(x: FireInputs, stop: number, readings: readonly ReplayPathReading[]): ReplayRun[] {
   const held: FireInputs = { ...x, stopMonth: stop };
   return readings.map((r): ReplayRun => {
-    if (r.path === null) return { id: r.id, reason: r.reason ?? 'gap', lasts: false, runOutMonth: null, capacity: null };
+    if (r.path === null) return { id: r.id, reason: r.reason ?? 'gap', lasts: false, runOutMonth: null, capacity: null, cut: false };
     const t = fireTimeline(held, r.path);
-    return { id: r.id, reason: null, lasts: t.lasts, runOutMonth: t.runOutMonth, capacity: withdrawalCapacity(held, r.path) };
+    // F-1 — the ONE cut predicate: the low falls after the horizon's last month. A low not known is never vouched for.
+    const cut = r.troughMonth === null || stop + r.troughMonth > r.path.length - 1;
+    return { id: r.id, reason: null, lasts: t.lasts, runOutMonth: t.runOutMonth, capacity: withdrawalCapacity(held, r.path), cut };
   });
 }
 
@@ -151,12 +157,13 @@ export function historyStateOf(h: { loading: boolean; error: string | null; onli
 
 export type CapacityReading =
   | { kind: 'shown'; usd: number; atLeast: boolean; harshest: FireCycleId }
-  | { kind: 'none'; why: 'loading' | 'failed' | 'offline' | 'missing' | 'noStop' | 'stopBeyond' | 'whileWorking' | 'noSpending' | 'invalid'; missing?: FireCycleId };
+  | { kind: 'none'; why: 'loading' | 'failed' | 'offline' | 'missing' | 'cut' | 'noStop' | 'stopBeyond' | 'whileWorking' | 'noSpending' | 'invalid'; missing?: FireCycleId };
 
 /**
  * The capacity the face shows: the LOWEST of the three replays', only when all three replayed — a missing cycle could be
- * the harshest. In the owner's own spending: the engine searches the buffered spending, so its figure ÷ (1 + b ÷ 100),
- * "at least" included, and the buffer stays on top.
+ * the harshest — and each reached its low inside the horizon: a bear the horizon ends before its low could be the harshest
+ * too (the follow-ups' F-1). In the owner's own spending: the engine searches the buffered spending, so its figure
+ * ÷ (1 + b ÷ 100), "at least" included, and the buffer stays on top.
  * 🔴 The stop first, as the replays card reads it: with no stop month inside the horizon, or a working gap that runs out
  *    first, there is nothing to replay whatever the history — and the face then hands an EMPTY `runs`, which must never
  *    read as a cycle that couldn't be replayed.
@@ -172,6 +179,7 @@ export function capacityOf(
   if (state !== 'ready') return { kind: 'none', why: state };
   const missing = runs.find((r) => r.reason !== null);
   if (missing || runs.length === 0) return { kind: 'none', why: 'missing', missing: missing?.id };
+  if (runs.some((r) => r.cut)) return { kind: 'none', why: 'cut' };
   const caps = runs.map((r) => r.capacity);
   const first = caps.find((c) => c === null || c.capacityUsd === null);
   if (first !== undefined) {
@@ -361,6 +369,7 @@ const CAPACITY_NONE: Record<Extract<CapacityReading, { kind: 'none' }>['why'], (
   failed: () => 'The price history didn\'t load.',
   offline: () => 'Offline — the replays need the price history.',
   missing: (id) => `The ${id ?? 'one'} bear couldn't be replayed from this history.`,
+  cut: () => 'The horizon ends before a bear reaches its low.',
   noStop: () => 'No stop month to replay from.',
   stopBeyond: () => 'You stop after this horizon ends.',
   whileWorking: () => 'It runs out before you stop working.',
@@ -414,7 +423,9 @@ export function replaysCard(a: {
   const lines = a.runs.map((x) => {
     if (x.reason === 'noPeak') return `${x.id}: no top in this price history — not replayed.`;
     if (x.reason === 'gap') return `${x.id}: a gap in the price history after its top — not replayed.`;
-    return x.lasts || x.runOutMonth === null ? `${x.id} bear: lasts through ${end}.` : `${x.id} bear: runs out in ${fireMonthYear(a.startISO, x.runOutMonth)}.`;
+    return x.lasts || x.runOutMonth === null
+      ? `${x.id} bear: lasts through ${end}${x.cut ? ' — the horizon ends before its low' : ''}.`
+      : `${x.id} bear: runs out in ${fireMonthYear(a.startISO, x.runOutMonth)}.`;
   });
   return { state: null, lines, capacity: capacityLine(a.capacity, a.bufferPct), breakEven };
 }
@@ -438,7 +449,7 @@ export function breakEvenLine(be: FireBreakEven, end: string): string | null {
     return `It lasts through ${end} even if bitcoin falls ${Math.abs(BREAK_EVEN_BRACKET[0] * 100)}% a year, steadily — the lowest growth the search tries.`;
   }
   if (be.reason === null && be.yearlyGrowth !== null) {
-    return `On this path it lasts through ${end} as long as bitcoin grows at least ${rateText(be.yearlyGrowth)} a year, steadily.`;
+    return `It lasts through ${end} as long as bitcoin grows at least ${rateText(be.yearlyGrowth)} a year, steadily.`;
   }
   if (be.reason === 'nothingLasts') return `Even ${rateText(BREAK_EVEN_BRACKET[1])} a year, steadily, doesn't last through ${end}.`;
   return null;
@@ -748,6 +759,7 @@ export const MODEL_LIMITS: readonly string[] = [
   'The loans netted today are repaid untaxed.',
   'Retirement income counts from the month you stop, so a pension or Social Security that starts later reads as starting then.',
   'Retirement income beyond your spending isn\'t invested.',
+  'Your savings while you work, and your retirement income, rise with inflation as your spending does; a pension without cost-of-living raises would cover less each year.',
   'If your loans outweigh your coins, any debt your other assets can\'t cover is left out.',
 ];
 export const MODEL_CREDITS = [

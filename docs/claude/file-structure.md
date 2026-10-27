@@ -741,8 +741,11 @@ src/
                                 # goal) · PLAN_GOAL_MAX_BTC (21M) · planGoalOf(v) — THE read rule every reader goes through
                                 # (a finite number above zero, to the satoshi, at most 21M; anything else, junk from a
                                 # restored backup included, is no goal) · parseGoalInput(raw) — Settings' field: empty →
-                                # null (clears), an amount above zero → it, anything else → undefined (changes nothing).
-                                # See store.md § BL14
+                                # null (clears), an amount above zero → it, anything else → undefined (changes nothing);
+                                # one decimal separator, a point or a comma (the follow-ups' D-2 — a comma-decimal
+                                # region's keypad has no point; "1,000" reads as 1) · goalText(g) — the field's text,
+                                # fixed-point to the satoshi, never an exponent, so it parses back to the goal (the
+                                # follow-ups' D-4). See store.md § BL14
     fireInputs.ts               # Batch 1 build 4 (D3 A) — the FIRE face's own inputs: PURE, its one import the zero-import
                                 # tax leaf (CAPITAL_GAINS_TAX_RATE — the planPolicy.ts precedent). FireFaceInputs ·
                                 # StoredFireInputs (what the store keeps: only what was typed; null = every default) ·
@@ -817,6 +820,12 @@ src/
                                 # in wipeLocalPlanData's inventory: kept on "Remove local key". Tested in
                                 # src/lib/__tests__/btcCandlesCache.test.ts (OLD, EDGE, NEWER, FUTURE, SHAPE, LABEL, STORE,
                                 # OWN KEY, RANGE, MONEY)
+    ledgerCsv.ts                # M-L1 — the Ledger face's data, PURE (no React; the Ledger writes nothing):
+                                # ledgerFaceAvailable (the face's gate — at least one logged month) · buildLedgerCsv (the
+                                # monthly log as a spreadsheet-ready CSV — Copy / Download) · the computed "→ Cold" column
+                                # (coldMovedByMonth, hasColdColumn, coldTotals, coldFootnote, fmtColdBtc, COLD_EPS — from
+                                # the dayLog at render, never stored). See almanac.md § M-L1. Tested in
+                                # src/lib/__tests__/ledgerCsv.test.ts and ledgerCold.test.ts
                                 # + src/lib/__tests__/ledgerCsvHardening.test.ts (HJ-23, HJ-24 — Hardening 1: CB bal / CB LTV under their own headers; RFC 4180 quote doubling)
 
     nostr/__tests__/            # Hardening 1 — the keys tests (HK-01, HK-02, HK-06, HK-07, HK-08; each title names its identity.md row)
@@ -1030,8 +1039,10 @@ src/
       fireFaceView.ts           # Batch 1 build 4 — the FIRE face's every word, figure and tone, pure (no belief, no store,
                                 # no React). fireEngineOf (savings signed, the buffer folded in, the return factor, the
                                 # tax) · yoursAt — the ONE three-argument deriveOwnership call · fireRunOf · replayRunsOf
-                                # (the stop held: { ...x, stopMonth: stop }) · historyStateOf · capacityOf (the LOWEST, only
-                                # with all three, ÷ (1 + b ÷ 100)) · fireTiles · replaysCard · the chart (fireChartPoints —
+                                # (the stop held: { ...x, stopMonth: stop }; each run's `cut` — stop + troughMonth >
+                                # months − 1, the ONE cut predicate, the follow-ups' F-1) · historyStateOf · capacityOf (the
+                                # LOWEST, only with all three, none cut — a cut bear withholds it, after a missing one —
+                                # ÷ (1 + b ÷ 100)) · fireTiles · replaysCard · the chart (fireChartPoints —
                                 # a gap is null, never 0 — fireChartDomain; FIRE_LINES, the two lines' ONE definition —
                                 # name, colour, dash — read by the <Line>s, the legend, the Milestones' ₿ owned cell and
                                 # fireTooltipLines, each row's `line` or null; build 4b) · fireScale · the Milestones
@@ -1040,8 +1051,10 @@ src/
                                 # btcOrNull / yearsOrNull → "—". Tested in __tests__/fireFaceView.test.ts (BANNED sweeps it)
       fireReplays.ts            # Batch 1 build 4 (D-3) — the replays' one belief crossing (imports cycleReplays):
                                 # fireReplayReadings (= deriveReplays) · replayPathsAt(path, startDate, stop, readings) —
-                                # each replay spliced at the face's own stop; [] without a stop inside the horizon; a cycle
-                                # that didn't replay keeps its reason. Tested in __tests__/fireReplays.test.ts
+                                # each replay spliced at the face's own stop, with its low (troughMonth, months after the
+                                # stop — the leaf's, a plain number for the view's cut, the follow-ups' F-1); [] without a
+                                # stop inside the horizon; a cycle that didn't replay keeps its reason and has no low.
+                                # Tested in __tests__/fireReplays.test.ts
       FireScale.tsx             # Batch 1 build 4 — the scale of years of funded spending (+ .module.css, tokens only): a
                                 # bar, a you-are-here dot, the need's marks. LAYOUT ONLY and wordless — imports only its
                                 # CSS; the view hands it every label and the aria-label (fireWiring WORDLESS)
@@ -1673,7 +1686,9 @@ src/
                                 # (C1)", offSwitch={false}, readouts through effectivePolicySettings(raw, PLAN_CLAMP).
                                 # BL14 (batch 1, build 2): + the GOAL group — its hint (GOAL_HINT until BL33), and GoalField,
                                 # the goal's ONE editor: "Your goal — net coins", saved on blur or Enter (never per
-                                # keystroke) through parseGoalInput → setPlanGoalNetBtc; after a save it shows what the plan
+                                # keystroke) through parseGoalInput (a point or a comma for the decimal — the follow-ups'
+                                # D-2) → setPlanGoalNetBtc; its text is lib/planGoal's goalText (fixed-point to the
+                                # satoshi — the follow-ups' D-4); after a save it shows what the plan
                                 # kept (a 5c-refused edit snaps back); "No goal" clears it; anything else says GOAL_BAD and
                                 # changes nothing. BL33 (build 2c): the GOAL group (GoalGroup) comes FIRST, before the six;
                                 # the hint is GOAL_LEAD (two sentences) + GOAL_RULES folded under GOAL_RULES_TITLE ("What
