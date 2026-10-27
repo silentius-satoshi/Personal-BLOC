@@ -119,6 +119,11 @@ export function parentDockTabs(x: {
   return [monthTab(x.monthIdx), stressTab(x.lens), pathTab(x.path), policyTab(x.policy)];
 }
 
+/** The FIRE face's three (batch 1 build 4): Month · Stress · Path — no credit line and no support policy on the sell lane. */
+export function fireDockTabs(x: { monthIdx: number; lens: number; path: PathKind }): DockTabView[] {
+  return [monthTab(x.monthIdx), stressTab(x.lens), pathTab(x.path)];
+}
+
 /** Strategy's five: the parents' four, then the Lens (D8) — a tab under 1024 px and a chip on the bar, never live (F14). */
 export function strategyDockTabs(x: Parameters<typeof parentDockTabs>[0] & { lensView: LensView }): DockTabView[] {
   return [...parentDockTabs(x), { id: 'lens', label: 'Lens', value: LENS_TAB_VALUE[x.lensView], tone: 'plain' }];

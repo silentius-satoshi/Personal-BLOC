@@ -17,11 +17,12 @@ import CyclingFace from './CyclingFace';
 import OwnershipFace from './OwnershipFace';
 import UnifiedFace from './UnifiedFace';
 import DecisionFace from './DecisionFace';
+import FireFace from './FireFace';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import styles from './AlmanacView.module.css';
 
 /**
- * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for TWELVE faces: Halving Clock / Cycle Clock (both
+ * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for THIRTEEN faces: Halving Clock / Cycle Clock (both
  * cycleModel-only, rendered inside the shared `.container`, which now itself `composes: toolContainer`),
  * Mining / Sats (each embeds the REAL tool's main content PLUS its own input panel, stacked in a `.faceStack` in
  * that tool's own mobile DOM order — mining panel-first, sats main-first, mirroring the presence/absence of
@@ -31,8 +32,8 @@ import styles from './AlmanacView.module.css';
  * full-mode Power Law tab mounts the same component — spec pbloc-spec-powerlaw-face-v1), and the gated `defense`
  * face (embeds the shared `CbDefenseTool` — the same Emergency Console gate used by the `liqsim` tab
  * in AppShell — hidden entirely when `!hasCbLoan`), plus the own-container Ledger / Scenario / Cycling /
- * Ownership / Strategy / Decision faces (Cycling and Strategy `hasCbLoan`-gated; Strategy is one engine run read
- * through both the Ownership and the Cycling lens). Every embedded tool brings its OWN width — the hub adds none
+ * Ownership / Strategy / Decision / FIRE faces (Cycling and Strategy `hasCbLoan`-gated; Strategy is one engine run read
+ * through both the Ownership and the Cycling lens; FIRE is the sell lane — batch 1 build 4). Every embedded tool brings its OWN width — the hub adds none
  * of its own (§8 toolContainer adoption is now CLOSED: EmergencyConsole, Mining/Converter, and
  * AlmanacView's own `.container` all compose from the same `toolShell.module.css`; the faces, Power Law's
  * included, compose CyclingFace's 960px `.face`). Holds the local face state (DEFAULT halving, §14.3 — nothing
@@ -52,7 +53,7 @@ import styles from './AlmanacView.module.css';
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating the
  * faces under one hub is navigation only — it crosses neither wall.
  */
-type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership' | 'unified' | 'decision';
+type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership' | 'unified' | 'decision' | 'fire';
 /** A face the hub can be opened on — Run 3: the plan's "other price paths" link opens the Decision face. */
 export type AlmanacFace = Face;
 
@@ -121,6 +122,8 @@ export default function AlmanacView({ initialFace }: { initialFace?: AlmanacFace
     ...(hasCbLoan ? [{ key: 'unified' as Face, label: '◈ Strategy' }] : []),
     // The TWELFTH face — UNGATED (decision 2: without a loan the whole schedule shows), and appended LAST.
     { key: 'decision' as Face, label: '◆ Decision' },
+    // The THIRTEENTH face — the FIRE face (batch 1 build 4), UNGATED (D4) and appended LAST.
+    { key: 'fire' as Face, label: '◎ FIRE' },
   ];
 
   // The face content for a face key. Pure presentation — switching faces never remounts the hub's
@@ -139,6 +142,7 @@ export default function AlmanacView({ initialFace }: { initialFace?: AlmanacFace
     if (f === 'ownership') return <OwnershipFace />;
     if (f === 'unified')   return <UnifiedFace />;
     if (f === 'decision')  return <DecisionFace onNavigate={setFace} />;
+    if (f === 'fire')      return <FireFace />;
     return <div className={styles.faceStack}><ConverterMain /><div className={`${styles.facePanel} ${styles.facePanelInset}`}><ConverterSidebar /></div></div>;
   };
 

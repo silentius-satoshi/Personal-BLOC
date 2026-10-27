@@ -8,7 +8,7 @@ type PlanInputsSlice = Pick<StoreState,
   | 'income' | 'expenses' | 'btcPrice' | 'btcPriceMode' | 'btcPriceUpdatedAt' | 'blocApr' | 'activeTier' | 'scenario'
   | 'scrubMonth' | 'creditLine' | 'btcHoldings' | 'annualBtcGrowth' | 'bearMarket' | 'bearPeriodYears' | 'annualDecline'
   | 'inflationRate' | 'ltvType' | 'timeHorizonYears' | 'sandboxCollateralBtc' | 'setSandboxCollateralBtc'
-  | 'pinnedScenario' | 'setPinnedScenario' | 'setIncome'
+  | 'pinnedScenario' | 'setPinnedScenario' | 'fireInputs' | 'setFireInputs' | 'setIncome'
   | 'setExpenses' | 'setBtcPrice' | 'setBtcPriceMode' | 'setBlocApr' | 'setActiveTier' | 'setScenario' | 'setScrubMonth'
   | 'setCreditLine' | 'setBtcHoldings' | 'setAnnualBtcGrowth' | 'setBearMarket' | 'setBearPeriodYears'
   | 'setAnnualDecline' | 'setInflationRate' | 'setLtvType' | 'setTimeHorizonYears'
@@ -41,6 +41,9 @@ export const createPlanInputsSlice = (set: StoreSet, get: StoreGet): PlanInputsS
   setSandboxCollateralBtc:  (v) => set({ sandboxCollateralBtc: v }),
   pinnedScenario:           null,   // Phase 3a — device-local persisted pin; plain set, NO sync
   setPinnedScenario:        (v) => set({ pinnedScenario: v }),
+  // Batch 1 build 4 (D3 A) — the FIRE face's own inputs: device-local, plain set, NO sync, no event, no dirty flag.
+  fireInputs:               null,
+  setFireInputs:            (patch) => set((s) => ({ fireInputs: patch === null ? null : { ...(s.fireInputs ?? {}), ...patch } })),
   setIncome:   (v) => get().emitPlanSets([['income', v]]),                                                              // 4c: emit a plan event (was syncSettingsToNostr)
   setExpenses: (v) => { get().emitPlanSets([['expenses', v]]); set({ expenseReanchorDismissedAt: 0 }); },              // emit + keep the extra device-local clear in its own set — re-anchoring (or any edit) clears the dismissal so a future drift can nudge again
   setBtcPrice: (v) => set({ btcPrice: v, btcPriceUpdatedAt: Date.now() }),

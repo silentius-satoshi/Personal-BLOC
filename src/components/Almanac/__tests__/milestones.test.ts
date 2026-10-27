@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   msYearLabel, MS_TABLE, MS_TABLE_OWNERSHIP, MS_VIEWS_CYCLING, MS_VIEWS_STRATEGY, MS_VIEWS_OWNERSHIP,
 } from '../cyclingFaceView';
+import { MS_VIEWS_FIRE } from '../fireFaceView';
 
 /**
  * The Milestones on a phone (spec `pbloc-spec-milestones-phone-v1.md`, Run 2: the switch table). The year label, the
@@ -25,6 +26,8 @@ const FACES = {
   cycling: { src: strip(read('CyclingFace.tsx')), views: MS_VIEWS_CYCLING, name: 'MS_VIEWS_CYCLING', query: 'MS_TABLE' },
   strategy: { src: strip(read('UnifiedFace.tsx')), views: MS_VIEWS_STRATEGY, name: 'MS_VIEWS_STRATEGY', query: 'MS_TABLE' },
   ownership: { src: strip(read('OwnershipFace.tsx')), views: MS_VIEWS_OWNERSHIP, name: 'MS_VIEWS_OWNERSHIP', query: 'MS_TABLE_OWNERSHIP' },
+  // batch 1 build 4 — the FIRE face's Milestones, a row a year (its views live with its words, in fireFaceView).
+  fire: { src: strip(read('FireFace.tsx')), views: MS_VIEWS_FIRE, name: 'MS_VIEWS_FIRE', query: 'MS_TABLE' },
 };
 /** A face's Milestones table headers, less Year (its th carries a two-class template), in the table's order. */
 const headsOf = (src: string): string[] => {

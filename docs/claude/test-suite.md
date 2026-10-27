@@ -2114,6 +2114,55 @@ goes red.)
     three SAVE and the three store tests "is not a function" — and POLICY adds with the 34 existing tests green; e2e
     (`--retries=0`) E NONE red (the field is there), E FIGURE red (`1.20000000` — every reading edit showed today's
     total), E PAST green.
+- **Batch 1 build 4 — the FIRE face** (spec `pbloc-spec-batch-1-v1` v0.33–v0.35 §2.3 — the FIRE plan v0.2's Run 2; its plan
+  `Claude outputs/batch-1/build-4-plan.md`, with the go and the fix-up appended to it; five new unit files and one e2e
+  spec; the suite 3,108 → 3,175 (+6 skipped), 214 → 219 files — 65 new `it`s, and `coldWiring.test.ts` 11 → 13, its
+  per-face checks run on FireFace — then 3,175 → 3,178 with the fix-up's three (⭐ CAPACITY STATES, ⭐ TINY, ⭐ FOLD and
+  LINK); e2e 118 → 128 (+2 skipped; the base's 118 ran as 117 passed + 1 flaky), the fix-up's three PILL checks inside an
+  existing test. 41 planted bugs — build 4's 35 and the fix-up's six, M36–M41 — each an exact-once edit, red at its
+  listed tests, the files restored and md5-checked: `Claude outputs/batch-1/build-4-mutations.json` and
+  `build-4-report.md`):
+  - `src/components/Almanac/__tests__/fireFaceView.test.ts` (26; round invented paths — exact figures only where the path is
+    + − × ÷, the return factor and the replays' tails to a tolerance): ⭐ DATES (≡ `futuresView`'s `monthYear` over a sweep)
+    · ⭐ SAVINGS (signed) · ⭐ BUFFER (the spending) · ⭐ RETURN · ⭐ TAX · ⭐ POSITION ≡ NET COINS (2,000 seeded positions,
+    bit for bit) · ⭐ POSITION · ⭐ WORDS (since the fix-up, the ⓘ's last sentence — (b′)'s correction) · ⭐ LASTS THROUGH ·
+    ⭐ EDGES · ⭐ TINY (the fix-up: a little owned, under the 0.05-year floor — "Less than a month of spending funded." and
+    "You: less than a month"; nothing at all stays "nothing owned") · ⭐ STOP HELD (a crafted replay path on which a
+    re-resolved "at FI" would move) · ⭐ LOWEST · ⭐ ALL THREE · ⭐ CAPACITY STATES (the fix-up: the stop first — no stop
+    month, a stop past the horizon, a working gap — over all four history states, the runs built as the face builds them,
+    empty without a stop inside the horizon; never "couldn't be replayed") · ⭐ HI BINDS · ⭐ BUFFER (the capacity: × 1.1 is
+    the engine's to the cent, equal at 0, the buffer said) · ⭐ HISTORY · ⭐ BREAK-EVEN · ⭐ GAPS · ⭐ TODAY'S DOLLARS · ⭐ SCALE
+    · ⭐ MILESTONES ×2 (horizons 240, 120 and 30; the views a partition) · ⭐ BANNED (60 s; over households that reach a zero in Other assets,
+    ₿ owned, Portfolio and Years funded: "$0", "$0.00", "₿0", "₿0.000", "0.0 years", the banned words, NaN, Infinity,
+    undefined, "all N years").
+  - `src/components/Almanac/__tests__/fireReplays.test.ts` (4; a synthetic history, a flat level an era under invented
+    tops): ⭐ SPLICE AT STOP · ⭐ NO STOP · ⭐ REASONS · ⭐ HORIZON.
+  - `src/components/Almanac/__tests__/fireWiring.test.ts` (23, source-reading): ⭐ C8 · ⭐ LAST and UNGATED · ⭐ THIRTEEN ·
+    ⭐ BELIEF · ⭐ NO SIM · ⭐ NO FETCH · ⭐ WRITES · ⭐ RESET · ⭐ SHARED INFLATION · ⭐ TEST-ONLY (the survival-guard grep's
+    list, read by its pattern, over every FIRE file — sources, CSS, tests and the e2e) · ⭐ POSITION · ⭐ ANCHOR · ⭐ HORIZON ·
+    ⭐ CLAMP · ⭐ STABLE (the read memoised on `s.fireInputs`; no call or literal in the engine-input or reset dependencies)
+    · ⭐ RESET MIRROR · ⭐ VIEWER · ⭐ SITES · ⭐ CSS · ⭐ FOLD and LINK (the fix-up: `<details className={styles.fold}>` and
+    the credit's `styles.link`, both composed from `CyclingFace.module.css` — its pointer, its ' ›' marker and
+    `--text-secondary`) · ⭐ DOCK LAST · ⭐ I31 · ⭐ WORDLESS.
+  - `src/lib/__tests__/fireInputs.test.ts` (7): ⭐ DEFAULTS ×3 · ⭐ READ RULE ×4.
+  - `src/store/__tests__/fireInputsStore.test.ts` (7, the REAL store; distinctive typed figures): ⭐ PERSISTED · ⭐ LEAK
+    (the settings payload, the backup, both snapshot tiers, the prefs, the plan events) · ⭐ LISTS (the six) · ⭐ SETTER ·
+    ⭐ RESTORE · ⭐ SEEDS · ⭐ WIPE.
+  - `controlDockView.test.ts` +1: ⭐ FIRE-TABS.
+  - `e2e/fire.spec.ts` (10; the clock fixed at 12 Oct 2026, a manual $100,000 and ₿2 on Strike, a synthetic history stubbed
+    — round invented tops on real dates; the seed runs once a tab, so PERSIST's reload keeps what was typed): ⭐ PILL
+    (since the fix-up, three computed styles too: the Assumptions' cursor a pointer, its `::after` marker " ›", and the
+    credit link's colour, `--text-secondary`'s rgb(208, 208, 208)) · ⭐ TILES · ⭐ REPLAYS · ⭐ FAILED · ⭐ OFFLINE · ⭐ DOCK ·
+    ⭐ STRESS HOLDS · ⭐ PHONE TABLE · ⭐ NO SIDEWAYS · ⭐ PERSIST.
+  - Moved on purpose (the go's list): `numberInputModel.test.ts` SITES (45 → 56 fields; [11, 15, 19] → [11, 26, 19]) ·
+    `fireWalls.test.ts` BELIEF's importers (the view, the replays and `lib/fireInputs.ts`) · `supportPolicyView.test.ts`'s
+    view-module walls (`fireFaceView.ts`; the pattern widened) · `milestones.test.ts` FACES and its import ·
+    `stressAnchor.test.ts` (five faces) · `coldWiring.test.ts` FACES · `decisionWiring.test.ts`'s last pill
+    (`entries.length - 2`) · the characterization's two `it`s (109 keys; the seed's `fireInputs: null`).
+  - Red first: each new test file ran red before its module landed. `fireFaceView.ts` was written before its test, so it
+    was moved aside, the test run red, and the file restored by md5. The fix-up's three tests came with the reviewer's
+    prototype; its six planted bugs each undo one fix and turn its test red (M36–M37 CAPACITY STATES, M38 TINY, M39
+    WORDS, M40–M41 FOLD and LINK and e2e PILL).
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

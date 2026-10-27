@@ -1,0 +1,47 @@
+/* Almanac FIRE face — the THIRTEENTH face (batch 1 build 4). Every class COMPOSES CyclingFace's, so the faces can never
+   drift apart visually; the one override is every face's doubled .faceDocked pair (0,2,0 — beside composes: it would tie
+   the composed .face's padding, P9 / P10). Tokens only — zero new hex. The scale has its own (FireScale.module.css). */
+.face { composes: face from './CyclingFace.module.css'; }
+.head { composes: head from './CyclingFace.module.css'; }
+.title { composes: title from './CyclingFace.module.css'; }
+.framing { composes: framing from './CyclingFace.module.css'; }
+.seedRow { composes: seedRow from './CyclingFace.module.css'; }
+.seedLabel { composes: seedLabel from './CyclingFace.module.css'; }
+.card { composes: card from './CyclingFace.module.css'; }
+.cardLabel { composes: cardLabel from './CyclingFace.module.css'; }
+.note { composes: note from './CyclingFace.module.css'; }
+.noteQuiet { composes: noteQuiet from './CyclingFace.module.css'; }
+.statGrid { composes: statGrid from './CyclingFace.module.css'; }
+.stat { composes: stat from './CyclingFace.module.css'; }
+.statValue { composes: statValue from './CyclingFace.module.css'; }
+.statSub { composes: statSub from './CyclingFace.module.css'; }
+.bandRow { composes: bandRow from './CyclingFace.module.css'; }
+.bandBtn { composes: bandBtn from './CyclingFace.module.css'; }
+.bandBtnOn { composes: bandBtnOn from './CyclingFace.module.css'; }
+.presetRow { composes: presetRow from './CyclingFace.module.css'; }
+.ghostBtn { composes: ghostBtn from './CyclingFace.module.css'; }
+.sliderStack { composes: sliderStack from './CyclingFace.module.css'; }
+.shiftBlock { composes: shiftBlock from './CyclingFace.module.css'; }
+.scrubHead { composes: scrubHead from './CyclingFace.module.css'; }
+.scrubValue { composes: scrubValue from './CyclingFace.module.css'; }
+.scrub { composes: scrub from './CyclingFace.module.css'; }
+.tooltip { composes: tooltip from './CyclingFace.module.css'; }
+.tooltipHead { composes: tooltipHead from './CyclingFace.module.css'; }
+.tooltipRow { composes: tooltipRow from './CyclingFace.module.css'; }
+.msWrap { composes: msWrap from './CyclingFace.module.css'; }
+.msTable { composes: msTable from './CyclingFace.module.css'; }
+.msTh { composes: msTh from './CyclingFace.module.css'; }
+.msTd { composes: msTd from './CyclingFace.module.css'; }
+.msYear { composes: msYear from './CyclingFace.module.css'; }
+.msFlag { composes: msFlag from './CyclingFace.module.css'; }
+.msTurn { composes: msTurn from './CyclingFace.module.css'; }
+.msPost { composes: msPost from './CyclingFace.module.css'; }
+.disclaimer { composes: disclaimer from './CyclingFace.module.css'; }
+.fold { composes: fold from './CyclingFace.module.css'; }
+.link { composes: link from './CyclingFace.module.css'; }
+
+/* The face's end is the dock's (sticky controls): flush on the edge under 1024px, the bar's 12px float from it. */
+.faceDocked.faceDocked { padding-bottom: 0; }
+@media (min-width: 1024px) {
+  .faceDocked.faceDocked { padding-bottom: 12px; }
+}

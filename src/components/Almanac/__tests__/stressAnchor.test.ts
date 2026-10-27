@@ -101,7 +101,7 @@ describe('⭐ no face feeds the live quote straight into the path again', () => 
     expect(hits, `live quote wired into the path:\n${hits.join('\n')}`).toEqual([]);
   });
 
-  it('all four engine faces (Cycling, Ownership, Strategy, Decision) do call it with the anchor', () => {
+  it('all five faces that build a path (Cycling, Ownership, Strategy, Decision, FIRE) do call it with the anchor', () => {
     const hits = execSync(
       'grep -rln "plConvergencePath(anchorPrice" src/components/Almanac/ --exclude-dir=__tests__ || true',
       { cwd: process.cwd(), encoding: 'utf8' },
@@ -109,6 +109,7 @@ describe('⭐ no face feeds the live quote straight into the path again', () => 
     expect(hits).toEqual([
       'src/components/Almanac/CyclingFace.tsx',
       'src/components/Almanac/DecisionFace.tsx',   // Run B — THE MOVE and all four paths read the held anchor
+      'src/components/Almanac/FireFace.tsx',   // batch 1 build 4 — the sell lane's path reads the held anchor
       'src/components/Almanac/OwnershipFace.tsx',
       'src/components/Almanac/UnifiedFace.tsx',
     ]);

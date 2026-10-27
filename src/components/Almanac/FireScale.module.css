@@ -1,0 +1,51 @@
+/* The FIRE face's scale — years of funded spending (F2). Layout only; tokens only, zero new hex. */
+.scale {
+  margin-top: 12px;
+}
+.track {
+  position: relative;
+  height: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--btc) 35%, transparent);
+}
+.mark {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--text-secondary);
+}
+.you {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: var(--btc);
+}
+.labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.youLabel {
+  color: var(--btc);
+}
+.markLabel {
+  color: var(--text-secondary);
+}

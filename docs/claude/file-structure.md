@@ -645,6 +645,8 @@ src/
                                 # The plan of record (Run 2): ui += planNoteDismissed + planBreakerCache (with plain-`set`
                                 # setters); viewer += viewerStrikeDepositISO (raw-set by viewerSync's trusted apply, reset
                                 # by clearViewerData) — the three device-local keys (§ Zustand Store Shape)
+                                # Batch 1 build 4: planInputs += fireInputs + setFireInputs (a plain merge; null resets) —
+                                # device-local, in no field list (store.md § FIRE's own inputs)
     payloads.ts                 # Phase 1b — the two PURE snapshot builders, moved verbatim out of useStore:
                                 # buildSettingsPayload(s) (the 46-key settings payload, BL14's goal included — single source for the
                                 # trusted viewer snapshot + the plan backup; 4e: no longer a relay payload of its own)
@@ -741,6 +743,16 @@ src/
                                 # restored backup included, is no goal) · parseGoalInput(raw) — Settings' field: empty →
                                 # null (clears), an amount above zero → it, anything else → undefined (changes nothing).
                                 # See store.md § BL14
+    fireInputs.ts               # Batch 1 build 4 (D3 A) — the FIRE face's own inputs: PURE, its one import the zero-import
+                                # tax leaf (CAPITAL_GAINS_TAX_RATE — the planPolicy.ts precedent). FireFaceInputs ·
+                                # StoredFireInputs (what the store keeps: only what was typed; null = every default) ·
+                                # FIRE_INPUT_DEFAULTS (none leans hopeful: 4% / 4%, nothing assumed, the return no more than
+                                # inflation, Living's tax) · FIRE_INPUT_RANGES (each field's, and its NumberInput's min / max)
+                                # · FIRE_TAX_PCT_DEFAULT (30, derived) · fireInputsOf(raw) — THE read rule (a field missing,
+                                # junk or out of range reads its default; a cost of 0 is no cost; whole years only) ·
+                                # fireTaxRateOf. ⚠ The face memoises the read on the stored object, never once a render.
+                                # See store.md § FIRE's own inputs. Tested in src/lib/__tests__/fireInputs.test.ts
+                                # (DEFAULTS, READ RULE) and src/store/__tests__/fireInputsStore.test.ts
     recoveryGrid.ts             # R2b-3 — PURE logic for WordGrid's input mode (12-box capture). Imports wordlist
                                 # (@scure/bip39/wordlists/english.js) + validateWords (nostr-tools/nip06) + RECOVERY_WORD_COUNT.
                                 # distributePaste(tokens,focusedIndex) → 'fill-from-start' (12 exact) | [] (0/1 token →
@@ -995,6 +1007,32 @@ src/
                                 # falls back to one tick PER DATA POINT, so the axis always takes explicit ticks.
                                 # + pathOnSupport(path, support, months) — the legend note's test: sameSeries over
                                 # months 1…horizon, bit for bit (month 0 is spot), never a tolerance
+      FireFace.tsx              # Batch 1 build 4 — the THIRTEENTH face, ◎ FIRE, ungated, appended last (+ .module.css:
+                                # composes CyclingFace's classes only, plus the doubled .faceDocked pair): selling to live.
+                                # The four faces' position reads and the plan's income / expenses; the path from the held
+                                # anchor, .slice(0, months); the inputs read ONCE a change (useMemo on s.fireInputs); the
+                                # history from usePowerLawData as it is. The chart, six tiles, "Stop working" (eleven
+                                # literal NumberInput tags, all 'leave'), the scale, the replays, the Milestones (the table
+                                # or MilestoneSwitchTable), the model card, the disclaimer, <ControlDock> last. Writes only
+                                # setFireInputs and setInflationRate; its buttons disabled for a viewer (D-1). 🔴 It
+                                # composes NO sentence (I31). See almanac.md § FIRE face. Tested in
+                                # __tests__/fireWiring.test.ts and e2e/fire.spec.ts
+      fireFaceView.ts           # Batch 1 build 4 — the FIRE face's every word, figure and tone, pure (no belief, no store,
+                                # no React). fireEngineOf (savings signed, the buffer folded in, the return factor, the
+                                # tax) · yoursAt — the ONE three-argument deriveOwnership call · fireRunOf · replayRunsOf
+                                # (the stop held: { ...x, stopMonth: stop }) · historyStateOf · capacityOf (the LOWEST, only
+                                # with all three, ÷ (1 + b ÷ 100)) · fireTiles · replaysCard · the chart (fireChartPoints —
+                                # a gap is null, never 0 — fireChartDomain, fireTooltipLines) · fireScale · the Milestones
+                                # (fireMilestoneMonths: m < n over the rows' own count; MS_VIEWS_FIRE) · the model card ·
+                                # fireMonthYear (one fixed month table, never ICU). ⚠ Zero is never printed: usdOrNull /
+                                # btcOrNull / yearsOrNull → "—". Tested in __tests__/fireFaceView.test.ts (BANNED sweeps it)
+      fireReplays.ts            # Batch 1 build 4 (D-3) — the replays' one belief crossing (imports cycleReplays):
+                                # fireReplayReadings (= deriveReplays) · replayPathsAt(path, startDate, stop, readings) —
+                                # each replay spliced at the face's own stop; [] without a stop inside the horizon; a cycle
+                                # that didn't replay keeps its reason. Tested in __tests__/fireReplays.test.ts
+      FireScale.tsx             # Batch 1 build 4 — the scale of years of funded spending (+ .module.css, tokens only): a
+                                # bar, a you-are-here dot, the need's marks. LAYOUT ONLY and wordless — imports only its
+                                # CSS; the view hands it every label and the aria-label (fireWiring WORDLESS)
       ownershipFaceView.ts      # Ownership face — pure: chartOwnershipRows (the three charts' series; yours / owed
                                 # through deriveOwnership, 3-arg), ownershipGained, ownershipHero, modeConstraints,
                                 # unfundedNote, liquidationVerdict, strikeCallVerdict, MODE_NOTE. BL32 (δ3):
@@ -1264,7 +1302,7 @@ src/
                                 # Ownership's four — Month · Stress · Path · Policy) · strategyDockTabs (those four, then the
                                 # Lens) · LensView / LENS_TAB_VALUE (Position · Flywheel). ONE private constructor per shared
                                 # tab (month, stress, path, policy) — all three builders use them, so a tab reads the same on
-                                # every face
+                                # every face. Batch 1 build 4: fireDockTabs (the FIRE face's three — Month · Stress · Path)
       MilestoneSwitchTable.tsx  # Milestones on a phone (Run 2) — THE Milestones where the table doesn't fit (+ .module.css,
                                 # tokens only). The three parents render it OR their table — useMediaQuery(MS_TABLE), ONE
                                 # markup at a time, never a CSS toggle: under 768 px, and in Ownership's side column (from
@@ -1283,7 +1321,8 @@ src/
                                 # and a fixed 12.5 px ran 6–14 px past it (measured). Headers, figures and turns nowrap; the
                                 # year cell may wrap before a long flag. `.on.on` lit (--surface-2, its year --btc) —
                                 # DOUBLED to TIE the hover and focus rules (0,2,2) and win by coming after them, so a
-                                # keyboard pick stays lit (LIT pins the order); `.post` 0.55 (the tables' msPost)
+                                # keyboard pick stays lit (LIT pins the order); `.post` 0.55 (the tables' msPost). Batch 1
+                                # build 4: the FIRE face renders it too, under 768 px (MS_VIEWS_FIRE)
 
     Tools/
       CbDefenseTool.tsx         # THE Emergency Console's ONE gate (the plan of record's Run 4, D3): hasCbLoan ?

@@ -18,7 +18,8 @@ import { join } from 'node:path';
  * Each check was proven red by a temporary edit to a real face before it landed.
  */
 // DecisionFace (Run B): its `openingBtc` feeds the schedule header (G8) — the reserve is in it like everywhere else.
-const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx', 'DecisionFace.tsx'] as const;
+// FireFace (batch 1 build 4): its ₿ held — strike + CB + cold — is the position the sell lane nets; the reserve is in it.
+const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx', 'DecisionFace.tsx', 'FireFace.tsx'] as const;
 const ALMANAC = join(process.cwd(), 'src/components/Almanac');
 const readAlmanac = (file: string): string => readFileSync(join(ALMANAC, file), 'utf8');
 

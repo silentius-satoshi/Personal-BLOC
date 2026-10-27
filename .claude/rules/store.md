@@ -2,6 +2,7 @@
 paths:
   - "src/store/**"
   - "src/lib/storeVersion.ts"
+  - "src/lib/fireInputs.ts"
   - "src/lib/backup/**"
   - "src/lib/store/**"
   - "src/lib/planEvents/**"
@@ -34,3 +35,4 @@ Read first, for what you touch: `docs/claude/store.md`, `docs/claude/build-deplo
 | Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target). Inert since the plan of record's Run 3 (no reader; the key stays) |
 | Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |
+| `fireInputs` is device-local — in no sync, backup or viewer field list | The FIRE face's own inputs (batch 1 build 4, D3 A) are ONE store key with a plain `set`, persisted with the blob by `partializeState`'s `...rest` — so encrypted at rest with it when that is on, removed with it by `wipeLocalPlanData` on an identity forget, and reset to the defaults by "Reset local data & re-sync" (the escape hatch deletes the blob; the pull brings back the plan, never these). It is in none of `SETTINGS_FIELDS`, `VIEWER_SETTINGS_FIELDS`, `PREFS_FIELDS` or `PLAN_EVENT_FIELDS`, nor in any payload (`buildSettingsPayload`, the backup, either snapshot tier): it never syncs, a restore leaves it as it is, and it never reaches a viewer. Every reader takes it through ONE rule, `fireInputsOf` (`lib/fireInputs`), memoised on the stored object — never once a render, or the lens reset fires every render: a field missing, junk or out of range reads its default, and none of the defaults leans hopeful. No store version bump. Pinned by `fireInputsStore.test.ts` (LEAK, LISTS, SETTER, RESTORE, WIPE), `fireInputs.test.ts` (READ RULE, DEFAULTS), `fireWiring.test.ts` (STABLE) and the characterization (109 keys) |

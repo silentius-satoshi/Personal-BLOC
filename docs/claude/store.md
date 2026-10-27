@@ -142,7 +142,7 @@ raw. Both seed resets clear it (`clearViewerData`,
 `migrateState` defaults it `?? null`, and the persist merge fills it on a blob without the key. A backup from before build
 2 leaves the goal as it is (`applyPlanBackup` writes only the keys a file carries — the six's precedent); one from this
 build is refused by an older build. **The counts:** 46 settings keys (`SETTINGS_FIELDS` = `buildSettingsPayload`'s), 42
-plan-event fields + the 4 prefs, 108 persisted blob keys, 41 trusted settings keys (46 − the 5 strips).
+plan-event fields + the 4 prefs, 108 persisted blob keys (109 with build 4's `fireInputs`), 41 trusted settings keys (46 − the 5 strips).
 - **Its one editor** is Settings → Your plan (`YourPlanSection`'s `GoalField`, owner-only under `!viewerMode`): "Your
   goal — net coins", saved when the field is left or Enter is pressed, never per keystroke (`parseGoalInput`: empty
   clears; an amount above zero sets; anything else says what to type and changes nothing). After a save the field shows
@@ -158,6 +158,52 @@ plan-event fields + the 4 prefs, 108 persisted blob keys, 41 trusted settings ke
   coin goes to cold storage." — and the way back). Beside the field, net coins today in the Dashboard tile's words
   (`GoalNow` — `goalNowView` through `useNetCoinsToday` on `useViewerSafety(null)`), against the SAVED goal, so it moves
   when the field saves, never per keystroke. `yourPlanGoal.test.ts` 3 → 6.
+
+### FIRE's own inputs — `fireInputs` (batch 1 build 4; `planInputsSlice`; device-local, NO bump)
+```typescript
+fireInputs:    StoredFireInputs | null;   // default null = every default — the FIRE face's own inputs (lib/fireInputs), THIS device only
+setFireInputs: (patch: StoredFireInputs | null) => void;   // plain set: merges a patch; null = "Reset to defaults" — no emit, no dirty channel
+```
+The FIRE face's inputs (spec `pbloc-spec-batch-1-v1` v0.33 §2.3, D3 A): ONE store key beside `inflationRate` and
+`pinnedScenario`, the device-local plain-set precedent. The store keeps only what was typed on this device — a partial
+object, `null` = every default. It persists with the blob through `partializeState`'s `...rest`, so it is encrypted at rest
+with the blob when that is on, and `wipeLocalPlanData` removes it with the blob on an identity forget. It is in none of the
+six field lists (`SETTINGS_FIELDS`, `VIEWER_SETTINGS_FIELDS`, `PREFS_FIELDS`, `PLAN_EVENT_FIELDS`, `VALIDATE_WHITELIST`,
+`APPLY_FIELDS`) and in no payload — every payload is an explicit literal (`buildSettingsPayload`, the plan backup, both
+snapshot tiers) — so it never syncs, is never in a backup and never reaches a viewer. The setter emits no plan event, marks
+nothing dirty and isn't held by the plan-load guard (5c): like `inflationRate`, it is no plan write. No store version bump:
+the persist merge fills `null` on an older blob.
+- **The read rule — ONE:** `fireInputsOf(raw)` (`src/lib/fireInputs.ts` — pure; its one import is `CAPITAL_GAINS_TAX_RATE`
+  from the zero-import `simulation/taxes`, the `planPolicy.ts` precedent). A field missing, junk (not a finite number of the
+  right kind) or out of range reads its default, so an older blob or a later field never reads `undefined`; `null` and a
+  non-object read every default. None of the defaults leans hopeful:
+
+  | Field | Unit and range | Default |
+  |---|---|---|
+  | `otherUsd` | $, 0 – 1,000,000,000 | 0 |
+  | `retirementIncomeUsd` | $ a month, today's, 0 – 10,000,000 | 0 — counted from the stop month only |
+  | `spendUsd` | $ a month, today's, 0 – 10,000,000, or null | null = the plan's `expenses` |
+  | `bufferPct` | % of the spending, 0 – 100 | 0 — the view folds it in: spending × (1 + b ÷ 100) |
+  | `wBtcPct`, `wOtherPct` | % a year, 0.5 – 50 | 4 and 4 |
+  | `otherReturnPct` | % a year, −50 – 50, or null | null = the inflation rate: no growth beyond it (D-4) |
+  | `taxPct` | % of a sale's gain, 0 – 99, or null | null = `CAPITAL_GAINS_TAX_RATE` (30%, Living's), through `fireTaxRateOf` |
+  | `basisUsdPerBtc` | $ a coin, 0 – 100,000,000, or null | null = the month-0 price; 0 reads as null. ⚠ It leans hopeful for coins bought lower (F7), so the field's hint says so |
+  | `stopChoice` | `'atFi'` · `'now'` · `'years'` | `'atFi'` |
+  | `stopYears` | whole years, 1 – 20 | 5 (D-4) — kept while another choice is on |
+
+- **⚠ Read once a change, never once a render.** The face reads it as `useMemo(() => fireInputsOf(s.fireInputs),
+  [s.fireInputs])`: the stored object keeps its identity until a write. A read once a render is a new object every render,
+  so `engineInputs` would rebuild and the lens reset fire on every render, and an engaged stress would die at once (the
+  `useStressLens` bug class). Pinned by `fireWiring.test.ts` (STABLE) and the e2e's STRESS HOLDS.
+- **What touches it.** A restore applies only `APPLY_FIELDS` and the records, so it leaves this device's inputs as they are:
+  on a new device they are the defaults until retyped, and the face says so. "Start a new plan" sets `planLoaded` only. The
+  seed resets (`clearViewerData`, `resetPlanToSeeds`) list neither it nor `inflationRate`, so both leave it. "Reset local
+  data & re-sync" (`resetAndResync`) deletes the blob: the pull brings the plan back, never `fireInputs` or
+  `inflationRate`, so both return to their defaults.
+- **The count:** 109 persisted blob keys (the characterization lists `'fireInputs'` after `'expenses'`); the settings,
+  plan-event, prefs and trusted counts are unchanged.
+- Pinned by `src/store/__tests__/fireInputsStore.test.ts` (PERSISTED, LEAK, LISTS, SETTER, RESTORE, SEEDS, WIPE) and
+  `src/lib/__tests__/fireInputs.test.ts` (DEFAULTS, READ RULE). The face: `docs/claude/almanac.md` § FIRE face.
 
 ---
 

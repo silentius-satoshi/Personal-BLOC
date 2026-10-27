@@ -88,6 +88,7 @@ describe('⭐ NUMBER COMMIT — leaving a number field, Enter or Save saves only
 // added, moved or re-moded changes this table, so the change is a decision, never a slip.
 const SITES: Record<string, string[]> = {
   'src/components/Advisor/AdvisorSidebar.tsx': ['button', 'button'],
+  'src/components/Almanac/FireFace.tsx': Array(11).fill('leave'),   // batch 1 build 4 — the FIRE face's own inputs and the shared inflation
   'src/components/Almanac/ScenarioFace.tsx': ['live'],
   'src/components/CoinbaseLoan/CoinbaseLoanSidebar.tsx': ['leave', 'button', 'button', 'button', 'leave'],
   'src/components/Daily/EventSheet.tsx': Array(10).fill('live'),
@@ -122,14 +123,14 @@ function filesWithNumberInput(dir = 'src'): string[] {
 }
 
 describe('⭐ SITES — every number field says how it saves, and the right way', () => {
-  it('⭐ SITES — the 45 fields, by file and in order: 11 with a Save button, 15 saved on leaving, 19 live', () => {
+  it('⭐ SITES — the 56 fields, by file and in order: 11 with a Save button, 26 saved on leaving, 19 live', () => {
     expect(filesWithNumberInput().sort(), 'SITES every file that renders one').toEqual(Object.keys(SITES).sort());
     const all = Object.entries(SITES).flatMap(([f, modes]) => {
       expect(sites(f).map((x) => x.mode), `SITES ${f}`).toEqual(modes);
       return modes;
     });
-    expect(all.length).toBe(45);
-    expect(['button', 'leave', 'live'].map((m) => all.filter((x) => x === m).length)).toEqual([11, 15, 19]);
+    expect(all.length).toBe(56);
+    expect(['button', 'leave', 'live'].map((m) => all.filter((x) => x === m).length)).toEqual([11, 26, 19]);
   });
 
   it("⭐ SITES — Strike's two collateral fields: the reading carries the figure saved, from the live collateral", () => {

@@ -63,7 +63,7 @@ describe('⭐ BELIEF — one FIRE module imports a belief; none reads the simula
     }
   });
 
-  it('outside the FIRE modules, only the Living tab\'s two tax readers import one — no risk module, no face yet', () => {
+  it('outside the FIRE modules, only the Living tab\'s two tax readers and the FIRE face\'s view, replays and inputs import one — no risk module', () => {
     const SRC = join(ROOT, 'src');
     const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
       const p = join(dir, f);
@@ -77,7 +77,9 @@ describe('⭐ BELIEF — one FIRE module imports a belief; none reads the simula
       .map((f) => f.slice(SRC.length + 1).split('\\').join('/'))
       .sort();
     expect(importers, 'BELIEF the importers').toEqual([
-      'hooks/useLivingSimulation.ts', 'simulation/fire.ts', 'simulation/fireBreakEven.ts', 'simulation/runSellToLive.ts',
+      'components/Almanac/fireFaceView.ts', 'components/Almanac/fireReplays.ts',   // batch 1 build 4 — the face's view and replays
+      'hooks/useLivingSimulation.ts', 'lib/fireInputs.ts', 'simulation/fire.ts', 'simulation/fireBreakEven.ts',
+      'simulation/runSellToLive.ts',
     ]);
   });
 });

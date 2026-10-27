@@ -2360,6 +2360,138 @@ reused, the dock's `.tsx` untouched.
 - **F17 unmoved** — the "Coinbase seizes" e2e's three targets sit above the dock's top (the BTC price path card ends
   ≈ 170 px above it; each "Price & liq" button ≈ 265 px).
 
+### FIRE face (THIRTEENTH Almanac face, batch 1 build 4; one device-local key, NO bump)
+
+A THIRTEENTH face **FIRE** (`◎ FIRE`, `src/components/Almanac/FireFace.tsx` + `.module.css`) — **how many years of
+spending the owner's bitcoin and other assets fund if the owner sells to live, on the Almanac's own price paths.** Spec:
+`pbloc-spec-batch-1-v1` v0.33–v0.35 §2.3 and the FIRE plan `pbloc-spec-fire-face-v1` v0.2 §4.5–4.6 (its Appendix D and
+the batch spec's §1 answers override its body); the plan `Claude outputs/batch-1/build-4-plan.md`, with the go and the
+fix-up (v0.35) appended.
+It reads build 3's engine as built (`docs/claude/engines.md` § The FIRE engine — no engine module changed). The sell lane
+only: build 5 adds the borrow lane, and the batch merges once, after build 5 (F6). No simulation (D1 A′), no chart zoom,
+no committed price series. Its inputs are one device-local key (`docs/claude/store.md` § FIRE's own inputs).
+
+- **Identity.** Key `fire`, **UNGATED**, **appended LAST**, after Decision's pill (`halving` stays first, the default).
+  ⚠ `renderFace` has an explicit `if (f === 'fire')` branch ABOVE the Converter fallback (the C8 trap); the hub's
+  header counts THIRTEEN faces.
+- **The files.** `FireFace.tsx` composes: every word, figure and tone comes from `fireFaceView.ts`, and the face writes
+  no sentence (I31). `fireReplays.ts` is the replays' one belief crossing (D-3, as `supportPolicyInputs.ts` is the
+  support line's). `FireScale.tsx` is wordless. `FireFace.module.css` composes CyclingFace's classes only; its one
+  declaration is the doubled `.faceDocked.faceDocked` pair. The fold and the link it needed (the fix-up) are classes in
+  `CyclingFace.module.css` — `.fold` and `.link` — that it composes, so the compose-only rule stands.
+- **What it reads.**
+  - **₿ yours today** — the four faces' reads, as the parents' selector has them (`getCurrentBtcHeld()`,
+    `advisorActualBlocBalance`, `planCbCollateralOf`, `getCurrentColdBtc()`, `planCbLoanBalanceOf` and the accrual),
+    summed as the parents sum them (`openingBtc = strike + CB + cold`, `openingDebt = cbDebt + strikeBalance`), and
+    netted by ONE three-argument `deriveOwnership` call in the view (`yoursAt`) at the displayed path's month 0. At no
+    stress that is the held anchor, so it equals the Dashboard goal tile's net coins (`netCoinsBtc`) bit for bit at the
+    same instant (POSITION ≡ NET COINS). The accrual is memoised on its inputs, as on the parents, so over a long session
+    the face's figure lags by the interest accrued since it mounted.
+  - **The plan's `income` and `expenses`**, read and never written: a working month saves `income − expenses`, signed (a
+    gap is drawn, never floored at 0), and the retirement spending follows `expenses` until one is typed (D5).
+  - **Inflation — one field, two editors.** The store's `inflationRate` (device-local), edited here by a `NumberInput`
+    (0–10, `save="leave"`) and on the Living tab by its slider; the field says "The Living tab uses this too." Living
+    compounds it monthly and FIRE steps it yearly — the model card says so.
+  - **The path** — `plConvergencePath(anchorPrice, …)` or `cycleConvergencePath(anchorPrice, …)` from the stress lens's
+    held anchor, never the polled quote, then `.slice(0, months)`: 240 prices, months 0–239, at the default horizon. The
+    engine's horizon is the path's length, so "lasts through" names month `months − 1` (Sep 2046 from Oct 2026) —
+    never "all 20 years". The stress (`applyPathStress`) runs from the inspected month; the month is clamped at render
+    (`clampMonth`). The defaults are Decision's: Support, on the line; the reversion preset 48; the inspected month 1;
+    the stress 0.35–2.2; the horizon 240 (12–240). The band's name reaches the view as data: the view imports neither
+    `powerLaw` nor `controlDockView`.
+  - **The history** — `usePowerLawData()` as it is: one fetch a visit, no copy kept.
+- **Top to bottom.**
+  - The head ("FIRE" · "How many years of spending your bitcoin covers if you sell it to live, on the price path you
+    pick."), the path line ("On Support, on the line · Oct 2026 – Sep 2046") and the position in words — or the
+    underwater line.
+  - **The chart** — "₿ you own and ₿ you'd need": ₿ owned, selling (`rows[m].btc`) and ₿ needed (`rows[m].needBtc`), a
+    point a month on a log axis with an explicit domain (`fireChartDomain`, × 0.8 / × 1.25; nothing to draw → "Nothing to
+    draw on this path.") and abbreviated ticks. A point with nothing to draw is a GAP (null), never 0 — the Decision
+    chart's rule — with a quiet note when a line breaks. The stop month is an amber reference line. The tooltip gives the
+    month, both ₿ figures, and the portfolio and price in today's dollars. Under the chart, the scrubber's notes: the
+    inspected month, "Anchored $X · spot $Y ±Z%" while the anchor is held, the stress, and — once on the face — "Dollars
+    here are today's: each month's figure ÷ inflation since today (2% a year, stepped yearly)."
+  - **Six tiles**: Years of spending funded today · You'd need · FI, on this path · From your stop, on this path ·
+    Spending that lasts every replay · Break-even growth.
+  - **"Stop working"**: At FI · Now · In years — buttons with `aria-pressed`, `disabled` for a viewer (D-1) — and "Years
+    from now" (1–20) while In years is on; the spending field ("Follows your plan's monthly expenses ($3,500) until you
+    type one."); a folded "Assumptions" (`<details className={styles.fold}>`: the other assets, retirement income, the
+    buffer, the two withdrawal rates, the other assets' return, the tax, your average cost, inflation — nine of the
+    eleven fields); "Reset to defaults" — `setFireInputs(null)`, never the shared inflation; and the device line ("These
+    inputs stay on this device: they don't sync and aren't in a backup — a restore won't bring them back, and "Reset
+    local data & re-sync" clears them."). Eleven literal `NumberInput` tags, every one `save="leave"`. The fold is the
+    house's (`ColdStorageCard.module.css`'s `.rules`, THIS MONTH's "Why this plan?"): a pointer, the ' ›' marker (' ‹'
+    open) and a focus ring. Without them "Assumptions" read as a static label, cursor auto (the fix-up; e2e PILL checks
+    the cursor and the marker).
+  - **The scale** — "Years of spending funded": `FireScale`, a bar, a you-are-here dot and the need's marks — one at
+    equal rates (`btcAdjustedYears === traditionalYears`, bit for bit), two once a bitcoin rate is typed. Every label and
+    the `aria-label` come from the view; no borrowed names (F2).
+  - **The replays** — "If a 2013, 2017 or 2021 bear began the day you stopped working": a line a cycle ("2013 bear: runs
+    out in Jan 2034." · "2017 bear: lasts through Sep 2046."); a cycle that didn't replay is named (`'noPeak'`, `'gap'`),
+    never filled. Then the capacity, the break-even line and an ⓘ, whose last words are (b′)'s correction, pinned by
+    WORDS: "…a replay can read a little milder or a little harsher than on daily prices, and the month it runs out can
+    move by several months."
+  - **The Milestones** — a row every 12 months strictly inside the horizon, its last month, and the stop, FI and run-out
+    months, flagged "stop", "FI", "runs out". Year · Price · ₿ owned · Other assets · Portfolio · Years funded · ₿ needed
+    — "Other assets" (D-2) shows the draw order. The table from 768 px; under it `MilestoneSwitchTable` with
+    `MS_VIEWS_FIRE` (₿ · $ · Years). ⚠ The rows are months 0 … `months − 1`: the parents' `m <= horizon` would read
+    `rows[months]` and crash, so the bound is `m < n` over the rows' own count.
+  - **"How this works"** — the rules in words, "What it leaves out" (build 3's named limits) and the credits: FIRE BTC's
+    Compass (a link to `https://calc.firebtc.io/`, never a fetch) and Santostasi's power law. The link is `.link`:
+    `--text-secondary`, underlined — 12.2:1 on the card, where the browser's default blue was 2.0:1, and 1.7:1 visited
+    (the fix-up; e2e PILL checks its colour).
+  - **The disclaimer** (amber): "A pattern, not a forecast. These are figures on a path you pick, never a recommendation.
+    Not financial advice."
+  - **The dock** — Month · Stress · Path (`fireDockTabs`), the face's LAST child, sticky. Month and Stress are live; Path
+    is a chip whose panel holds the face-local `PathPicker` (Support · Fair · Resistance · 4-yr cycle), the "On the line" /
+    "Back to reverting (4 yr)" chip, the Horizon slider and the 4-yr timing while that path is on. The face has no
+    price-path card.
+- **The replays and the capacity run from the face's own stop month, held.** The stop is the one `fireTimeline`
+  resolved on the displayed path, passed as that number to every replay (`replayPath(path, startDate, stop, …)`) and to
+  its timeline and capacity (`{ ...x, stopMonth: stop }`), as `breakEvenGrowth` holds its own. The capacity shown is the
+  LOWEST of the three, only when all three replayed (D-5: a missing cycle could be the harshest — 2013 binds in both
+  measured households), "at least" when the search's top binds (C7). It reads in the owner's own spending: the engine
+  searches the buffered spending, so the face shows its figure ÷ (1 + b ÷ 100), "at least" included, and with a buffer
+  says "Your N% buffer is kept on top."
+  - **The capacity reads the stop first**, in the replays card's order — `capacityOf(r, runs, state, bufferPct)` takes
+    the run's result: invalid inputs; then the stop's own states, whatever the history — no stop month ("No stop month
+    to replay from.": At FI with FI past the horizon), a stop at or past the horizon's end ("You stop after this horizon
+    ends.": In years at 20 on the default 240 months), a working gap that runs it out before the stop ("It runs out
+    before you stop working."); then the history's (loading, failed, offline); then a missing cycle; then the lowest.
+    ⚠ With no stop month inside the horizon the face hands `capacityOf` an EMPTY `runs` (`replayPathsAt` returns none).
+    Until the fix-up that read as a missing cycle — "The one bear couldn't be replayed from this history." — while the
+    card and the other tiles said the right thing. CAPACITY STATES builds the runs as the face does.
+- **The history's states.** Loading: "Loading the price history — the replays and the capacity need it." Failed: "The
+  price history didn't load, so there are no replays and no capacity this visit." Offline — only when the browser says
+  `navigator.onLine === false`, which iOS standalone apps never do, so there it says "didn't load": "Offline — the
+  replays need the price history, which isn't kept on this device." Never a carried figure.
+- **Zero is never printed.** A dollar, ₿ or years figure that is zero, or would print as zero, prints "—" in tiles, lines,
+  the Milestones (the switch table's too) and the tooltip — never "$0", "$0.00", "₿0", "₿0.000" or "0.0 years". Rates
+  print as they are, and inputs show what is typed. With nothing owned the years tile says "No bitcoin of your own and no
+  other assets to fund it." and the scale "You: nothing funded yet". A little owned is never "nothing owned": under the
+  years floor (0.05 years, about 18 days, so the tile's figure is "—") the tile says "Less than a month of spending
+  funded." and the scale "You: less than a month" (TINY; the fix-up — the tile had said nothing was owned beside
+  "Today: ₿0.030 held"). Underwater: "Your loans are more than your bitcoin is worth at this price: this starts you
+  with no bitcoin of your own, the excess repaid from your other assets." BANNED sweeps every word function over
+  households that reach zeros in Other assets, ₿ owned, Portfolio and Years funded.
+- **The words** — dates from one fixed month table (`fireMonthYear`, never ICU; pinned equal to `futuresView`'s
+  `monthYear`, which the view can't import — NO SIM reads the sources' import lines); dollars nominal ÷ the row's
+  `inflationStep`; no sentence says "safe", "you can retire", "guaranteed", "should" or "need to".
+- **Viewers.** In simple mode a viewer never reaches the Almanac. ⚠ By reading (not run), a TRUSTED viewer can, when the
+  owner's synced `simpleMode` is false: AppShell's viewer branch lets Settings and the Almanac fall through, the
+  full-mode shell's tab bar and Tools menu have no viewer check, and `planRunWiring.test.ts` already records that a viewer
+  opens the Almanac. Older than build 4, and every face is reachable the same way; logged for the owner's viewer item. A
+  viewer demoted from trusted to safe keeps its prefs and the old trusted figures. What build 4 did (D-1): the face's
+  own buttons are `disabled={s.viewerMode}`; its number fields are already read-only for a viewer.
+- **The lists it joined.** `stressAnchor.test.ts` (all five faces), `coldWiring.test.ts` FACES, `milestones.test.ts`
+  FACES (`MS_VIEWS_FIRE`, `MS_TABLE`), `supportPolicyView.test.ts`'s view-module walls (`fireFaceView.ts`; the pattern
+  widened to `cycleReplays`, `pricePaths` and `'react'`), `numberInputModel.test.ts` SITES (eleven `'leave'`), build 3's
+  `fireWalls.test.ts` BELIEF importers (the view, the replays and `lib/fireInputs.ts` — the face itself imports no FIRE
+  module), and `decisionWiring.test.ts`'s last pill (now just before FIRE's). Not joined: `resetMirror.test.ts` and
+  `controlDockWiring.test.ts`'s PARENTS (Policy-tab and `runCyclingSim`-specific — FIRE's wiring test carries the dock
+  and the mirror); `navigation.spec.ts`'s pill list (no face whose fetch isn't stubbed, as for Decision).
+- Tests: § Test Suite → "Batch 1 build 4 — the FIRE face".
+
 ### Milestones on a phone (the three parents' Milestones; store unchanged, NO bump)
 
 Spec: `pbloc-spec-milestones-phone-v1.md` (v1.5). The owner, 2026-10-03: on a phone Cycling's table scrolled sideways
@@ -2466,8 +2598,8 @@ face pager (Gesture P3/P3.1) is GONE, along with everything that existed to arbi
 data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still page).
 - **`visibleFaces: { key: Face; label: string }[]`** remains the SINGLE source for the sub-nav pill map — now
   the only face-switching surface. Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`,
-  cycling and strategy iff `hasCbLoan`) are simply absent from the array. Twelve faces in all; the last is the
-  ungated Decision face (Run B). `idx`/`onPage`/`canPage`/`renderPane`/
+  cycling and strategy iff `hasCbLoan`) are simply absent from the array. Thirteen faces in all; the last is the
+  ungated FIRE face (batch 1 build 4). `idx`/`onPage`/`canPage`/`renderPane`/
   `shouldStart` are deleted; the host renders `{renderFace(face)}` directly.
 - **ONE face mounts at a time.** The P3.1 real-neighbour panes are gone, so a heavy face (Power Law/Mining
   hooks) mounts exactly when its pill is tapped — never on a peek. `useChainTip` still lives at the hub and is

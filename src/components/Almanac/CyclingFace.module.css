@@ -504,3 +504,28 @@
   font-variant-numeric: tabular-nums;
 }
 .coldSplit span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* A folded group on a face — the FIRE face's Assumptions (batch 1 build 4's fix-up): the house's fold, as ColdStorageCard's
+   rules and THIS MONTH's "Why this plan?" — a pointer, the ' ›' marker (' ‹' open) and a focus ring, so it reads as
+   something to open. Composed by FireFace.module.css. */
+.fold { margin-top: 14px; }
+.fold > summary {
+  cursor: pointer;
+  list-style: none;
+  width: fit-content;
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::after { content: ' ›'; }
+.fold[open] > summary::after { content: ' ‹'; }
+.fold > summary:focus-visible {
+  outline: 1px solid var(--border-focus);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+/* A link in a face's words — readable on the card (the browser's default blue is 2.0:1 there, 1.7:1 once visited). */
+.link {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link:hover { color: var(--text-primary); }

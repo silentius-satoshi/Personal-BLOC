@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 108 persisted data keys (+6, the plan of record; +1, BL14\'s planGoalNetBtc; +1, 5c\'s planLoaded; +3, Run 2\'s device-local planBreakerCache, planNoteDismissed, viewerStrikeDepositISO; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
+  it('blob key-set is exactly the 109 persisted data keys (+6, the plan of record; +1, BL14\'s planGoalNetBtc; +1, 5c\'s planLoaded; +3, Run 2\'s device-local planBreakerCache, planNoteDismissed, viewerStrikeDepositISO; +1, batch 1 build 4\'s device-local fireInputs; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -63,7 +63,9 @@ describe('characterization · persisted blob (partializeState)', () => {
       'cbLtvTargetPct', 'cbLtvTriggerPct', 'cbMonthlyPayment', 'cbPaymentStrategy', 'cbRotateBackPct',
       'coldStorageBtc', 'coldStorageBtcAsOf',
       'converterActiveField', 'converterRawValue', 'creditLine', 'dayLog', 'deletedDayEvents', 'deletedMonths',
-      'devMode', 'expenseReanchorDismissedAt', 'expenses', 'hasCbLoan', 'hiddenTabs', 'income', 'inflationRate',
+      'devMode', 'expenseReanchorDismissedAt', 'expenses',
+      'fireInputs',   // batch 1 build 4 (D3 A): the FIRE face's own inputs — device-local, never synced
+      'hasCbLoan', 'hiddenTabs', 'income', 'inflationRate',
       'keyProvenance', 'lastPlanEventsSyncAt', 'lastPrefsSyncAt', 'lastRecordsSyncAt',
       'ltvType', 'miningInputs',
       'monthBucketReconcileDone', 'monthlyLog', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrAuthEnabled',
@@ -126,6 +128,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       planEvents: [], planDirty: false, lastPlanEventsSyncAt: null, prefsDirty: false, lastPrefsSyncAt: null,   // Phase 4c
       planLoaded: false,   // 5c — a fresh store holds no plan yet
       pinnedScenario: null,   // Phase 3a: device-local pin
+      fireInputs: null,   // batch 1 build 4 (D3 A): the FIRE face's own inputs — device-local, every default
       policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,   // the plan of record — C1
       policyBearBufferMonths: 12, policyCashReserveMonths: 0,
       planNoteDismissed: false, planBreakerCache: null, viewerStrikeDepositISO: null,   // Run 2 — device-local, never synced

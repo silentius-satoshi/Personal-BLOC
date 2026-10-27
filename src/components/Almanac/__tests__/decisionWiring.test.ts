@@ -309,10 +309,10 @@ describe('⭐ I21 — the hub', () => {
     expect(branch).toBeLessThan(fallback);
   });
 
-  it('⭐ the pill is appended LAST, and ungated', () => {
+  it('⭐ the pill is ungated, just before FIRE\'s — batch 1 build 4 appends the FIRE face last', () => {
     const list = HUB.slice(HUB.indexOf('const visibleFaces'), HUB.indexOf('];', HUB.indexOf('const visibleFaces')));
     const entries = list.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{') || l.startsWith('...'));
-    expect(entries[entries.length - 1]).toBe("{ key: 'decision' as Face, label: '◆ Decision' },");
+    expect(entries[entries.length - 2]).toBe("{ key: 'decision' as Face, label: '◆ Decision' },");
   });
 });
 

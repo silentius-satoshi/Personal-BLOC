@@ -6,6 +6,7 @@ import type { WrapMeta } from '../lib/nostr/keyVault';
 import type { KeyProvenance } from '../lib/backupGate';
 import type { SafeSnapshot } from '../simulation/safetyView';
 import type { PinnedScenario } from '../simulation/scenarioDiff';
+import type { StoredFireInputs } from '../lib/fireInputs';
 import type { NostrParam } from '../lib/nostr/session';
 import type { PlanBackup } from '../lib/backup/exportPlan';
 import type { NostrSigner } from '@nostrify/nostrify';
@@ -128,6 +129,11 @@ export interface StoreState {
   // buildSettingsPayload/SETTINGS_FIELDS). Only ever written by setPinnedScenario (READ-ONLY feature).
   pinnedScenario:           PinnedScenario | null;
   setPinnedScenario:        (v: PinnedScenario | null) => void;
+  // Batch 1 build 4 (D3 A) — the FIRE face's own inputs: only what was typed on THIS device (null = every default).
+  // DEVICE-LOCAL PERSISTED (rides partializeState's ...rest), NEVER synced, never in a backup or a viewer snapshot (in no
+  // field list). Every reader takes it through lib/fireInputs' fireInputsOf, memoised on this object.
+  fireInputs:               StoredFireInputs | null;
+  setFireInputs:            (patch: StoredFireInputs | null) => void;   // plain set: merges a patch; null resets to the defaults
   getCurrentBtcHeld:        () => number;   // deriveStrikeCollateral(dayLog, strikeCollateralBtc) — reading-anchored current Strike collateral
   getCurrentColdBtc:        () => number;   // deriveColdStorage(dayLog, coldStorageBtc, coldStorageBtcAsOf) — the LIVE cold total
   ndpLastPaidDate:          string | null;

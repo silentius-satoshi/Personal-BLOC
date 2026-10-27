@@ -877,6 +877,19 @@ plan's own formulas — never its code, its multiplier arrays or its copy (R0). 
   that tax is left out). Retirement income counts from the stop month, so a pension or Social Security that starts later
   reads as starting then. A surplus of retirement income isn't invested. An underwater position's debt beyond the other
   assets is left out (`uncoveredDebtUsd`).
+- **How the face calls it (build 4)** — every call in `fireFaceView.ts` and `fireReplays.ts`, never in the face
+  (`docs/claude/almanac.md` § FIRE face). The path is the face's displayed path, `.slice(0, months)`: 240 prices for
+  months 0–239, so "lasts through" names month `months − 1`. `btc` is ₿ yours, netted ONCE at that path's month 0
+  (`yoursAt` — `deriveOwnership(openingBtc, openingDebt, path[0])`, three arguments). `savingsUsd` is `income − expenses`,
+  signed; `spendUsd` is the typed spending or the plan's `expenses`, × (1 + b ÷ 100) for a buffer; `otherMonthlyFactor` is
+  (1 + r)^(1/12) of the typed return or, until one is typed, the inflation rate — its `Math.pow` sits in the view, outside
+  `fire.ts`'s exact core; `taxRate` is Living's `CAPITAL_GAINS_TAX_RATE` unless typed. The stop is the one
+  `fireTimeline` resolved on the displayed path, held: every replay is spliced at it (`replayPath(path, startDate, stop,
+  …)`) and run with `{ ...x, stopMonth: stop }`, as `breakEvenGrowth` holds its own. The capacity shown is the LOWEST
+  replay's, only when all three replayed, ÷ (1 + b ÷ 100) so it reads in the owner's own spending ("at least" when hi
+  binds). Measured: the face's whole computation — the timeline, three replays with their timeline and capacity, and the
+  break-even — takes about 2.8 ms a render (Node 26, warm), all of it memoised on the path and the inputs; `deriveReplays`
+  takes about 5 ms, once a history load.
 - Tests: `src/simulation/__tests__/fire.test.ts` (43), `fireBreakEven.test.ts` (10), `taxes.test.ts` (8),
   `cycleReplays.test.ts` (13), `fireWalls.test.ts` (5) and the goldens `fireParity.golden.json` and
   `fireTimeline.golden.json` — § Test Suite → "Batch 1 build 3 — the FIRE engine".

@@ -977,11 +977,13 @@ describe('layering: the support path is built in ONE place; the view modules imp
   const src = (f: string): string => readFileSync(join(process.cwd(), 'src/components/Almanac', f), 'utf8');
   const imports = (f: string): string[] => src(f).split('\n').filter((l) => /^import\b/.test(l) || /^\} from /.test(l));
 
-  it('supportPolicyView / cyclingFaceView / ownershipFaceView import nothing from powerLaw, cyclePath, cycleModel, the store or React', () => {
-    for (const f of ['supportPolicyView.ts', 'cyclingFaceView.ts', 'ownershipFaceView.ts']) {
+  it('supportPolicyView / cyclingFaceView / ownershipFaceView / fireFaceView import nothing from powerLaw, cyclePath, cycleModel, cycleReplays, pricePaths, data/, the store or React', () => {
+    // batch 1 build 4 (F11): fireFaceView joins the view modules that import no belief, with cycleReplays, pricePaths and
+    // data/ in the pattern.
+    for (const f of ['supportPolicyView.ts', 'cyclingFaceView.ts', 'ownershipFaceView.ts', 'fireFaceView.ts']) {
       const lines = imports(f);
       expect(lines.length, f).toBeGreaterThan(0);
-      for (const l of lines) expect(l, f).not.toMatch(/powerLaw|cyclePath|cycleModel|\/store\/|'react'/);
+      for (const l of lines) expect(l, f).not.toMatch(/powerLaw|cyclePath|cycleModel|cycleReplays|pricePaths|data\/|\/store\/|'react'/);
     }
   });
 
@@ -992,7 +994,7 @@ describe('layering: the support path is built in ONE place; the view modules imp
 
   it('supportPolicyInputs.ts is the only non-test module here that builds a support path from the power law', () => {
     expect(src('supportPolicyInputs.ts')).toMatch(/plBandAt\('floor'/);
-    for (const f of ['supportPolicyView.ts', 'cyclingFaceView.ts', 'ownershipFaceView.ts']) {
+    for (const f of ['supportPolicyView.ts', 'cyclingFaceView.ts', 'ownershipFaceView.ts', 'fireFaceView.ts']) {
       expect(src(f), f).not.toMatch(/plBandAt|plConvergencePath|plBandsAt/);
     }
   });

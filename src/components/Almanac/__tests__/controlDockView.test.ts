@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   monthTabValue, monthReadout, stressPct, stressTabValue, stressTone, PATH_TAB_VALUE, lineTabValue, policyTabValue,
-  decisionDockTabs, parentDockTabs, strategyDockTabs, LENS_TAB_VALUE,
+  decisionDockTabs, parentDockTabs, strategyDockTabs, fireDockTabs, LENS_TAB_VALUE,
 } from '../controlDockView';
 import { policyCardState } from '../supportPolicyView';
 import { PL_BAND_LABEL } from '../../../simulation/powerLaw';
@@ -121,5 +121,17 @@ describe('⭐ the parents\' tabs', () => {
     ]);
     expect(strategyDockTabs({ monthIdx: 0, lens: 1, path: 'floor', policy: 'on', lensView: 'position' })[4])
       .toEqual({ id: 'lens', label: 'Lens', value: 'Position', tone: 'plain' });
+  });
+});
+
+describe('⭐ the FIRE face\'s tabs', () => {
+  it('⭐ FIRE-TABS — Month · Stress · Path, in their order, each from its helper: no Line, no Policy (batch 1 build 4)', () => {
+    // mutation: a Policy tab on FIRE's dock → red
+    expect(fireDockTabs({ monthIdx: 1, lens: 0.7, path: 'floor' })).toEqual([
+      { id: 'month', label: 'Month', value: '1', tone: 'plain' },
+      { id: 'stress', label: 'Stress', value: '−30%', tone: 'bad' },
+      { id: 'path', label: 'Path', value: PL_BAND_LABEL.floor, tone: 'plain' },
+    ]);
+    for (const t of fireDockTabs({ monthIdx: 239, lens: 2.2, path: 'fourYear' })) expect(t.value.length, `FIRE-TABS ${t.id}`).toBeLessThanOrEqual(8);
   });
 });
