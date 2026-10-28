@@ -1,10 +1,10 @@
-/* Viewer venue bar. Tokens only — zero new literals (the Coinbase blue is the new --coinbase token).
+/* Viewer venue bar. Tokens only — zero new literals; the venues wear the venue tokens (tokens.css —
+   Settings → Customization changes them).
 
    No level colours here. green/amber/red are Safe/Fair/Poor on the gauge cards above; a level colour on a
    composition read would be misread as a risk verdict, and no lender rule defines a venue-concentration
-   threshold. Strike takes --text-primary (white), Coinbase takes --coinbase (blue — the v5 prototype
-   venue palette, restored by owner decision; the Almanac Cycling face's venue bar keeps its own
-   --btc/--green pair); the total takes primary. */
+   threshold. Each venue takes its venue token (Strike white, Coinbase blue — the v5 prototype venue palette,
+   restored by owner decision — cold storage orange, by default); the total takes primary. */
 
 /* Card shell — the SAME tokens as the gauge cards in ViewerHomeView.module.css (.card), so this sits in the
    stack as a peer surface. Radius is the app's 20px, not the mockup's 14px. */
@@ -51,10 +51,10 @@
   height: 100%;
   min-width: 0;
 }
-.segStrike { background: var(--text-primary); }
-.segCb { background: var(--coinbase); }
+.segStrike { background: var(--venue-strike); }
+.segCb { background: var(--venue-coinbase); }
 /* Cold storage is the only UNPLEDGED venue here — bitcoin accent, never a lender's colour. */
-.segCold { background: var(--btc); }
+.segCold { background: var(--venue-cold); }
 
 .cells {
   display: flex;
@@ -84,9 +84,9 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.valStrike { color: var(--text-primary); }
-.valCb { color: var(--coinbase); }
-.valCold { color: var(--btc); }
+.valStrike { color: var(--venue-strike); }
+.valCb { color: var(--venue-coinbase); }
+.valCold { color: var(--venue-cold); }
 .valTotal { color: var(--text-primary); font-weight: 600; }
 
 .cellSub {

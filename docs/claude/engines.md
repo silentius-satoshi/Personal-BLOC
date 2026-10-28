@@ -422,7 +422,8 @@ it is the control that moves the venue segment and moves the LTV curve, so it be
 things it changes, not down in the Strategy row. The long-form reasoning (buffer↔LTV equivalence, the
 fair-value calibration, the path-dependence warning) lives in an **`InfoTip`** on the card title rather
 than three paragraphs of body copy nobody re-reads. **Milestones** gained a **Cold** column, rendered only
-when the sweep is on and styled `--btc`: ⚠ it is a SUBSET of the BTC column beside it (`btcHeld` is all
+when the sweep is on and styled `--venue-cold` (cold storage's colour — the bitcoin orange by default; `--btc` until
+BL15): ⚠ it is a SUBSET of the BTC column beside it (`btcHeld` is all
 three pools), never a second total to add.
 
 **`InfoTip` (`components/ui/InfoTip.tsx` + the pure `infoTipModel.ts`)** — the repo's tooltip primitive. ⚠ NOT a CSS
@@ -499,7 +500,8 @@ blob 96 → 97 — all three pinned and all three updated).
 `deriveVenueSplit(strikeBtc, cbBtc, coldBtc = 0)` gained a third venue; the default keeps every existing
 two-arg caller byte-identical. ⚠ Cold IS in the denominator — the card answers "where are my coins", and
 omitting the unpledged share would overstate how much of the stack is pledged. It is the one venue there
-that is not collateral, which is why it takes `--btc` rather than a lender's colour, and the segment and
+that is not collateral, which is why it takes cold storage's own colour (`--venue-cold` — the bitcoin orange by
+default; `--btc` until BL15) rather than a lender's colour, and the segment and
 cell are hidden entirely at 0 rather than showing a permanent `0.000` for something the app is not
 tracking.
 

@@ -1475,8 +1475,9 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       says that (ONCE). Since BL33 the slider, its sentence, this note and the sweep toggle (now last) are the face's own
       children of the shared card. Strategy is a summary face: no sweep-off line (its slider was already gated).
   - **Charts:** a dashed "Policy limit" series (`policyLimitPct` / `cbLimit`) as a DIRECT recharts child, in the colour
-    of the Coinbase line it bounds ON THAT CHART — `--btc` on Cycling, `--coinbase` on Strategy and Ownership (a
-    comment at each site; don't "unify" them). Policy v2 Run B (B2): the red dotted "Coinbase seizes" series on all three
+    of the Coinbase line it bounds ON THAT CHART — `--btc` on Cycling (not a venue colour: the Cycling face's lone CB
+    line keeps its own), `--venue-coinbase` on Strategy and Ownership (`--coinbase` until BL15) (a comment at each site;
+    don't "unify" them). Policy v2 Run B (B2): the red dotted "Coinbase seizes" series on all three
     price charts — `chartCliffUsd`, one formula; Cycling's behind `hasCliff`, with a Legend (§ Policy v2 → Run B).
   - **Milestones:** a Zone column (`ZONE_LETTER`, `ZONE_COLOR`, `title` / `aria-label` = `ZONE_LABEL`), and the ⇡ flag.
     The switch table's LTV view under 768 px carries the same letter, colour and name (§ Milestones on a phone).
@@ -1631,8 +1632,9 @@ THIS MONTH's log overlay kept it until Run 3 (gone since — § The plan of reco
   "₿0.000" or "0.000 ₿" (WORDS). The Decision card's first line reads "This is your plan of record's move this month —
   the support policy, with your settings.", and with a what-if on the move (the policy or the line), "A what-if — your
   plan is unchanged." **The one-time note** (D8, `planSwitchNote`) is dismissed once per device (`planNoteDismissed`) and
-  never shown to a viewer. **The venue colours** (the owner's add-on): Strike white, Coinbase blue, cold storage orange —
-  the faces' own tokens — on each row's dot and its venue words; two venues split the dot (to its border's edge —
+  never shown to a viewer. **The venue colours** (the owner's add-on): Strike white, Coinbase blue, cold storage orange by
+  default — the venue tokens (`--venue-strike`, `--venue-coinbase`, `--venue-cold`; Settings → Customization changes them,
+  BL15) — on each row's dot and its venue words; two venues split the dot (to its border's edge —
   `border-box`, Run 2.1, F8); a warning shows in the note and the amount, so a dot never hides it.
 - **The hold's one date (D9, invariant 8).** Strike's 60-day hold reads ONE fact — the latest logged Strike deposit's
   date (`latestStrikeDepositISO`) — through ONE rule (`strikeHoldAt`). `strikeDepositOf` picks the fact on this device:
@@ -2611,7 +2613,7 @@ badge + an off-mode `~`/`est.` precision marker differ.
   `.sub2` prepends `~` when estimated + the block-height stat rsub reads `estimate`/`live`; CycleClock's
   block-height stat rsub same; CycleDial's cycle-branch `aria-valuetext` gains the `(estimated)` suffix
   (halving branch already had it).
-- **Settings → Display** gains an ALMANAC group "Live block height" toggle (canonical entry, owner-only
+- **Settings → Display** (one Customization page since BL15) gains an ALMANAC group "Live block height" toggle (canonical entry, owner-only
   block; viewers use the badge) — ON also sets consent (the inline host disclosure satisfies it).
 - Supersedes `useMempoolData`, which the Power Law face deleted (spec pbloc-spec-powerlaw-face-v1, D2): its side panel
   fetched mempool.space on every open, even with live height off (F1). Now only `useChainTip` contacts an explorer, and

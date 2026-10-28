@@ -11,6 +11,12 @@ import { compactPlanEvents } from '../../lib/planEvents/compact';
 import { getDeviceTag } from '../../lib/nostr/deviceTag';
 import { refuseWithoutPlan } from '../../lib/nostr/planLoad';
 import { kickRecordsPublish } from '../bootstrap';
+import { incomingVenueColors } from '../../lib/venueColors';
+
+// BL15 — a setting arriving from elsewhere (a prefs object, a trusted snapshot, a backup): the venue colours land only
+// as a plain object, as it is (lib/venueColors — the sink checks it); anything else reads as absent. Every other field
+// lands as it is.
+const incoming = (field: string, v: unknown): unknown => (field === 'venueColors' ? incomingVenueColors(v) : v);
 
 // Phase 4c — the highest ts in the plan log (0 when empty). emitPlanSets/applyPlanBackup stamp
 // nextPlanEventTs(maxTs) so a single action's events share ONE ts (AsOf pairs never tear) + the log
@@ -127,7 +133,8 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   hydratePrefs: (data) => {
     const update: Record<string, unknown> = {};
     for (const field of PREFS_FIELDS) {
-      if (field in data && data[field] !== undefined) update[field] = data[field];
+      const v = field in data ? incoming(field, data[field]) : undefined;
+      if (v !== undefined) update[field] = v;
     }
     set(update as Partial<StoreState>);
   },
@@ -136,7 +143,8 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   applyViewerSettings: (data) => {
     const update: Record<string, unknown> = {};
     for (const field of VIEWER_SETTINGS_FIELDS) {
-      if (field in data && data[field] !== undefined) update[field] = data[field];
+      const v = field in data ? incoming(field, data[field]) : undefined;
+      if (v !== undefined) update[field] = v;
     }
     set(update as Partial<StoreState>);
   },
@@ -145,7 +153,7 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   //  (a) 4c: the APPLY_FIELDS settings partition becomes plan-field scalar writes + appended plan EVENTS in the
   //      SAME atomic commit (this mirrors emitPlanSets but stays FUSED for atomicity — a restore must not tear).
   //      Each APPLY_FIELDS key is written as a scalar (parity) and, if it's a PLAN_EVENT_FIELD, also emitted as a
-  //      set-event; the 4 prefs keys are scalar-only and flip prefsDirty. Transport fields + backupVerifiedAt are
+  //      set-event; the 5 prefs keys are scalar-only and flip prefsDirty. Transport fields + backupVerifiedAt are
   //      APPLY_FIELDS-excluded by construction; keyProvenance is never in the payload. ⚠ The stamp attests KEY
   //      custody, not plan data — a backup restores a plan onto whatever key the device holds; importing must NOT
   //      open the R2a-1 gate for an un-backed-up key.
@@ -165,11 +173,12 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
     const foldFields: Record<string, unknown> = {};
     const pairs: [PlanField, unknown][] = [];
     let anyPref = false;
-    for (const [k, v] of Object.entries(backup.plan.settings)) {
+    for (const [k, raw] of Object.entries(backup.plan.settings)) {
+      const v = incoming(k, raw);
       if (!APPLY_FIELDS.has(k) || v === undefined) continue;
       foldFields[k] = v;                                                       // scalar write (parity)
       if ((PLAN_EVENT_FIELDS as readonly string[]).includes(k)) pairs.push([k as PlanField, v]);
-      else anyPref = true;                                                     // one of the 4 PREFS_FIELDS
+      else anyPref = true;                                                     // one of the 5 PREFS_FIELDS
     }
     const ts = nextPlanEventTs(maxPlanTs(cur.planEvents));
     const device = getDeviceTag();

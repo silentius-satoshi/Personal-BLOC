@@ -514,7 +514,7 @@ export default function CyclingFace() {
           : []),
         { label: 'Price', value: fmtK(r.price) },
         { label: 'BTC', value: `₿${r.btcHeld.toFixed(3)}` },
-        ...(coldShown(coldBufferPct, sim) ? [{ label: 'Cold', value: `₿${r.coldBtc.toFixed(3)}`, color: 'var(--btc)' }] : []),
+        ...(coldShown(coldBufferPct, sim) ? [{ label: 'Cold', value: `₿${r.coldBtc.toFixed(3)}`, color: 'var(--venue-cold)' }] : []),
         { label: 'Debt', value: fmtK(r.debt) },
         { label: 'CB LTV', value: fmtLtvPct(r.cbLtv), color: cbZone(r.cbLtv) },
         { label: 'Equity', value: fmtK(r.equity), color: 'var(--text-primary)' },
@@ -964,7 +964,8 @@ export default function CyclingFace() {
             <Line type="monotone" dataKey="cbLtvPct" name="CB LTV" stroke="var(--btc)" strokeWidth={2}
               dot={false} isAnimationActive={false} />
             {/* The policy's Coinbase limit at today's price — dashed in the colour of the Coinbase line it bounds ON
-                THIS CHART (--btc here; the Strategy and Ownership faces' CB line is --coinbase). Don't "unify" them. */}
+                THIS CHART (--btc here, not a venue colour; the Strategy and Ownership faces' CB line is --venue-coinbase).
+                Don't "unify" them. */}
             {applied && (
               <Line type="monotone" dataKey="cbLimitPct" name="Policy limit" stroke="var(--btc)" strokeWidth={1.5}
                 strokeDasharray="5 4" dot={false} isAnimationActive={false} />

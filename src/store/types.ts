@@ -7,6 +7,7 @@ import type { KeyProvenance } from '../lib/backupGate';
 import type { SafeSnapshot } from '../simulation/safetyView';
 import type { PinnedScenario } from '../simulation/scenarioDiff';
 import type { StoredFireInputs } from '../lib/fireInputs';
+import type { Venue, VenueColors } from '../lib/venueColors';
 import type { NostrParam } from '../lib/nostr/session';
 import type { PlanBackup } from '../lib/backup/exportPlan';
 import type { NostrSigner } from '@nostrify/nostrify';
@@ -93,6 +94,10 @@ export interface StoreState {
   simpleMode:            boolean;
   onboardingComplete:    boolean;
   btcBuyingUnit:         'btc' | 'sats';
+  /** BL15 (Customization) — the venue colours the owner chose: a PREFS field on prefs:v1. undefined = never set on this
+   *  device (never published — it can't reset another device); {} = the defaults, chosen. Read through
+   *  lib/venueColors (`venuePaletteOf`, `applyVenueColors`) — never raw. */
+  venueColors:           VenueColors | undefined;
   devMode:               boolean;   // persisted, DEVICE-LOCAL — never synced (not in SETTINGS_FIELDS/payload)
   almanacLiveEnabled:    boolean;   // persisted, DEVICE-LOCAL — never synced (Almanac live block height opt-in; mirrors devMode)
   almanacLiveConsented:  boolean;   // persisted, DEVICE-LOCAL — never synced (one-time consent for the explorer fetch)
@@ -112,6 +117,11 @@ export interface StoreState {
   setSimpleMode:         (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
   setBtcBuyingUnit:      (v: 'btc' | 'sats') => void;
+  /** Sets one venue's colour through THE rule (lib/venueColors `checkVenueColor`): false, and nothing written, for a
+   *  colour it refuses. The venue's own default drops its key. */
+  setVenueColor:         (venue: Venue, color: string) => boolean;
+  /** "Back to the default colours" — writes {} (published, so every device resets). */
+  resetVenueColors:      () => void;
   setDevMode:            (v: boolean) => void;
   setAlmanacLiveEnabled:   (v: boolean) => void;
   setAlmanacLiveConsented: (v: boolean) => void;
@@ -440,7 +450,7 @@ export interface StoreState {
   // Phase 4c — plan-events channel (device-local persisted, NOT in SETTINGS_FIELDS/payload; ride ...rest).
   // The append-only PlanEvent log is the source of truth for the plan partition; emitPlanSets is the sole
   // writer, applyPlanFold the pull-side derived-scalar apply. prefsDirty/lastPrefsSyncAt drive the tiny
-  // whole-object prefs:v1 channel (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit).
+  // whole-object prefs:v1 channel (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit/venueColors).
   planEvents:              PlanEvent[];
   setPlanEvents:           (v: PlanEvent[]) => void;
   planDirty:               boolean;

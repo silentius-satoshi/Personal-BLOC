@@ -150,7 +150,7 @@
   border-radius: 50%;
 }
 .mG  { background: var(--green); }
-.mCb { background: var(--btc); }
+.mCb { background: var(--btc); }   /* BL15 — stays bitcoin orange (bitcoin going in): a selected day is --surface-3 */
 .mRing {
   width: 6px;
   height: 6px;

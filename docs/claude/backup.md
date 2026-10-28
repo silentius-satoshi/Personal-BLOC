@@ -66,7 +66,7 @@ union+tombstones (`mergeRecords`), so the next relay pull unions back any day/mo
   outside it → reject as tampered/foreign — the transport fields must never be restored), and
   **`APPLY_FIELDS`** = that `− backupVerifiedAt`.
   **Phase 4b partition** (for the event-sourced plan core): **`PREFS_FIELDS`** = `[tabOrder, hiddenTabs,
-  simpleMode, btcBuyingUnit]` (device-taste, stays whole-object LWW on `prefs:v1` — a stale clobber is
+  simpleMode, btcBuyingUnit]` (+ `venueColors` since BL15 — five) (device-taste, stays whole-object LWW on `prefs:v1` — a stale clobber is
   cosmetic + self-corrects) and **`PLAN_EVENT_FIELDS`** = the other **33** (event-sourced). `33 plan + 4
   prefs = 37 SETTINGS_FIELDS`. ⚠ AMENDMENT to the 4a design lock's §3: `backupVerifiedAt` (R2a-1, joined
   the synced set after the lock was written) is a PLAN field. `PlanField = Exclude<SettingsField,

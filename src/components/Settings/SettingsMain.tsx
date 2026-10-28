@@ -49,6 +49,7 @@ import { fmtUSD, todayLocalISO } from '../../utils/format';
 import { coldMovesSinceAnchor } from '../../simulation/logUtils';
 import styles from './SettingsMain.module.css';
 import YourPlanSection from './YourPlanSection';
+import { VenueColorsGroup } from './VenueColorsGroup';
 import { COLD_GROUP_LEAD, COLD_FIELD_LABEL, COLD_HOW, coldAsOfLine } from './coldStorageView';
 
 // Stable empty-array identity so useRelayStatus opens NO probe sockets unless the Network subpage is actually visible
@@ -133,7 +134,7 @@ function SortableTabRow({ tab, isVisible, isLastVisible, isToolTab, isMoveable, 
 }
 
 // Phase 1 navigation shell: the long scroll becomes a section menu (rows) that drills into subpages.
-type SettingsPage = 'menu' | 'identity' | 'sharing' | 'strike' | 'plan' | 'cbloan' | 'display' | 'tabs' | 'network' | 'about' | 'backup';
+type SettingsPage = 'menu' | 'identity' | 'sharing' | 'strike' | 'plan' | 'cbloan' | 'customize' | 'network' | 'about' | 'backup';
 
 const SUBPAGE_TITLES: Record<Exclude<SettingsPage, 'menu'>, string> = {
   identity: 'Identity & Security',
@@ -141,8 +142,7 @@ const SUBPAGE_TITLES: Record<Exclude<SettingsPage, 'menu'>, string> = {
   strike:   'Strike Strategy',
   plan:     'Your plan',
   cbloan:   'Coinbase Loan',
-  display:  'Display',
-  tabs:     'Tabs',
+  customize: 'Customization',   // BL15 — was "Display" and "Tabs", two rows for one concern
   network:  'Network',
   about:    'About',
   backup:   'Backup',
@@ -501,8 +501,10 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                 {hasCbLoan && <span className={styles.settingsRowChevron}>›</span>}
               </div>
             )}
-            <SettingsRow icon="🖥️" title="Display" subtitle="Monthly Mode, plan bars, mining log" onClick={() => setSettingsPage('display')} styles={styles} />
-            {!viewerMode && <SettingsRow icon="🗂️" title="Tabs" subtitle="Visibility & order" onClick={() => setSettingsPage('tabs')} styles={styles} />}
+            {/* BL15 — one page for how the app looks: Monthly Mode, the display groups, the venue colours, the tabs. The
+                owner's alone, as this whole menu is: a viewer gets <ViewerSettings/> above and never reaches it (a trusted
+                viewer wears the owner's colours all the same — its snapshot carries them). */}
+            <SettingsRow icon="🎨" title="Customization" subtitle="Display, venue colors, tabs" onClick={() => setSettingsPage('customize')} styles={styles} />
             {!viewerMode && <SettingsRow icon="🌐" title="Network" subtitle="Relays & connections" onClick={() => setSettingsPage('network')} styles={styles} />}
             <SettingsRow icon="ℹ️" title="About" subtitle="Build info" onClick={() => setSettingsPage('about')} styles={styles} />
           </div>
@@ -532,7 +534,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
         </div>
       )}
 
-      {settingsPage === 'display' && (
+      {settingsPage === 'customize' && (
         <div className={styles.simpleModeToggle}>
           <div className={styles.simpleModeLabel}>
             <span className={styles.simpleModeTitle}>Monthly Mode</span>
@@ -823,7 +825,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
       </div>
       )}
 
-      {settingsPage === 'display' && !viewerMode && (
+      {settingsPage === 'customize' && !viewerMode && (
       <div className={styles.section}>
         {!hiddenTabs.includes('mining') && (
           <div className={styles.setupGroup}>
@@ -862,6 +864,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             />
           </div>
         </div>
+
+        <VenueColorsGroup styles={styles} />
       </div>
       )}
 
@@ -952,7 +956,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
       </div>
       )}
 
-      {settingsPage === 'tabs' && !viewerMode && (
+      {settingsPage === 'customize' && !viewerMode && (
       <div className={styles.section}>
         <div className={styles.sectionTitle}>TAB VISIBILITY & ORDER</div>
         <div className={styles.sectionDescription}>

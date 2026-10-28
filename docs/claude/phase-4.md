@@ -24,7 +24,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
   | d-tag | Content | Semantics |
   |---|---|---|
   | `personal-bloc:plan-events:v1` | `{ events: PlanEvent[] }` NIP-44 self-encrypted | append-only · union-by-id · fold-to-state · compaction; NO watermark gate (order-independent) |
-  | `personal-bloc:prefs:v1` | `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` | tiny whole-object LWW (device-taste; stale clobber cosmetic) |
+  | `personal-bloc:prefs:v1` | `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` (+ `venueColors` since BL15 — absent until a device chooses colours) | tiny whole-object LWW (device-taste; stale clobber cosmetic) |
   | `personal-bloc:settings:v1` | write-through BRIDGE (fold output) | published-not-read-as-authority on a migrated device; **RETIRED at 4e** — nothing publishes or reads it |
   | `personal-bloc:records:v1` | unchanged | unchanged |
 
@@ -95,17 +95,17 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
     The names are apart: Fix A (no publish before the first pull) · Fix B (the first-pull hydrate relaxation) · Fix C
     (no dirty before the pull) · Option C (the relay guard) · Fix D (the seed sentinel). Only **Fix A** remains —
     `initialSettingsPullDone` (name historical) gates the plan and prefs publishes.
-  - **Kept:** `buildSettingsPayload` / `SETTINGS_FIELDS` (46 keys since BL14's goal, batch 1 build 2 — 45 since the plan
-    of record's Run 1 added six plan fields on `plan-events:v1` with no bump — the trusted viewer snapshot and the plan
-    backup);
+  - **Kept:** `buildSettingsPayload` / `SETTINGS_FIELDS` (47 keys since BL15's venue colours, a pref on `prefs:v1` — 46
+    since BL14's goal, batch 1 build 2 — 45 since the plan of record's Run 1 added six plan fields on `plan-events:v1`
+    with no bump — the trusted viewer snapshot and the plan backup);
     `checkPlanParity` (the emit layer's tripwire) + DevPanel's parity row; `nextPlanEventTs` / `makePlanEventId`
     (`genesis.ts` keeps its name).
   - **The bridge's two chains moved:** `publishPlanEventsNow`'s success runs `void publishViewerSnapshotNow(); void
     flushViewerRevocations();` then `checkPlanParity()`.
   - **Two RAW appliers replace `hydrateSettings`** (no event, no dirty): `hydratePrefs` (PREFS_FIELDS — the
     `prefs:v1` apply) and `applyViewerSettings` (`VIEWER_SETTINGS_FIELDS` = SETTINGS_FIELDS − `VIEWER_SNAPSHOT_STRIP`
-    [viewers, nextViewerIndex, nostrRelays, backupVerifiedAt, coldStorageBtcAsOf] = 40 keys (34 at 4e; the plan of
-    record's six joined — a conscious EXPOSE, D9) — the trusted viewer
+    [viewers, nextViewerIndex, nostrRelays, backupVerifiedAt, coldStorageBtcAsOf] = 42 keys (34 at 4e; the plan of
+    record's six joined — a conscious EXPOSE, D9 — then BL14's goal and BL15's venue colours, each one too) — the trusted viewer
     snapshot). ⚠ Never narrow the viewer's apply to the prefs (F1): every trusted viewer would show the seed, or frozen
     figures, while the mocked viewer tests stay green — `viewerSettingsApply.test.ts` pins it on the REAL store.
   - **The retry** (`useNostrSync`) arms on `syncDirty({ recordsDirty, planDirty, prefsDirty, pendingRevocations })`

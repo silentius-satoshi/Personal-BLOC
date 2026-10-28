@@ -1,9 +1,11 @@
 // uiSlice (Phase 1c) — app mode + display prefs + tabs + converter. Moved verbatim; getState()→get() the only change.
 import type { StoreState, StoreSet, StoreGet } from '../types';
 import { GATE_ONBOARDED_KEY, seedOnboardingComplete } from '../bootstrap';
+import { checkVenueColor, normalizeHex, resolveVenueColors, venuePaletteOf, DEFAULT_VENUE_COLORS } from '../../lib/venueColors';
 
 type UiSlice = Pick<StoreState,
-  | 'activeTab' | 'simpleMode' | 'onboardingComplete' | 'btcBuyingUnit' | 'devMode' | 'almanacLiveEnabled'
+  | 'activeTab' | 'simpleMode' | 'onboardingComplete' | 'btcBuyingUnit' | 'venueColors' | 'setVenueColor'
+  | 'resetVenueColors' | 'devMode' | 'almanacLiveEnabled'
   | 'almanacLiveConsented' | 'expenseReanchorDismissedAt' | 'setExpenseReanchorDismissedAt' | 'setSimpleMode'
   | 'planNoteDismissed' | 'setPlanNoteDismissed' | 'planBreakerCache' | 'setPlanBreakerCache'
   | 'setOnboardingComplete' | 'setBtcBuyingUnit' | 'setDevMode' | 'setAlmanacLiveEnabled' | 'setAlmanacLiveConsented'
@@ -18,6 +20,7 @@ export const createUiSlice = (set: StoreSet, get: StoreGet): UiSlice => ({
   simpleMode:         false,
   onboardingComplete: seedOnboardingComplete,   // 3a.4: standalone-seeded (false on fresh install = today's default)
   btcBuyingUnit:      'btc',
+  venueColors:        undefined,   // BL15 — never set on this device: not published, exported or snapshotted
   devMode:            false,
   almanacLiveEnabled:   false,
   almanacLiveConsented: false,
@@ -29,6 +32,24 @@ export const createUiSlice = (set: StoreSet, get: StoreGet): UiSlice => ({
   // on an encrypted cold start. Mirrors setWriterKeyWrapped.
   setOnboardingComplete: (v) => { try { v ? localStorage.setItem(GATE_ONBOARDED_KEY, '1') : localStorage.removeItem(GATE_ONBOARDED_KEY); } catch { /* noop */ } set({ onboardingComplete: v }); },
   setBtcBuyingUnit:      (v) => get().emitPrefs({ btcBuyingUnit: v }),
+  // BL15 — the venue colours, on the prefs channel. THE rule gates the write here too, so no screen can store a colour
+  // the picker would refuse. The write starts from the colours on screen (resolveVenueColors), so a stored colour the
+  // rule hides is dropped, never revived by a change elsewhere; and the colour a venue already wears writes nothing, so
+  // a device that never chose stays that way (undefined never travels).
+  setVenueColor: (venue, color) => {
+    const hex = normalizeHex(color);
+    if (hex === null) return false;
+    const cur = resolveVenueColors(get().venueColors);
+    const palette = venuePaletteOf(cur);
+    if (hex === palette[venue]) return true;
+    if (checkVenueColor(venue, hex, palette) !== null) return false;
+    const next = { ...cur };
+    if (hex === DEFAULT_VENUE_COLORS[venue]) delete next[venue];
+    else next[venue] = hex;
+    get().emitPrefs({ venueColors: next });
+    return true;
+  },
+  resetVenueColors: () => get().emitPrefs({ venueColors: {} }),
   setDevMode:            (v) => set({ devMode: v }),
   setAlmanacLiveEnabled:   (v) => set({ almanacLiveEnabled: v }),    // device-local, unsynced — no emit
   setAlmanacLiveConsented: (v) => set({ almanacLiveConsented: v }),  // device-local, unsynced — no emit

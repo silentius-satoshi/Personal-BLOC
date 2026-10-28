@@ -113,8 +113,9 @@ export async function applyRemoteEvent(
     }
     return true;
   }
-  // ── PREFS (v1) — tiny whole-object LWW (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit). hydratePrefs
-  // whitelists to PREFS_FIELDS, so nothing but the 4 prefs keys of a prefs:v1 object can land. ──
+  // ── PREFS (v1) — tiny whole-object LWW (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit/venueColors). hydratePrefs
+  // whitelists to PREFS_FIELDS, so nothing but the 5 prefs keys of a prefs:v1 object can land — and a key the object
+  // lacks is left as it is (an older build's object carries no colours; BL15). ──
   if (dTag === PREFS_DTAG && remoteTs > (useStore.getState().lastPrefsSyncAt ?? 0)) {
     try {
       useStore.getState().hydratePrefs(data);

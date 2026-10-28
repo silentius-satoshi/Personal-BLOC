@@ -43,9 +43,11 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
     that are real. Never give it `barLevel()` colouring.
   - **⚠ NO level colour and NO new token.** `green`/`amber`/`red` are load-bearing as Safe/Fair/Poor on the
     cards directly above, so any of them on a *composition* read would be misread as a risk verdict — which
-    rules out a green "Combined" figure just as much as a green Coinbase segment. Strike takes **`--btc`**
-    (non-semantic here, and the same token the Almanac Cycling face's venue bar uses, so the two agree),
-    Coinbase **`--text-muted`**, the total **`--text-primary`**. `tokens.css` is untouched.
+    rules out a green "Combined" figure just as much as a green Coinbase segment. The venues take the venue
+    tokens — **`--venue-strike`**, **`--venue-coinbase`**, **`--venue-cold`**: Strike white, Coinbase blue and cold
+    storage orange by default, the v5 prototype palette restored by owner decision, the same tokens as the Almanac
+    faces' venue bars, so they agree (V1 shipped Strike `--btc` and Coinbase `--text-muted`; since BL15 Settings →
+    Customization lets the owner change them, and a trusted viewer wears the owner's) — the total **`--text-primary`**.
   - **TRUSTED-ONLY**, gated `s.mode === 'trusted'` (`mode`/`figures` are set together in
     `computeViewerSafety`, so they can't disagree). NOT gated on `hasCbLoan` — collateral can sit on
     Coinbase with no loan against it — and never inferred from the values being non-zero, since a trusted
@@ -138,7 +140,11 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   explicit `tier` param (M2 — the fan-out passes each `slot.tier`; M1's `viewers[0]` read was removed). The roster is STRIPPED from the snapshot in BOTH
   branches (safe has no settings; trusted's strip is now `viewers`/`nextViewerIndex`/`nostrRelays`) AND from the
   **plan backup** (`exportPlan.ts`). (BL14, G2-A: the plan's goal, `planGoalNetBtc`, rides the trusted settings like the
-  plan's six, the strip list unchanged; the safe branch never carries it — § BL14 below.) SharingPage's tier `<Toggle>` calls `updateViewerSlot(index,{tier})` +
+  plan's six, the strip list unchanged; the safe branch never carries it — § BL14 below.) (BL15: the venue colours,
+  `venueColors`, ride the trusted settings too — a conscious expose: a trusted viewer wears the owner's colours, through its
+  own sink; undefined until the owner chooses, so they travel only then; the safe branch never carries them. A viewer never
+  edits them: its Settings is `ViewerSettings` — YOU, DEVICE, CONNECTION, ABOUT — with no Customization page, no Monthly
+  Mode, no colours, no tabs.) SharingPage's tier `<Toggle>` calls `updateViewerSlot(index,{tier})` +
   `publishViewerSnapshotNow()` so a mode flip reaches the viewer at once.
 - **Viewer hydrate (`viewerSync.ts` `applyViewerEvent`, after the `revoked` check):** `privacyMode==='safe'`
   → `setViewerSafeSnapshot({safety, thresholds, btcPriceAtSnapshot, hasCbLoan})` + `viewerDataLoaded` +

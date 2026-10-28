@@ -27,9 +27,15 @@
   --line:      rgba(255,255,255,.07);
   --line-2:    rgba(255,255,255,.04);
   --btc:       #f7931a;
-  /* Coinbase venue accent (the v5 prototype's #0052FF, now a real token). Additive — used by the
-     Ownership face's venue gauge + LTV chart. */
+  /* Coinbase venue accent (the v5 prototype's #0052FF, now a real token) — the Coinbase venue's default, read
+     through --venue-coinbase below. */
   --coinbase:  #0052FF;
+  /* The venue palette (Customization, BL15) — what every venue mark reads: dots, bar segments, chart lines, venue words.
+     These are the defaults; Settings → Customization sets a chosen colour on :root (lib/venueColors applyVenueColors)
+     and removes it to come back here. A venue mark never reads --text-primary, --coinbase or --btc directly. */
+  --venue-strike:   var(--text-primary);
+  --venue-coinbase: var(--coinbase);
+  --venue-cold:     var(--btc);
   --mono:      ui-monospace, "SF Mono", "Menlo", monospace;
 
   /* Almanac CycleClock P1 — low/floor projection-marker accent (additive). */

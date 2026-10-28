@@ -32,6 +32,7 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     hiddenTabs:               s.hiddenTabs,
     simpleMode:               s.simpleMode,
     btcBuyingUnit:            s.btcBuyingUnit,
+    venueColors:              s.venueColors,   // BL15 — undefined (never set) drops out of the JSON: never exported or exposed
     cbLiquidationPrice:       s.cbLiquidationPrice,
     cbMonthlyPayment:         s.cbMonthlyPayment,
     cbPaymentStrategy:        s.cbPaymentStrategy,

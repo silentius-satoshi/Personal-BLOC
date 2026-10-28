@@ -38,6 +38,7 @@ import { usePlanMissing, usePlanNotLoadedWhy, PLAN_NOT_LOADED_BODY } from '../..
 import { usePlanLoading }         from '../../hooks/usePlanLoading';
 import { markAppOnScreen }        from '../../lib/nostr/firstPull';
 import { useViewerSync }          from '../../hooks/useViewerSync';
+import { useVenueColors }         from '../../hooks/useVenueColors';
 import { useMonthBucketReconcile } from '../../hooks/useMonthBucketReconcile';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
@@ -180,6 +181,7 @@ function ToolsDropdown({ tabs, activeTab, onSelect, styles }: ToolsDropdownProps
 }
 
 export function AppShell() {
+  useVenueColors();   // BL15 — the owner's venue colours on :root, before paint (every role, every gate)
   const activeTab    = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const hiddenTabs   = useStore((s) => s.hiddenTabs);

@@ -180,7 +180,8 @@ calendar / scrubbing / reconcile / dry-powder readout (P4c).
   is preserved, never clobbered mid-session). Setter `setSimpleView` is a plain `set` (no `syncSettingsToNostr`),
   mirroring `showPlanStrikeBar`. (Owner IA, see the dedicated section below.)
 - **Copy relabel "Simple Mode" → "Monthly Mode"** (copy only; the `simpleMode` store field + all code identifiers
-  unchanged): SettingsMain Display row subtitle + the Display-subpage toggle title. The AppShell tab-bar button that
+  unchanged): SettingsMain Display row subtitle + the Display-subpage toggle title (one Customization row and page since
+  BL15). The AppShell tab-bar button that
   ENTERS the consumer shell (`setSimpleMode(true)`) is relabeled **`aria-label="Switch to simple view"`** (generic —
   the shell now hosts BOTH Monthly and Daily, so "Monthly Mode" there would mislead once toggled to Daily).
 - **`DailyModeView`** (`components/Daily/`) — mirrors `SimpleModeView`'s layout/visual language: same header +

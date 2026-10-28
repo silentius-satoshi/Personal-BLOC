@@ -341,8 +341,8 @@ describe('⭐ VENUE — the owner\'s venue colours: Strike white, Coinbase blue,
     coldToStrike: ['cold', 'strike'], defenseShort: ['coinbase'], cashCure: ['strike'], coldCure: ['cold', 'strike'],
     strikeSale: ['strike'], coinbaseToCold: ['coinbase', 'cold'], liquidation: ['coinbase'],
   };
-  it('⭐ VENUE — the palette, written out: Strike white, Coinbase blue, cold storage orange (the faces\' own tokens)', () => {
-    expect(VENUE_COLOR).toEqual({ strike: 'var(--text-primary)', coinbase: 'var(--coinbase)', cold: 'var(--btc)' });
+  it('⭐ VENUE — the palette, written out: the venue tokens (Strike white, Coinbase blue, cold storage orange by default — BL15\'s Customization changes them; lib/venueColors pins the defaults)', () => {
+    expect(VENUE_COLOR).toEqual({ strike: 'var(--venue-strike)', coinbase: 'var(--venue-coinbase)', cold: 'var(--venue-cold)' });
   });
   it('⭐ VENUE — every action kind\'s label names exactly its venues, in order', () => {
     for (const f of ACTION_FIELDS) expect(venuesOf(PLAN_ROW_LABELS[f.kind]), `VENUE ${f.kind}`).toEqual(EXPECTED[f.kind]);

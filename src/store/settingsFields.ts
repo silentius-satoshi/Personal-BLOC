@@ -14,6 +14,9 @@ export const SETTINGS_FIELDS = [
   'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorMonthStartBalance', 'advisorActualBtcHeld',
   'cbLoanBalance', 'cbAprPct', 'hasCbLoan',   // cbCollateralBtc excluded (local derived cache, converges via the dayLog on records:v1)
   'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
+  // BL15 (Customization) — the venue colours: a PREF (prefs:v1), in the backup, EXPOSED to a trusted viewer (the owner's
+  // colours); never in the safe snapshot (a fixed ratio list). undefined is never written, so it never travels.
+  'venueColors',
   'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
   'cbLtvTriggerPct', 'cbLtvTargetPct', 'cbRotateBackPct', 'cbEmergencyCeilingPct',
   'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
@@ -58,7 +61,7 @@ export const APPLY_FIELDS: ReadonlySet<string> = new Set(
 // PREFS = device-taste cosmetics (D1): a stale clobber is harmless + self-corrects, so they stay LWW on
 // prefs:v1 rather than becoming a plan event log. PLAN = everything else (42 fields — the plan of record added 6, the goal amount 1). backupVerifiedAt is a
 // PLAN field (R2a-1; it joined SETTINGS_FIELDS after the 4a design lock was written — Exclude keeps it in).
-export const PREFS_FIELDS = ['tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit'] as const;
+export const PREFS_FIELDS = ['tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit', 'venueColors'] as const;
 
 type SettingsField = (typeof SETTINGS_FIELDS)[number];
 export type PrefsField = (typeof PREFS_FIELDS)[number];

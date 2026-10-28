@@ -814,8 +814,8 @@ export default function OwnershipFace() {
             </div>
           </section>
 
-          {/* ── HOLDINGS BY VENUE — Strike = --text-primary (white), Coinbase = --coinbase (blue): the
-              v5 prototype palette, restored by owner decision (was provisionally --btc/--green under A2). */}
+          {/* ── HOLDINGS BY VENUE — the venue tokens (Strike white, Coinbase blue by default): the v5
+              prototype palette, restored by owner decision (was provisionally --btc/--green under A2). */}
           <section className={styles.card}>
             <span className={styles.cardLabel}>Holdings by venue</span>
             {(() => {
@@ -906,7 +906,7 @@ export default function OwnershipFace() {
                         deciding it), and as a direct child — wrapping a conditional series in a fragment makes
                         recharts render an empty grid. */}
                     {coldShown(coldBufferPct, sim) && (
-                      <Line type="monotone" dataKey="cold" name="Cold" stroke="var(--btc)" strokeWidth={1.5} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="cold" name="Cold" stroke="var(--venue-cold)" strokeWidth={1.5} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
                     )}
                   </LineChart>
                 </ResponsiveContainer>
@@ -921,16 +921,16 @@ export default function OwnershipFace() {
                     <Tooltip content={<ChartTip />} />
                     <ReferenceLine y={86} stroke="var(--red)" strokeDasharray="4 4"
                       label={{ value: 'CB liquidation', fill: 'var(--red)', fontSize: 9.5, position: 'insideTopLeft' }} />
-                    <ReferenceLine y={50} stroke="var(--text-primary)" strokeDasharray="4 4"
-                      label={{ value: 'Strike draw cap', fill: 'var(--text-primary)', fontSize: 9.5, position: 'insideBottomLeft' }} />
+                    <ReferenceLine y={50} stroke="var(--venue-strike)" strokeDasharray="4 4"
+                      label={{ value: 'Strike draw cap', fill: 'var(--venue-strike)', fontSize: 9.5, position: 'insideBottomLeft' }} />
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />
-                    {/* Venue palette: Strike white, Coinbase blue (--coinbase) — matches the venue section. */}
-                    <Line type="monotone" dataKey="cbLtv" name="Coinbase" stroke="var(--coinbase)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="strikeLtv" name="Strike" stroke="var(--text-primary)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    {/* The venue tokens (Strike white, Coinbase blue by default) — match the venue section. */}
+                    <Line type="monotone" dataKey="cbLtv" name="Coinbase" stroke="var(--venue-coinbase)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="strikeLtv" name="Strike" stroke="var(--venue-strike)" strokeWidth={2} dot={false} isAnimationActive={false} />
                     {/* The policy's Coinbase limit at today's price — dashed in the colour of the Coinbase line it bounds ON
-                        THIS CHART (--coinbase here; the Cycling face's CB line is --btc). Don't "unify" the two. */}
+                        THIS CHART (--venue-coinbase here; the Cycling face's CB line is --btc). Don't "unify" the two. */}
                     {applied && (
-                      <Line type="monotone" dataKey="cbLimit" name="Policy limit" stroke="var(--coinbase)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="cbLimit" name="Policy limit" stroke="var(--venue-coinbase)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
                     )}
                   </LineChart>
                 </ResponsiveContainer>

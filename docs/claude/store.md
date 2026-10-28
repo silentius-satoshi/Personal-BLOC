@@ -141,8 +141,9 @@ raw. Both seed resets clear it (`clearViewerData`,
 `resetPlanToSeeds`). A trusted viewer's snapshot raw-sets it (`applyViewerSettings` — no event). No store version bump:
 `migrateState` defaults it `?? null`, and the persist merge fills it on a blob without the key. A backup from before build
 2 leaves the goal as it is (`applyPlanBackup` writes only the keys a file carries — the six's precedent); one from this
-build is refused by an older build. **The counts:** 46 settings keys (`SETTINGS_FIELDS` = `buildSettingsPayload`'s), 42
-plan-event fields + the 4 prefs, 108 persisted blob keys (109 with build 4's `fireInputs`), 41 trusted settings keys (46 − the 5 strips).
+build is refused by an older build. **The counts** (since BL15 — § BL15 below): 47 settings keys (`SETTINGS_FIELDS` =
+`buildSettingsPayload`'s), 42 plan-event fields + the 5 prefs, 108 persisted blob keys (109 with build 4's `fireInputs`; 110
+once a device chooses venue colours), 42 trusted settings keys (47 − the 5 strips).
 - **Its one editor** is Settings → Your plan (`YourPlanSection`'s `GoalField`, owner-only under `!viewerMode`): "Your
   goal — net coins", saved when the field is left or Enter is pressed, never per keystroke (`parseGoalInput`: empty
   clears; an amount above zero sets — a point or a comma for the decimal, since an iPhone's decimal keypad in a
@@ -208,6 +209,49 @@ the persist merge fills `null` on an older blob.
   plan-event, prefs and trusted counts are unchanged.
 - Pinned by `src/store/__tests__/fireInputsStore.test.ts` (PERSISTED, LEAK, LISTS, SETTER, RESTORE, SEEDS, WIPE) and
   `src/lib/__tests__/fireInputs.test.ts` (DEFAULTS, READ RULE). The face: `docs/claude/almanac.md` § FIRE face.
+
+### BL15 — the venue colours — `venueColors` (Customization; `uiSlice`; a pref on `prefs:v1`, NO bump)
+```typescript
+venueColors:      VenueColors | undefined;   // default undefined = never chosen on this device; {} = the defaults, chosen; else only the venues changed, each '#rrggbb' (lib/venueColors)
+setVenueColor:    (venue: Venue, color: string) => boolean;   // through THE rule (checkVenueColor) — false, and nothing written, for a colour it refuses
+resetVenueColors: () => void;   // "Back to the default colors" — writes {} (published, so every device resets)
+```
+The venue colours (spec `pbloc-spec-batch-1-v1` §2.4, §6; BL15, BL31 C1-B): the fifth PREFS field, beside the buying unit, on
+`prefs:v1` — whole-object LWW, no new channel — and in `SETTINGS_FIELDS`, so the plan backup (`VALIDATE_WHITELIST`,
+`APPLY_FIELDS`) and a trusted viewer's snapshot (`VIEWER_SETTINGS_FIELDS` — a conscious expose: a trusted viewer wears the
+owner's colours) carry it; never the safe snapshot, a fixed list of ratios, and never a plan event (`PLAN_EVENT_FIELDS`
+excludes the prefs). Its one editor is Settings → Customization's VENUE COLORS group (`VenueColorsGroup`). A viewer never
+edits them: its Settings is `ViewerSettings` — YOU, DEVICE, CONNECTION, ABOUT — with no Customization page, no Monthly Mode,
+no colours, no tabs.
+- **Three states.** `undefined` — never chosen on this device: `JSON.stringify` drops it, so it is never published
+  (`publishPrefsNow`'s object), exported (the backup file) or snapshotted, and a device that never chose can't reset the
+  colours another device chose (`hydratePrefs` skips a key the object lacks). `{}` — the defaults, chosen: published, so
+  every device resets. `{…}` — only the venues changed; a venue set back to its default drops its key.
+- **The setter** (`setVenueColor`) runs THE rule (`checkVenueColor`) against the colours on screen, so no screen can store a
+  colour the picker would refuse; it starts from the colours the rule lets show (`resolveVenueColors`), so a stored colour
+  the rule hides goes with the next write and is never revived; the colour a venue already wears writes nothing, so a device
+  that never chose stays that way. Both setters write through `emitPrefs`.
+- **The way in.** The three appliers (`hydratePrefs`, `applyViewerSettings`, `applyPlanBackup`) take it only as a plain
+  object, as it is (`incomingVenueColors`) — the sink cleans and checks what it shows, and a later version's colours this
+  build can't read travel on untouched; anything else (null, a string, an array) reads as absent. Every other field lands
+  as before.
+- **The sink** (`useVenueColors`, AppShell's first statement, a layout effect → `applyVenueColors`): a stored colour shows
+  only if THE rule passes it (`resolveVenueColors` — every refused colour falls back at once, until none is), and only a
+  cleaned `'#rrggbb'` reaches CSS. The rule and the tokens: `.claude/rules/ui.md` (the venue colours), `docs/claude/ui.md`
+  § Design Tokens.
+- **What touches it.** Neither seed reset clears it (`clearViewerData`, `resetPlanToSeeds` — layout prefs, like the tabs);
+  `wipeLocalPlanData` and "Reset local data & re-sync" remove it with the blob, and the next prefs pull brings the colours
+  back. No store version bump: the persist merge leaves it `undefined` on a blob without it. A backup from before BL15
+  leaves the colours as they are; one made after colours were chosen is refused by an older build ("…an unexpected field
+  ("venueColors")…"), as BL14's goal is; one from a device that never chose restores anywhere.
+- **The limit** (one setting, last write wins, as the tabs): while a device still runs an older build, its settings change
+  leaves the relays without the colours; a device that never had them starts without them until a device that has them
+  changes a setting, and a pick there replaces the whole palette.
+- **The counts:** 47 settings keys, the 5 prefs, 42 trusted settings keys; 109 persisted blob keys, 110 once a device
+  chooses colours.
+- Pinned by `src/store/__tests__/venueColorsStore.test.ts` (the real store, publish and receive — SET, REFUSED, RULE,
+  DEFAULT, RESET, UNCHANGED, HIDDEN, NEVER, ROUND TRIP, OLD WRITE, FRESH AFTER OLD, JUNK, NULL, LATER, LWW, BACKUP, VIEWERS,
+  NO BUMP) and `src/lib/__tests__/venueColors.test.ts`.
 
 ---
 

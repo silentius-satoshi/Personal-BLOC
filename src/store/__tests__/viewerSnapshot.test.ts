@@ -116,6 +116,9 @@ describe('viewer snapshot builders', () => {
       'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',
       'policyPayDownAbove', 'policyStrikeStopAtSupportPct',
       'simpleMode', 'strikeLiquidationLtvPct', 'tabOrder',
+      // BL15 (Customization) — a CONSCIOUS EXPOSE (batch spec §2.4): a trusted viewer wears the owner's venue colours.
+      // Present only once the owner has chosen (undefined never travels); the safe snapshot never carries it.
+      'venueColors',
     ]);
     useStore.setState({ backupVerifiedAt: null } as never);
   });

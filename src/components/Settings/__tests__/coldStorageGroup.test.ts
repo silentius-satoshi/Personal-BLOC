@@ -38,7 +38,7 @@ describe('⭐ COLD WORDS — what the figure is made of, in the owner\'s words',
 });
 
 describe('⭐ COLD GROUP — its own group on the Strike Strategy page, bound to the live total', () => {
-  const strike = MAIN.slice(MAIN.indexOf("{settingsPage === 'strike' && !viewerMode && ("), MAIN.indexOf("{settingsPage === 'display' && !viewerMode && ("));
+  const strike = MAIN.slice(MAIN.indexOf("{settingsPage === 'strike' && !viewerMode && ("), MAIN.indexOf("{settingsPage === 'customize' && !viewerMode && ("));
 
   it('⭐ COLD GROUP — after the Strike BLOC group closes, never inside it, and not gated on a Coinbase loan', () => {
     const bloc = strike.indexOf('>STRIKE BLOC<');

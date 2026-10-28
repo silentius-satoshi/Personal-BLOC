@@ -839,7 +839,7 @@ export default function UnifiedFace() {
                     <Line type="monotone" dataKey="yours" name="Yours" stroke="var(--btc)" strokeWidth={2} dot={false} isAnimationActive={false} />
                     <Line type="monotone" dataKey="owed" name="Owed" stroke="var(--text-faint)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} />
                     {coldShown(coldBufferPct, sim) && (
-                      <Line type="monotone" dataKey="cold" name="Cold" stroke="var(--btc)" strokeWidth={1.5} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="cold" name="Cold" stroke="var(--venue-cold)" strokeWidth={1.5} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
                     )}
                   </LineChart>
                 </ResponsiveContainer>
@@ -857,16 +857,16 @@ export default function UnifiedFace() {
                     <ReferenceLine y={STRIKE_MARGIN_CALL_LTV * 100} stroke="var(--amber)" strokeDasharray="4 4"
                       label={{ value: 'Strike call', fill: 'var(--amber)', fontSize: 9.5, position: 'insideTopLeft' }} />
                     {strikeCapPct > 0 && (
-                      <ReferenceLine y={strikeCapEff} stroke="var(--text-primary)" strokeDasharray="2 3"
-                        label={{ value: applied ? 'Strike defense' : 'Strike cap', fill: 'var(--text-primary)', fontSize: 9.5, position: 'insideBottomLeft' }} />
+                      <ReferenceLine y={strikeCapEff} stroke="var(--venue-strike)" strokeDasharray="2 3"
+                        label={{ value: applied ? 'Strike defense' : 'Strike cap', fill: 'var(--venue-strike)', fontSize: 9.5, position: 'insideBottomLeft' }} />
                     )}
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />
-                    <Line type="monotone" dataKey="cbLtv" name="Coinbase" stroke="var(--coinbase)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="strikeLtv" name="Strike" stroke="var(--text-primary)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="cbLtv" name="Coinbase" stroke="var(--venue-coinbase)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="strikeLtv" name="Strike" stroke="var(--venue-strike)" strokeWidth={2} dot={false} isAnimationActive={false} />
                     {/* The policy's Coinbase limit at today's price — dashed in the colour of the Coinbase line it bounds ON
-                        THIS CHART (--coinbase here; the Cycling face's CB line is --btc). Don't "unify" the two. */}
+                        THIS CHART (--venue-coinbase here; the Cycling face's CB line is --btc). Don't "unify" the two. */}
                     {applied && (
-                      <Line type="monotone" dataKey="cbLimit" name="Policy limit" stroke="var(--coinbase)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="cbLimit" name="Policy limit" stroke="var(--venue-coinbase)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
                     )}
                   </LineChart>
                 </ResponsiveContainer>

@@ -13,6 +13,7 @@ import type { BreakerSeed } from './supportPolicyInputs';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import type { NdpInfo } from '../../simulation/runAdvisor';
 import { cbOverLimitAtMonthEnd } from './planRun';
+import type { Venue } from '../../lib/venueColors';
 
 /**
  * The plan of record's month, as words (Run 2 — §4.3, §4.5). PURE: every sentence the main screens show for the
@@ -34,10 +35,11 @@ const buyBtc = (n: number): string => (n >= 0.00005 ? `₿${btc4(n)}` : 'under �
 
 // ── the venues — the app's venue palette (the Ownership and Cycling faces' dots, the viewer's venue bar) ─────────
 
-export type Venue = 'strike' | 'coinbase' | 'cold';
-/** Strike white, Coinbase blue, cold storage orange — the faces' own venue colours. */
+export type { Venue };
+/** The venue tokens (Strike white, Coinbase blue, cold storage orange by default — Settings → Customization changes
+ *  them; lib/venueColors). */
 export const VENUE_COLOR: Readonly<Record<Venue, string>> = Object.freeze({
-  strike: 'var(--text-primary)', coinbase: 'var(--coinbase)', cold: 'var(--btc)',
+  strike: 'var(--venue-strike)', coinbase: 'var(--venue-coinbase)', cold: 'var(--venue-cold)',
 });
 const VENUE_WORD = /(Strike|Coinbase|[Cc]old storage)/;
 const venueOfWord = (w: string): Venue | null =>

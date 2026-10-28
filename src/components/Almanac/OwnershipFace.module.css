@@ -262,8 +262,9 @@
   padding: 4px 0 8px;
 }
 
-/* ── Venue — Strike = white (--text-primary), Coinbase = blue (--coinbase). The v5 prototype palette,
-   restored by owner decision (was provisionally --btc/--green under A2). */
+/* ── Venue — the venue tokens (tokens.css: Strike white, Coinbase blue, cold storage orange by default;
+   Settings → Customization changes them). The v5 prototype palette, restored by owner decision (was
+   provisionally --btc/--green under A2). */
 .venueBar {
   display: flex;
   gap: 2px;
@@ -272,10 +273,10 @@
   overflow: hidden;
   background: var(--surface-2);
 }
-.venueSegStrike { background: var(--text-primary); }
-.venueSegCb { background: var(--coinbase); }
+.venueSegStrike { background: var(--venue-strike); }
+.venueSegCb { background: var(--venue-coinbase); }
 /* Cold storage is the only UNPLEDGED venue, so it carries the bitcoin accent, not a lender's colour. */
-.venueSegCold { background: var(--btc); }
+.venueSegCold { background: var(--venue-cold); }
 .venueRow {
   display: flex;
   align-items: baseline;
@@ -295,9 +296,9 @@
   flex: 0 0 auto;
   align-self: center;
 }
-.venueDotStrike { background: var(--text-primary); }
-.venueDotCb { background: var(--coinbase); }
-.venueDotCold { background: var(--btc); }
+.venueDotStrike { background: var(--venue-strike); }
+.venueDotCb { background: var(--venue-coinbase); }
+.venueDotCold { background: var(--venue-cold); }
 .venueDotNone { background: transparent; }
 .venueName { color: var(--text-secondary); }
 .venueBtc { margin-left: auto; color: var(--text-primary); }

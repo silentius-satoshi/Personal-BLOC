@@ -69,7 +69,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
   setViewerPreview: (v) => set({ viewerPreview: v }),  // transient (not persisted) — owner preview toggle
   setStoreUnlocked:      (v) => set({ storeUnlocked: v }),       // transient (not persisted)
   // Data-remanence fix: reset every viewer-hydrated financial/records/strike field to its seed so decrypted data
-  // never outlives the authorizing key. Layout prefs (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit) intentionally
+  // never outlives the authorizing key. Layout prefs (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit/venueColors) intentionally
   // LEFT (not sensitive; clearing simpleMode would yank the viewer's UI). VIEWER paths ONLY — no emit.
   clearViewerData: () => set({
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,

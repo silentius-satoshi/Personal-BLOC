@@ -255,7 +255,8 @@ export async function publishPlanEventsNow(): Promise<boolean> {
   }
 }
 
-// Phase 4c — the tiny whole-object prefs channel (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit). Whole-object
+// Phase 4c — the tiny whole-object prefs channel (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit; BL15's venueColors —
+// undefined until a device chooses, so JSON drops it and a device that never chose sends none). Whole-object
 // LWW: a seed-default publish before the first pull would clobber the real prefs → gate on initialSettingsPullDone
 // (Fix A). NIP-44 self-encrypted.
 export async function publishPrefsNow(): Promise<boolean> {

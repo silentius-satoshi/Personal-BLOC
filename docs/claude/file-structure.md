@@ -529,6 +529,10 @@ src/
     usePlanLoading.ts           # 5e (F1) — the "Loading your plan…" screen's state for AppShell ({ up, slow }), from
                                 # lib/nostr/firstPull through useSyncExternalStore (the server snapshot too, so a static
                                 # render works). Tested in src/lib/nostr/__tests__/firstPull.test.ts (GATE)
+    useVenueColors.ts           # BL15 (Customization) — the sink: the venueColors pref, through THE rule (lib/venueColors
+                                # applyVenueColors → resolveVenueColors), set on :root as the venue tokens in a
+                                # useLayoutEffect, so a reload never flashes the defaults. AppShell's FIRST statement, so it
+                                # runs for the owner, a viewer and behind every gate. Pinned by venueColorsWiring.test.ts (SINK)
     usePlanLoad.ts              # 5c — the plan-load state for the screens: usePlanMissing (lib/nostr/planLoad's
                                 # planMissing over the store) · usePlanPull (the last plan pull, useSyncExternalStore) ·
                                 # planNotLoadedWhy / usePlanNotLoadedWhy (the reason in plain words; null until a pull
@@ -647,8 +651,12 @@ src/
                                 # by clearViewerData) — the three device-local keys (§ Zustand Store Shape)
                                 # Batch 1 build 4: planInputs += fireInputs + setFireInputs (a plain merge; null resets) —
                                 # device-local, in no field list (store.md § FIRE's own inputs)
+                                # BL15 (Customization): ui += venueColors + setVenueColor + resetVenueColors (the prefs
+                                # channel, through emitPrefs; the setter runs THE rule); sync's three appliers take
+                                # venueColors through lib/venueColors incomingVenueColors — a plain object as it is, else
+                                # absent — and every other field as before (store.md § BL15)
     payloads.ts                 # Phase 1b — the two PURE snapshot builders, moved verbatim out of useStore:
-                                # buildSettingsPayload(s) (the 46-key settings payload, BL14's goal included — single source for the
+                                # buildSettingsPayload(s) (the 47-key settings payload, BL14's goal and BL15's venue colours included — single source for the
                                 # trusted viewer snapshot + the plan backup; 4e: no longer a relay payload of its own)
                                 # + buildViewerSnapshotPayload(s, tier)
                                 # (C-safe ratios / C-trusted full). `import type { StoreState } from './useStore'`
@@ -763,6 +771,25 @@ src/
                                 # the rule takes them as data, so it is tested without Vite. See almanac.md § FIRE face.
                                 # Tested in src/lib/__tests__/fireDeploy.test.ts (DEPLOY RULE) and
                                 # src/components/Almanac/__tests__/fireWiring.test.ts (DEPLOY GATE)
+    venueColors.ts              # BL15 (Customization) — the venue palette's one source: PURE, ZERO imports (the
+                                # planPolicy.ts precedent). Venue / VENUES · DEFAULT_VENUE_COLORS (= tokens.css's
+                                # --text-primary, --coinbase, --btc; a test reads the stylesheet) · VENUE_TOKEN
+                                # (--venue-strike / --venue-coinbase / --venue-cold) · VENUE_SURFACES (the rule's four:
+                                # --bg-app, --bg-card, --surface, --surface-2) · READABLE_MIN 3, VENUE_APART_MIN 20,
+                                # STATUS_APART_MIN 10 (CIEDE2000) · VENUE_SWATCHES (six) · normalizeHex / cleanVenueColors ·
+                                # incomingVenueColors (the three appliers' way in: a plain object as it is, anything else
+                                # absent) · checkVenueColor — THE rule (malformed, then unreadable, then too close to
+                                # another venue, then to a status colour; a venue's own default exempt from the last) ·
+                                # resolveVenueColors — the rule at the sink (every refused colour falls back at once, until
+                                # none is) · venuePaletteOf · hasCustomVenueColors · applyVenueColors — the sink (only a
+                                # cleaned '#rrggbb' the rule passes reaches :root) · refusalText. Math.pow / Math.cbrt here
+                                # (sRGB, Lab): no engine imports it, and its tests use tolerances and thresholds, never an
+                                # exact golden. See store.md § BL15 and .claude/rules/ui.md. Tested in
+                                # src/lib/__tests__/venueColors.test.ts (TOKENS, SHARMA, WCAG, DEFAULTS, EXEMPT, SWATCHES,
+                                # REFUSE, SWEEP, CLEAN, RESOLVE, SINK) and src/store/__tests__/venueColorsStore.test.ts
+                                # (the real store, prefs publish and receive: SET, REFUSED, RULE, DEFAULT, RESET, UNCHANGED,
+                                # HIDDEN, NEVER, ROUND TRIP, OLD WRITE, FRESH AFTER OLD, JUNK, NULL, LATER, LWW, BACKUP,
+                                # VIEWERS, NO BUMP)
     recoveryGrid.ts             # R2b-3 — PURE logic for WordGrid's input mode (12-box capture). Imports wordlist
                                 # (@scure/bip39/wordlists/english.js) + validateWords (nostr-tools/nip06) + RECOVERY_WORD_COUNT.
                                 # distributePaste(tokens,focusedIndex) → 'fill-from-start' (12 exact) | [] (0/1 token →
@@ -902,6 +929,9 @@ src/
                                 # journal); it offers "Open the app" after 15 s, and an effect records the app on screen
                                 # (markAppOnScreen), after which a later first pull never raises it. Display only — 5c
                                 # refuses the writes. The one whole-app branch by design (identity.md's gate-ternary row).
+                                # BL15 (Customization): `useVenueColors()` is its FIRST statement, on its own line — the
+                                # owner's venue colours on :root before paint, for every role and behind every gate
+                                # (venueColorsWiring.test.ts SINK).
       AppShell.module.css
       ViewToggle.tsx            # Shared Daily|Monthly segmented-control pill — JOURNAL's INNER control,
                                 # rendered inside BOTH DailyModeView and SimpleModeView (between header +
@@ -1211,8 +1241,10 @@ src/
                                 # liquidated, red. TO DO — planMonthActions: THE MOVE's legs "today" first, then EXACTLY
                                 # the Decision face's schedule rows for that month (planSchedule's kinds; one WORDS Record
                                 # per ActionKind, so a new kind can't reach a screen without words); muted "—" anchors for
-                                # no buy / no draw. VENUE — Strike white, Coinbase blue, cold storage orange (the faces'
-                                # own tokens; venueSegments / venuesOf / planRowDot — one venue fills the dot, two split
+                                # no buy / no draw. VENUE — the venue tokens (VENUE_COLOR: --venue-strike, --venue-coinbase,
+                                # --venue-cold — Strike white, Coinbase blue, cold storage orange by default; BL15's
+                                # Customization changes them; the Venue type is lib/venueColors', re-exported;
+                                # venueSegments / venuesOf / planRowDot — one venue fills the dot, two split
                                 # it; Run 2.1, F8: the split ends `border-box`, or the inline `background` shorthand starts
                                 # the gradient inside THIS MONTH's `.pmDot` 1px border and repeats it under the border — a
                                 # class rule can't fix it, the shorthand resets the origin). AFTER — planAfter: both loans
@@ -1617,7 +1649,7 @@ src/
     Settings/
       SettingsMain.tsx          # PHASE 1 NAVIGATION SHELL — an iOS-style section MENU (rows) that drills into
                                 # dedicated SUBPAGES, driven by a LOCAL `settingsPage` state (NOT the store/activeTab):
-                                # 'menu' | 'identity' | 'sharing' | 'strike' | 'plan' | 'cbloan' | 'display' | 'tabs' |
+                                # 'menu' | 'identity' | 'sharing' | 'strike' | 'plan' | 'cbloan' | 'customize' |
                                 # 'network' | 'about' | 'backup'.
                                 # Menu view = header (when !hideHeader → ← Back to app) + the section rows (SettingsRow
                                 # helper: glyph icon + title + subtitle + chevron). Subpage view = a .subHeader (← Settings
@@ -1645,9 +1677,14 @@ src/
                                 # of record's Run 4, D3: the payment-strategy pills and "Monthly payment" are gone — the
                                 # ACTION AT TRIGGER sub-toggle, the trigger, the target and the order hint show whenever
                                 # a loan is switched on);
-                                # display = Simple Mode toggle + mining-in-log (the plan-bar toggles left with the plan
-                                # of record's Run 2 — the card has no Strike or Coinbase bar; showPlan*Bar stay in the
-                                # store, inert); tabs = TAB VISIBILITY & ORDER + DnD; network = RELAY LIST mgmt (P1:
+                                # customize (BL15 — "Display" and "Tabs" made one page, Customization; the 🎨 row "Display,
+                                # venue colors, tabs") = Monthly Mode, then MONTHLY LOG (mining-in-log) and ALMANAC (live
+                                # block height) — the plan-bar toggles left with the plan of record's Run 2 (the card has
+                                # no Strike or Coinbase bar; showPlan*Bar stay in the store, inert) — then VENUE COLORS
+                                # (VenueColorsGroup) and TAB VISIBILITY & ORDER + DnD. Owner-only, as the whole menu is: a
+                                # viewer gets <ViewerSettings/> (YOU, DEVICE, CONNECTION, ABOUT) from the early return
+                                # before it — no Customization page, no Monthly Mode, no colours, no tabs (ONE PAGE pins
+                                # it); network = RELAY LIST mgmt (P1:
                                 # view/add/remove/restore the local nostrRelays via addRelay+normalizeRelayUrl; P3 (DONE):
                                 # each row's dot is a LIVE connection status (green/amber/red) via useRelayStatus. P2 (DONE):
                                 # the SYNC group's Import-from-Nostr
@@ -1710,6 +1747,20 @@ src/
                                 # test); N is coldMovesSinceAnchor's, so "since", never "logged since". Never "anchor",
                                 # "journal" or the Almanac's sweep. Tested in __tests__/coldStorageGroup.test.ts (the words,
                                 # and the group's wiring read off SettingsMain's source)
+      VenueColorsGroup.tsx      # BL15 (Customization) — Settings → Customization's VENUE COLORS group (owner-only, as the
+                                # whole menu is — a viewer gets ViewerSettings). A live preview of the three venue tokens,
+                                # then each venue's row: its default and the six swatches (lib/venueColors), the only
+                                # choices (C2 A — no colour input). A tap runs THE rule (checkVenueColor, against the
+                                # palette in force) before setVenueColor; a swatch the rule refuses shows dimmed, its reason
+                                # in its label, and a tap on it writes nothing and says why under its row (refusalText,
+                                # role="status"); screen readers hear names ("Strike: teal"), not hex; the current swatch
+                                # is aria-pressed. "Back to the default colors" → resetVenueColors ({}), disabled while
+                                # every venue wears its default. Styles from SettingsMain's module (a `styles` prop) plus its
+                                # own. Tested in __tests__/venueColorsWiring.test.ts (TOKENS ONLY, STAYS, SURFACES, ONE
+                                # PAGE, SINK, PICKER) and e2e/customization.spec.ts (CUSTOMIZE)
+      VenueColorsGroup.module.css # its styles — tokens only; the swatches' own colours are inline (they ARE the choices);
+                                # the preview strip on --surface-2; the current swatch's ring --bg-card then --text-primary;
+                                # ⚠ no transition (the VenueBar / RadialGauge iOS ghost-raster rule)
       RevealRecoveryKey.tsx     # Access Phase 2 → R2c-1 — lost-my-backup escape hatch, VIEW-ONLY (+ .module.css).
                                 # Rendered ONLY in the identity subpage for a 'local' signer (leaving the page unmounts →
                                 # discards the material). Tap → PRF Face ID / PIN field → **unwrapRecoveryPayload** (EVERY

@@ -278,13 +278,13 @@
   background: var(--line-2);
   margin-bottom: 12px;
 }
-/* Venue palette shared with Viewer/VenueBar.module.css and OwnershipFace.module.css — same two
-   tokens, same reason. Change one, change all three. Was --btc/--green, which measured 1.11 and put
+/* Venue palette shared with Viewer/VenueBar.module.css and OwnershipFace.module.css — the venue tokens
+   (tokens.css; Settings → Customization changes them). Change one, change all three. Was --btc/--green, which measured 1.11 and put
    a level colour (--green is .verdictGood in this file) on a composition read. */
-.venueSegStrike { background: var(--text-primary); }
-.venueSegCb { background: var(--coinbase); }
+.venueSegStrike { background: var(--venue-strike); }
+.venueSegCb { background: var(--venue-coinbase); }
 /* Cold storage is the ONLY unpledged venue, so it reads as the "safe" colour rather than a lender's. */
-.venueSegCold { background: var(--btc); }
+.venueSegCold { background: var(--venue-cold); }
 
 .venueRow {
   display: flex;
@@ -313,9 +313,9 @@
   flex: none;
   align-self: center;
 }
-.venueDotStrike { background: var(--text-primary); }
-.venueDotCb { background: var(--coinbase); }
-.venueDotCold { background: var(--btc); }
+.venueDotStrike { background: var(--venue-strike); }
+.venueDotCb { background: var(--venue-coinbase); }
+.venueDotCold { background: var(--venue-cold); }
 .venueDotNone { background: transparent; }
 
 .venueName {
@@ -357,8 +357,10 @@
 }
 
 /* ── Chart tooltip — the app surface, not recharts' default white ────────────────────────────── */
+/* BL15 — --surface-2, one of the venue colours' surfaces (lib/venueColors VENUE_SURFACES): its rows wear the venue
+   colours, and Coinbase's blue reads 2.7:1 on --surface-3. The Ownership face's own hover box already sits here. */
 .tooltip {
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px;
@@ -475,7 +477,7 @@
 
 /* Milestones — the cold column is a SUBSET of the BTC column beside it, so it carries the cold accent
    rather than the default text colour, which would read as a second independent total. */
-.msCold { color: var(--btc); }
+.msCold { color: var(--venue-cold); }
 
 /* Cold storage — the OUTCOME leads, the constraint follows. A big number the owner reads first, then the
    split by origin, then the knob. Inverting that order made the card read as a risk setting. */
@@ -489,7 +491,7 @@
 .coldBig {
   font-size: 24px;
   font-weight: 600;
-  color: var(--btc);
+  color: var(--venue-cold);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }

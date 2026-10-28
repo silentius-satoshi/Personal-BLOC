@@ -139,7 +139,7 @@ describe('characterization · persisted blob (partializeState)', () => {
 
 // ── Suite 2 — settings payload (buildSettingsPayload) ────────────────────────
 describe('characterization · settings payload (buildSettingsPayload)', () => {
-  it('is exactly 46 keys (+6, the plan of record; +1, BL14\'s goal)', () => {
+  it('is exactly 47 keys (+6, the plan of record; +1, BL14\'s goal; +1, BL15\'s venue colours)', () => {
     const p = buildSettingsPayload(useStore.getState());
     expect(Object.keys(p).sort()).toEqual([
       'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -154,7 +154,7 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
       'planGoalNetBtc',   // BL14 (Batch 1, build 2)
       'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',
       'policyPayDownAbove', 'policyStrikeStopAtSupportPct', 'simpleMode',
-      'strikeLiquidationLtvPct', 'tabOrder', 'viewers',
+      'strikeLiquidationLtvPct', 'tabOrder', 'venueColors', 'viewers',
     ]);
   });
 
@@ -219,7 +219,7 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
     delete settings.advisorStartDate;
     expect(trusted).toEqual({
       snapshotVersion: 2, privacyMode: 'trusted',
-      // settings = the 46 minus VIEWER_SNAPSHOT_STRIP's 5 keys (viewers/nextViewerIndex/nostrRelays/backupVerifiedAt/coldStorageBtcAsOf) → 41; 40 below, advisorStartDate normalized out.
+      // settings = the 47 minus VIEWER_SNAPSHOT_STRIP's 5 keys (viewers/nextViewerIndex/nostrRelays/backupVerifiedAt/coldStorageBtcAsOf) → 42; 40 below: advisorStartDate normalized out, and BL15's venueColors undefined until chosen (toEqual skips it).
       settings: {
         income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000, advisorActualBlocBalance: 0,
         advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,

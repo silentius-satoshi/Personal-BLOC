@@ -93,8 +93,10 @@ Leaving, Enter and Save go through ONE rule, `numberCommit`: nothing unless the 
 /* Daily Mode P4a (mode-toggle-preview.html) — layered surfaces + accents, additive: */
 --surface #0e1219 / --surface-2 #151b25 / --surface-3 #1c2431  --line / --line-2 (translucent white borders)
 --btc #f7931a (bitcoin accent, distinct from --orange)  --mono (mono font stack)
---coinbase #0052FF (Coinbase venue accent — the design system's only brand-colour token)  --maroon #8B3A3A (CycleClock low/floor marker)
+--coinbase #0052FF (the Coinbase venue's default, read through --venue-coinbase — the design system's only brand-colour token)  --maroon #8B3A3A (CycleClock low/floor marker)
 --maroon-lift #AE7575 (the Almanac 4-yr cycle path — --maroon lifted 30% toward white: 5.00:1 on --surface; raw --maroon is 2.47:1)
+/* BL15 (Customization) — the venue tokens every venue mark reads; Settings → Customization sets a chosen colour on :root: */
+--venue-strike var(--text-primary) / --venue-coinbase var(--coinbase) / --venue-cold var(--btc)
 /* Gesture & Motion System P0 — springs as duration+easing pairs (CSS transitions AND WAAPI): */
 --motion-fast 120ms / --motion-standard 200ms / --motion-settle 320ms
 --ease-standard / --ease-decelerate (cubic-beziers)  --ease-spring / --ease-spring-soft (linear() spring curves)
@@ -103,13 +105,21 @@ Leaving, Enter and Save go through ONE rule, `numberCommit`: nothing unless the 
 15 files but never defined (resolved transparent: 23 `background:` uses masked by the dark app bg, 2
 `color:` uses = invisible dark-on-bright button text in SafetyDashboard, both fixed by the one definition).
 
-**Venue palette — ONE convention across ALL THREE surfaces.** The venue bars use the same two tokens in
-`src/components/Viewer/VenueBar.module.css`, `src/components/Almanac/OwnershipFace.module.css`, and
-`src/components/Almanac/CyclingFace.module.css`: Strike = `--text-primary` (white), Coinbase = `--coinbase`
-(blue). **A change to one is a change to all three** — never migrate one bar onto a new pair without the
-other two. `--coinbase` is the design system's only brand-colour token; the bar for adding a second is the
-same argument made for it (a venue read, not a level colour — no lender rule defines a venue threshold, so
-a green/amber/red on a composition bar reads as a risk verdict it doesn't have).
+**Venue palette — ONE convention: the venue tokens (BL15).** Every mark that stands for a venue reads
+`--venue-strike`, `--venue-coinbase` or `--venue-cold` — the venue bars and dots in
+`src/components/Viewer/VenueBar.module.css`, `src/components/Almanac/OwnershipFace.module.css` and
+`src/components/Almanac/CyclingFace.module.css`, the faces' Strike, Coinbase and Cold lines with the limits drawn in their
+venue's colour, the plan's venue map (`planMonthView`'s `VENUE_COLOR` — THIS MONTH's and Daily's dots and venue words), the
+cold totals and the rows of the charts' shared hover box — never `--text-primary`, `--coinbase` or `--btc` directly (what
+keeps its own colour: `.claude/rules/ui.md`, the venue colours). **One change reaches all of them** — they read the same
+three tokens. They default to Strike white (`--text-primary`), Coinbase blue (`--coinbase`) and cold storage orange
+(`--btc`); Settings → Customization changes them (`lib/venueColors` — the swatches and THE rule: at least 3:1 on the four
+surfaces a venue mark sits on — `--bg-app`, `--bg-card`, `--surface`, `--surface-2`, the hover box moved there from
+`--surface-3`, where Coinbase's blue reads 2.7:1 — at least CIEDE2000 20 from another venue's colour and 10 from green,
+amber and red, a venue's own default exempt from that last test; it runs in the picker, the store's setter and at the
+sink). `--coinbase` is still the design system's only brand-colour token; the bar for adding a second is the same argument
+made for it (a venue read, not a level colour — no lender rule defines a venue threshold, so a green/amber/red on a
+composition bar reads as a risk verdict it doesn't have).
 
 **Chart colours — one colour per concept across faces** (Power Law polish D1, P5, P6):
 - **The concepts:** Support `--green`, Fair `--btc` and Resistance `--amber` (the faces' PATH_META), and History

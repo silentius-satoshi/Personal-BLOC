@@ -1026,7 +1026,7 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 |---|---|---|
 | `personal-bloc:settings:v1` | (was: the settings fields) | **RETIRED at 4e** — nothing publishes or reads it; stale copies stay on the relays, inert (the pull and the live sub ask only for records / the journal manifest / plan-events / prefs). It was 4c's one-way write-through BRIDGE (published from current state in `publishPlanEventsNow`'s success; read as authority only on an empty-log device) |
 | `personal-bloc:plan-events:v1` | **4c** `{ events: PlanEvent[] }` — the append-only plan log, NIP-44 self-encrypted — **the only plan channel since 4e** | Any plan-field setter via `emitPlanSets` (marks `planDirty`, 2s debounce → `publishPlanEventsNow` → compact → publish → viewer fan-out + revocation flush → parity); retried by `syncNow` and the iOS retry while dirty. Pull = union-by-id + fold-to-state, order-independent (NO watermark) |
-| `personal-bloc:prefs:v1` | **4c** `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` | The 4 prefs setters via `emitPrefs` (marks `prefsDirty`, 2s debounce → `publishPrefsNow`); tiny whole-object LWW; pull applies via `hydratePrefs` (PREFS_FIELDS — only the 4 prefs can land) |
+| `personal-bloc:prefs:v1` | **4c** `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` + **BL15** `venueColors` (absent until a device chooses colours — JSON drops the undefined) | The 5 prefs' setters (BL15's `setVenueColor` / `resetVenueColors` among them) via `emitPrefs` (marks `prefsDirty`, 2s debounce → `publishPrefsNow`); tiny whole-object LWW; pull applies via `hydratePrefs` (PREFS_FIELDS — only the 5 prefs can land; `venueColors` only as a plain object, and a key the object lacks is left as it is, so an older build's object never resets the colours) |
 | `personal-bloc:records:v1` | **5b: the bridge.** `{ entries, deletions, dayLog, dayLogDeletions }` — the whole journal while its JSON is ≤ 40,960 B; past it the stub `{ …empty, movedTo: 'personal-bloc:records:v2:manifest' }`, written once (a frozen copy would bring back a deleted entry once its tombstone aged out). Every pull still reads it (a pre-5b app writes only this); legacy forms readable | After the v2 publish, best-effort; before the session's journal pull, alone (recordsDirty stays) |
 | `personal-bloc:records:v2:<YYYY-MM>[.N]` | **5b — a page:** `{ v: 2, key, entries, dayLog }` — the month's items, ≤ 32,768 B plain (`.2`… past it; `undated` for a date that isn't `YYYY-MM` or `YYYY-MM-…`) | `publishJournal`: only the pages whose fingerprint differs from the relays' copy, one at a time |
 | `personal-bloc:records:v2:manifest` | **5b — the manifest:** `{ v: 2, pages: { key: { n, h } }, deletions, dayLogDeletions }` — every page the relays hold (+ carried listings) and the tombstones; the commit marker and the completeness oracle | After the pages, if it changed |
@@ -1351,16 +1351,17 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 46 Synced Settings Fields
+### All 47 Synced Settings Fields
 (`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the journal channels (5b: monthly pages + manifest, records:v1 the bridge) (NOT as plan fields); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
-**How they sync (since 4e):** the 42 PLAN_EVENT_FIELDS as plan events on `plan-events:v1`, the 4 prefs (`tabOrder`,
-`hiddenTabs`, `simpleMode`, `btcBuyingUnit`) whole-object on `prefs:v1`. `SETTINGS_FIELDS` / `buildSettingsPayload`
-still list all 46: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) and the plan backup read them.
+**How they sync (since 4e):** the 42 PLAN_EVENT_FIELDS as plan events on `plan-events:v1`, the 5 prefs (`tabOrder`,
+`hiddenTabs`, `simpleMode`, `btcBuyingUnit`, BL15's `venueColors`) whole-object on `prefs:v1`. `SETTINGS_FIELDS` / `buildSettingsPayload`
+still list all 47: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) and the plan backup read them.
 `settings:v1`, the channel the list was named for, is retired.
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBlocBalanceAsOf`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
+`venueColors` (BL15 — the venue colours, a pref; undefined = never chosen, never sent),
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
 `cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`, `cbEmergencyCeilingPct`,
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,

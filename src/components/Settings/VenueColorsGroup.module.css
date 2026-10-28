@@ -1,0 +1,87 @@
+/* BL15 (Customization) — the venue colours group on Settings → Customization. Tokens only; the swatches' own colours are
+   inline (they ARE the choices). */
+
+.desc {
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.5;
+}
+
+/* A live look at the three venue tokens — what the faces' venue bars draw. ⚠ No transition (the VenueBar / RadialGauge
+   iOS ghost-raster rule). */
+.preview {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.previewSeg {
+  flex: 1 1 0;
+  height: 100%;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+.rowHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.name {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+}
+.current {
+  box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--text-primary);
+}
+.refused {
+  opacity: 0.3;
+}
+
+.refusal {
+  font-size: 11px;
+  color: var(--amber);
+}
+
+.reset {
+  align-self: flex-start;
+  margin-top: 4px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.reset:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
