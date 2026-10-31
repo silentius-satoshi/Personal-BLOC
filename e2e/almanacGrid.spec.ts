@@ -1,13 +1,14 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { seedLoanAndGoto, openAlmanacSimple, openAlmanacFace, mouseDragX, STORE_VERSION } from './helpers';
 
 /**
- * The Almanac's grid (BL40, BL45 — the owner's pick B), on screen: the groups and their order, the gates, a tile opening
- * its face and "← Almanac" bringing the grid back with the face just left ringed, the edge swipe one level at a time, the
- * plan's link opening the Decision face with one tap or one swipe back to where it came from, full mode, and a narrow
- * phone. Every test that opens a plan face aborts live prices and stubs the price history; SWIPE and GATED's first page
- * stay on the grid and the Halving Clock, on the plain seed, as navigation.spec's tests do. Each assertion carries the
- * tag its planted bug turns red.
+ * The Almanac's grid (BL40, BL45 — the owner's pick B), on screen: the groups and their order, the gates, a tile
+ * opening its face and the header's "Almanac" bringing the grid back with the face just left ringed, nothing between
+ * the header and the page, the live-height badge at Bitcoin's heading, the edge swipe one level at a time, the plan's
+ * link opening the Decision face with one tap or one swipe back to where it came from, full mode, and a narrow phone.
+ * Every test that opens a plan face aborts live prices and stubs the price history; SWIPE and GATED's first page stay
+ * on the grid and the Halving Clock, on the plain seed, as navigation.spec's tests do. Each assertion carries the tag
+ * its planted bug turns red.
  */
 const HISTORY = JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] });
 async function hermetic(page: Page): Promise<void> {
@@ -26,18 +27,28 @@ const seed = (simple: boolean, extra = ''): string => `
 `;
 
 const grid = (page: Page) => page.getByRole('navigation', { name: 'Faces' });
-const tilesOf = (page: Page, group: string): Promise<string[]> => page.getByRole('region', { name: group }).getByRole('button').allTextContents();
+/** A group's or the grid's tiles — its face buttons, not the live-height badge at Bitcoin's heading (a button too). */
+const tilesIn = (scope: Locator): Locator => scope.locator('button[class*="tile"]');
+const tilesOf = (page: Page, group: string): Promise<string[]> => tilesIn(page.getByRole('region', { name: group })).allTextContents();
+/** The way to the grid from a face: the header's "Almanac" — in full mode, the eyebrow's. */
+const toGrid = (page: Page) => page.getByRole('button', { name: 'Almanac', exact: true });
+/** The live-height badge — named for what it switches. */
+const badge = (page: Page) => page.getByRole('button', { name: /^Live block height/ });
+/** An element's top, and the simple-mode header's bottom (the parent of its "← Back"). */
+const topOf = (l: Locator): Promise<number> => l.evaluate((x) => x.getBoundingClientRect().top);
+const headerBottom = (page: Page): Promise<number> =>
+  page.getByRole('button', { name: '← Back' }).evaluate((x) => x.parentElement!.getBoundingClientRect().bottom);
 const MOVE_TITLE = "The support policy's move this month";
 /** THIS MONTH's link to the Decision face (planMonthView's PLAN_PATHS_LINK — Playwright can't import src/). */
 const LINK = "Your plan on other price paths — the Almanac's Decision face →";
 const BITCOIN = ['Halving Clock', 'Cycle Clock', 'Power Law', 'Mining', 'Sats'];
 /** Each tile's box, in the grid's order: [left, top]. */
-const boxes = (page: Page): Promise<number[][]> => grid(page).getByRole('button').evaluateAll((bs) => bs.map((b) => {
+const boxes = (page: Page): Promise<number[][]> => tilesIn(grid(page)).evaluateAll((bs) => bs.map((b) => {
   const r = b.getBoundingClientRect();
   return [Math.round(r.left), Math.round(r.top)];
 }));
 /** The tiles ringed as the face just left. */
-const ringed = (page: Page): Promise<(string | null)[]> => grid(page).getByRole('button').evaluateAll((bs) =>
+const ringed = (page: Page): Promise<(string | null)[]> => tilesIn(grid(page)).evaluateAll((bs) =>
   bs.filter((b) => /tileLast/.test(b.className)).map((b) => b.textContent));
 
 test.describe('the Almanac grid (BL45)', () => {
@@ -54,13 +65,49 @@ test.describe('the Almanac grid (BL45)', () => {
     expect(new Set(b.slice(0, 3).map((x) => x[1])).size, 'GRID three to a row').toBe(1);
     expect([b[3][0], b[3][1] > b[0][1]], 'GRID the fourth starts a row').toEqual([b[0][0], true]);
     // ICONS — every tile draws its own: none blank, no two alike (the pills' ₿ and ⚖ were shared).
-    const svgs = await grid(page).getByRole('button').evaluateAll((bs) => bs.map((x) => x.querySelector('svg')?.innerHTML ?? ''));
+    const svgs = await tilesIn(grid(page)).evaluateAll((bs) => bs.map((x) => x.querySelector('svg')?.innerHTML ?? ''));
     expect(svgs.filter((s) => s === ''), 'ICONS none blank').toEqual([]);
     expect(new Set(svgs).size, 'ICONS no two alike').toBe(svgs.length);
     // Nothing mounts on the grid: no face, and no way back to itself.
     await expect(page.getByText('Next halving'), 'GRID no face').toHaveCount(0);
     await expect(page.getByText(MOVE_TITLE), 'GRID no face').toHaveCount(0);
-    await expect(page.getByRole('button', { name: '← Almanac' }), 'GRID no way back to itself').toHaveCount(0);
+    await expect(toGrid(page), 'GRID no way back to itself').toHaveCount(0);
+  });
+
+  test('⭐ TITLE — nothing between the header and the page; on any face the header\'s "Almanac" is the way to the grid; the live-height badge heads Bitcoin', async ({ page }) => {
+    await hermetic(page);
+    await seedLoanAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    await expect(grid(page)).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    // The grid: the title names the page and is no link; the first heading sits 16px under the header, where the
+    // eyebrow's "Almanac" was.
+    await expect(toGrid(page), 'TITLE no link on the grid').toHaveCount(0);
+    const head = await headerBottom(page);
+    const plan = await topOf(grid(page).getByRole('heading', { name: 'Your plan' }));
+    expect(plan - head, 'TOP the grid, 16px under the header').toBeCloseTo(16, 0);
+    // BADGE — once, at the right of Bitcoin's heading, on its line.
+    await expect(badge(page), 'BADGE once').toHaveCount(1);
+    const bitcoin = page.getByRole('region', { name: 'Bitcoin' });
+    await expect(bitcoin.getByRole('button', { name: /^Live block height/ }), 'BADGE heads Bitcoin').toHaveCount(1);
+    const [hb, bb, rb] = [await bitcoin.getByRole('heading').boundingBox(), await badge(page).boundingBox(), await bitcoin.boundingBox()];
+    expect(Math.abs((hb!.y + hb!.height / 2) - (bb!.y + bb!.height / 2)), 'BADGE on the heading\'s line').toBeLessThan(1);
+    expect(Math.abs((bb!.x + bb!.width) - (rb!.x + rb!.width)), 'BADGE at its right').toBeLessThanOrEqual(3);
+    // A face: its first line where the grid's was — no row between, the header the same height — and no badge; the
+    // header's "Almanac" is the link, to the grid, the face just left ringed, still in the Almanac.
+    await openAlmanacFace(page, 'Ownership');
+    const title = page.getByText('Ownership', { exact: true }).first();
+    await expect(title, 'TITLE the face').toBeVisible({ timeout: 8000 });
+    await page.evaluate(() => document.fonts.ready);
+    expect(await headerBottom(page), 'TOP the header keeps its height').toBe(head);
+    expect(Math.abs(await topOf(title) - plan), 'TOP the face starts where the grid does').toBeLessThanOrEqual(1);
+    await expect(page.getByRole('button', { name: '← Almanac' }), 'TOP no row of its own').toHaveCount(0);
+    await expect(badge(page), 'BADGE not on a face').toHaveCount(0);
+    await toGrid(page).click();
+    await expect(grid(page), 'TITLE the grid').toBeVisible();
+    await expect(page.getByTestId('edge-back-zone'), 'TITLE still in the Almanac').toBeVisible();
+    expect(await ringed(page), 'TITLE rings the face left').toEqual(['Ownership']);
+    await expect(toGrid(page), 'TITLE no link on the grid again').toHaveCount(0);
   });
 
   test('⭐ GATED — no loan: its three faces are absent; a logged month brings the Ledger in, between Cycling and Scenario', async ({ page, browser, baseURL }) => {
@@ -84,14 +131,14 @@ test.describe('the Almanac grid (BL45)', () => {
     }
   });
 
-  test('⭐ OPEN — a tile opens its face in place of the grid; ← Almanac brings the grid back, the face just left ringed', async ({ page }) => {
+  test('⭐ OPEN — a tile opens its face in place of the grid; the header\'s Almanac brings the grid back, the face just left ringed', async ({ page }) => {
     await hermetic(page);
     await seedLoanAndGoto(page);
     await page.getByLabel('Almanac').click();
     await openAlmanacFace(page, 'Decision');
     await expect(page.getByText(MOVE_TITLE).first(), 'OPEN the face').toBeVisible({ timeout: 15_000 });
     await expect(grid(page), 'OPEN the grid gives way').toHaveCount(0);
-    await page.getByRole('button', { name: '← Almanac' }).click();
+    await toGrid(page).click();
     await expect(grid(page), 'BACK the grid').toBeVisible();
     await expect(page.getByText(MOVE_TITLE), 'BACK the face unmounts').toHaveCount(0);
     expect(await ringed(page), 'RING the face just left').toEqual(['Decision']);
@@ -99,7 +146,7 @@ test.describe('the Almanac grid (BL45)', () => {
     expect(await border('Decision'), 'RING drawn — unlike its neighbour').not.toBe(await border('Strategy'));
     await openAlmanacFace(page, 'Halving Clock');
     await expect(page.getByText('Next halving').first(), 'OPEN another').toBeVisible();
-    await page.getByRole('button', { name: '← Almanac' }).click();
+    await toGrid(page).click();
     expect(await ringed(page), 'RING moves with the face left').toEqual(['Halving Clock']);
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });
@@ -113,12 +160,12 @@ test.describe('the Almanac grid (BL45)', () => {
     await expect(grid(page), 'SWIPE a face → the grid').toBeVisible();
     await expect(page.getByTestId('edge-back-zone'), 'SWIPE still in the Almanac').toBeVisible();
     await expect(page.getByLabel('Log an event'), 'SWIPE not out yet').toHaveCount(0);
-    expect(await ringed(page), 'SWIPE rings the face left, as ← Almanac does').toEqual(['Halving Clock']);
+    expect(await ringed(page), 'SWIPE rings the face left, as the header\'s Almanac does').toEqual(['Halving Clock']);
     await mouseDragX(page, 8, h, 234);
     await expect(page.getByLabel('Log an event'), 'SWIPE the grid → out').toBeVisible();
   });
 
-  test('⭐ LINK — the plan\'s link opens the Decision face; ← Back or one swipe returns to THIS MONTH; ← Almanac goes to the grid', async ({ page }) => {
+  test('⭐ LINK — the plan\'s link opens the Decision face; ← Back or one swipe returns to THIS MONTH; the header\'s Almanac goes to the grid', async ({ page }) => {
     await hermetic(page);
     await seedLoanAndGoto(page);
     await page.getByRole('tab', { name: 'Monthly' }).click();
@@ -135,10 +182,10 @@ test.describe('the Almanac grid (BL45)', () => {
     await expect(page.getByText(MOVE_TITLE).first()).toBeVisible({ timeout: 15_000 });
     await mouseDragX(page, 8, h, 234);
     await expect(link, 'LINK one swipe').toBeVisible();
-    // ← Almanac goes to the grid; from there the swipe leaves.
+    // The header's Almanac goes to the grid; from there the swipe leaves.
     await link.click();
-    await page.getByRole('button', { name: '← Almanac' }).click();
-    await expect(grid(page), 'LINK ← Almanac, the grid').toBeVisible();
+    await toGrid(page).click();
+    await expect(grid(page), 'LINK the header\'s Almanac, the grid').toBeVisible();
     await mouseDragX(page, 8, h, 234);
     await expect(link, 'LINK the grid, then out').toBeVisible();
   });
@@ -155,7 +202,7 @@ test.describe('the Almanac grid (BL45)', () => {
     expect(await ringed(page), 'INSIDE the face left').toEqual(['Cycling']);
   });
 
-  test('⭐ FULL — full mode on a computer: Tools → Almanac opens the grid, five to a row; a tile opens its face; ← Almanac returns', async ({ browser, baseURL }) => {
+  test('⭐ FULL — full mode on a computer: Tools → Almanac opens the grid, five to a row; a tile opens its face, right under the eyebrow; the eyebrow\'s Almanac returns', async ({ browser, baseURL }) => {
     const ctx = await browser.newContext({ baseURL, viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
     try {
       const page = await ctx.newPage();
@@ -170,9 +217,17 @@ test.describe('the Almanac grid (BL45)', () => {
       const b = await boxes(page);
       expect(new Set(b.slice(0, 5).map((x) => x[1])).size, 'FULL five to a row').toBe(1);
       expect(b[5][1], 'FULL the sixth starts a row').toBeGreaterThan(b[0][1]);
+      // No header here: the eyebrow names the hub — no link on the grid — and the badge heads Bitcoin, as in simple
+      // mode.
+      await expect(toGrid(page), 'FULL no link on the grid').toHaveCount(0);
+      await expect(page.getByRole('region', { name: 'Bitcoin' }).getByRole('button', { name: /^Live block height/ }), 'FULL the badge').toHaveCount(1);
+      const plan = await topOf(grid(page).getByRole('heading', { name: 'Your plan' }));
       await openAlmanacFace(page, 'Ownership');
       await expect(page.getByText('Held · owed · yours — never sell.', { exact: true }), 'FULL the face').toBeVisible({ timeout: 8000 });
-      await page.getByRole('button', { name: '← Almanac' }).click();
+      await page.evaluate(() => document.fonts.ready);
+      expect(Math.abs(await topOf(page.getByText('Ownership', { exact: true }).first()) - plan), 'FULL the face starts where the grid does').toBeLessThanOrEqual(1);
+      await expect(page.getByRole('button', { name: '← Almanac' }), 'FULL no row of its own').toHaveCount(0);
+      await toGrid(page).click();
       await expect(grid(page), 'FULL back to the grid').toBeVisible();
       expect(await ringed(page), 'FULL the ring').toEqual(['Ownership']);
     } finally {
@@ -194,7 +249,7 @@ test.describe('the Almanac grid (BL45)', () => {
         await page.evaluate(() => document.fonts.ready);
         const b = await boxes(page);
         expect(new Set(b.slice(0, 7).map((x) => x[0])).size, `NARROW ${w}: ${cols} to a row`).toBe(cols);
-        const bad = await grid(page).getByRole('button').evaluateAll((bs) => bs.flatMap((x) => {
+        const bad = await tilesIn(grid(page)).evaluateAll((bs) => bs.flatMap((x) => {
           const name = x.querySelector('span')!;
           const lines = Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight));
           const words = (name.textContent ?? '').split(' ').length;

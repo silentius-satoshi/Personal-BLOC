@@ -188,6 +188,19 @@
   color: var(--text-primary);
 }
 
+/* Branch I's title on an Almanac face: the link to the grid — the title's type in the link colour of "← Back". */
+.simpleModeTitleLink {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: inherit;   /* the span's, so the header keeps its height when the title turns link */
+  padding: 0;
+  color: var(--orange);
+}
+
 .toolsWrapper {
   position: relative;
   flex-shrink: 0;

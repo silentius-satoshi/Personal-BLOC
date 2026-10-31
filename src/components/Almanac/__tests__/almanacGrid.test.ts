@@ -93,8 +93,9 @@ describe('⭐ the hub', () => {
   it('⭐ GRID — the hub opens on the grid; the link\'s face opens directly, from outside', () => {
     expect(HUB, 'GRID the default').toMatch(/const \[face, setFace\] = useState<Face \| null>\(initialFace \?\? null\);/);
     expect(HUB, 'GRID the link, from outside').toMatch(/const \[fromOutside, setFromOutside\] = useState\(initialFace !== undefined\);/);
-    expect(HUB, 'GRID no face mounts on the grid').toMatch(/\{face !== null && renderFace\(face\)\}/);
-    expect(HUB, 'GRID the grid or the way back').toMatch(/\{face === null \? \(\s*<nav className=\{styles\.grid\} aria-label="Faces">/);
+    expect(HUB, 'GRID no face mounts on the grid').toMatch(/\) : \(\s*renderFace\(face\)\s*\)\}/);
+    expect(HUB, 'GRID the grid or a face').toMatch(
+      /\{face === null \? \(\s*<div className=\{styles\.container\}>\s*(?:\{\}\s*)?<nav className=\{styles\.grid\} aria-label="Faces">/);
   });
 
   it('⭐ ONE RULE — the hub reads its three gates once and asks almanacGrid; no gate of its own', () => {
@@ -112,10 +113,28 @@ describe('⭐ the hub', () => {
       'const toGrid = useCallback(() => { setLastFace(face); setFace(null); setFromOutside(false); }, [face]);');
     expect(HUB, 'BACK the one level').toMatch(
       /useEffect\(\(\) => \{\s*registerBack\?\.\(face !== null && !fromOutside \? toGrid : null\);\s*return \(\) => registerBack\?\.\(null\);\s*\}, \[face, fromOutside, toGrid, registerBack\]\);/);
-    expect(HUB, 'BACK the visible way').toMatch(/<button type="button" className=\{styles\.backBtn\} onClick=\{toGrid\}>← Almanac<\/button>/);
     expect(HUB, 'BACK a face\'s own links are inside').toContain("if (f === 'decision')  return <DecisionFace onNavigate={openFace} />;");
     expect(HUB, 'BACK the cycle clock\'s link is inside').toContain('onSwitchToHalving={() => openFace(\'halving\')}');
     expect(HUB, 'BACK the ring').toMatch(/className=\{`\$\{styles\.tile\} \$\{t\.key === lastFace \? styles\.tileLast : ''\}`\}/);
+  });
+
+  it('⭐ TITLE — the way to the grid is the header\'s "Almanac" on any face (the link\'s too); full mode\'s eyebrow without a header', () => {
+    expect(HUB, 'TITLE the header\'s link, from any face, none on the grid').toMatch(
+      /useEffect\(\(\) => \{\s*registerTitleLink\?\.\(face !== null \? toGrid : null\);\s*return \(\) => registerTitleLink\?\.\(null\);\s*\}, \[face, toGrid, registerTitleLink\]\);/);
+    expect(HUB, 'TITLE the eyebrow only where no header names the hub').toMatch(/\{!registerTitleLink && \(\s*<div className=\{styles\.eyebrowBar\}>/);
+    expect(HUB, 'TITLE full mode\'s link').toContain(
+      '<button type="button" className={`${styles.eyebrowLabel} ${styles.eyebrowLink}`} onClick={toGrid}>Almanac</button>');
+    expect(HUB, 'TITLE no row of its own on a face').not.toMatch(/← Almanac|backBtn|faceBar/);
+    expect(SHELL, 'TITLE the header\'s state').toContain('const [almanacTitleLink, setAlmanacTitleLink] = useState<(() => void) | null>(null);');
+    expect(SHELL, 'TITLE the setter, stable').toContain(
+      'const registerAlmanacTitleLink = useCallback((fn: (() => void) | null) => setAlmanacTitleLink(() => fn), []);');
+    expect(SHELL, 'TITLE the link on a face, the name on the grid; ← Back still leaves').toMatch(
+      /<button className=\{styles\.simpleModeBackBtn\} onClick=\{\(\) => setActiveTab\(previousTab\)\}>← Back<\/button>\s*\{almanacTitleLink\s*\? <button type="button" className=\{styles\.simpleModeTitleLink\} onClick=\{almanacTitleLink\}>Almanac<\/button>\s*: <span className=\{styles\.simpleModeSettingsTitle\}>Almanac<\/span>\}/);
+  });
+
+  it('⭐ BADGE — the live-height badge heads the Bitcoin group, once', () => {
+    expect(HUB.match(/<FreshnessBadge\b/g), 'BADGE once').toHaveLength(1);
+    expect(HUB, 'BADGE heads Bitcoin').toMatch(/\{g\.group === 'bitcoin' && \(\s*<FreshnessBadge\b/);
   });
 
   it('⭐ SHELL — Branch I chains the edge swipe through the grid; full mode has no swipe to chain', () => {
@@ -123,9 +142,8 @@ describe('⭐ the hub', () => {
       'const almanacEdgeBack = () => { const b = almanacBackRef.current; if (b) b(); else setActiveTab(previousTab); };');
     expect(SHELL, 'SHELL the gesture').toContain(
       '<EdgeBackGesture onBack={almanacEdgeBack} renderUnder={() => (almanacBackRef.current ? null : renderSimpleUnder())}>');
-    expect(SHELL, 'SHELL the report').toContain('<AlmanacView initialFace={almanacFace} registerBack={(fn) => { almanacBackRef.current = fn; }} />');
-    expect(SHELL, 'SHELL the visible ← Back still leaves').toMatch(
-      /<button className=\{styles\.simpleModeBackBtn\} onClick=\{\(\) => setActiveTab\(previousTab\)\}>← Back<\/button>\s*<span className=\{styles\.simpleModeSettingsTitle\}>Almanac<\/span>/);
+    expect(SHELL, 'SHELL the report').toMatch(
+      /<AlmanacView\s+initialFace=\{almanacFace\}\s+registerBack=\{\(fn\) => \{ almanacBackRef\.current = fn; \}\}\s+registerTitleLink=\{registerAlmanacTitleLink\}\s*\/>/);
     expect(SHELL, 'SHELL full mode').toContain("activeTab === 'almanac'    ? <AlmanacView initialFace={almanacFace} /> :");
   });
 

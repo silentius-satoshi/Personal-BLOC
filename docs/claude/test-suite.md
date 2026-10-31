@@ -2283,6 +2283,28 @@ goes red.)
     — spec §4): the hub's pins red at their tags — GRID, ONE RULE, BACK and SHELL, DEPLOY GATE, I21's branch, PATHS — while
     the rule's own tests pass on the module; the e2e red at all eight: GRID, GATED, OPEN, SWIPE, LINK, INSIDE, FULL and
     NARROW.
+- **The Almanac's header (2026-10-31) — nothing between the header and the page; on a face the header's "Almanac" is
+  the way to the grid** (spec `pbloc-spec-almanac-header-v1` v1.0, on the grid's branch; Standard, the reviewer's
+  prototype applied byte for byte; the suite 3,255 → 3,257 (+6 skipped), 224 files; e2e 138 → 139 (+2 skipped). 13
+  planted bugs — 9 through the unit tests, 13 through the e2e — each an exact-once edit, red at its tagged tests, the
+  files restored and md5-checked: `Claude outputs/almanac-header/mutations-header.json`):
+  - `almanacGrid.test.ts` 10 → 12: ⭐ TITLE (new — the hub hands the header the way to the grid on any face, the plan's
+    link's too, and null on the grid; the eyebrow only where no header names the hub; full mode's link; no row of its
+    own on a face; the shell's state, its stable setter and the title's two forms) · BADGE (new — once, heading
+    Bitcoin). Moved: GRID (`renderFace` in the grid's place), BACK (the "← Almanac" button gone), SHELL (the report
+    carries `registerTitleLink`).
+  - `e2e/almanacGrid.spec.ts` 8 → 9: ⭐ TITLE (new — the grid's first heading 16px under the header; the badge once, at
+    the right of Bitcoin's heading, on its line; a face's first line where the grid's was, the header's height kept; no
+    "← Almanac", no badge on a face; the header's "Almanac" to the grid, the ring, still in the Almanac; no link on the
+    grid). Moved: OPEN and LINK (the header's "Almanac" for "← Almanac"), FULL (the eyebrow's link, none on the grid;
+    the badge; a face where the grid's first heading was), GRID and NARROW (the tiles read as `button[class*="tile"]` —
+    the badge is a button inside the grid's `nav`).
+  - `e2e/helpers.ts` — `openAlmanacFace` goes back by the button named "Almanac"; `navigation.spec.ts` — the gated-face
+    test likewise, and two comments. Nothing else moved.
+  - Red first (the reviewer's, on the branch's app code at `7366719` with the new and changed tests): the unit test 4 of
+    12 red — GRID, TITLE, BADGE and SHELL; the e2e red at TITLE, OPEN, LINK and FULL — GRID, GATED, SWIPE, INSIDE and
+    NARROW pass, reading the old grid the same way — and at `navigation.spec.ts`'s three tests that go back from a face
+    through `openAlmanacFace`.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

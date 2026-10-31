@@ -117,8 +117,8 @@ network answer is HELD or aborted:
 Its checks:
 - STEADY (Z22): the loaded `powerlaw-chart-box`'s page top (`rect.top + scrollY`) equals the loading box's. The first
   reading waits for `document.fonts.ready`: IBM Plex Mono swaps in (`font-display: swap`) and the sub-nav pills above grew
-  33 → 34px with it (`line-height: normal`; the face's "← Almanac" sits there since BL45), so a reading taken before the
-  swap was 1px off one taken after — a flake, measured, never the layout;
+  33 → 34px with it (`line-height: normal`; the face's "← Almanac" sat there from BL45, and nothing has since
+  2026-10-31), so a reading taken before the swap was 1px off one taken after — a flake, measured, never the layout;
 - TOP (R1): `window.scrollY` plus the `scrollTop` of every ancestor of the box is 0. The app scrolls `<body>`, not the
   window, so `window.scrollY` alone stays 0 while the page scrolls. A probe — a 300px spacer above the chart card and the
   body scrolled 300 at open — is red at TOP (300), where IN VIEW alone would pass;

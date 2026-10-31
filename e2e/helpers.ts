@@ -172,12 +172,12 @@ export async function openAlmanacSimple(page: Page): Promise<void> {
 
 /**
  * The Almanac's grid (BL45): open a face by its tile — the face's name, exactly ('Decision', 'Power Law', 'FIRE'). From a
- * face, it goes back to the grid first by "← Almanac", as a person would. Call it once the Almanac is open (the nav's
- * button, full mode's Tools menu, a tab, or the plan's link).
+ * face, it goes back to the grid first by the header's "Almanac" (full mode: the eyebrow's), as a person would. Call it
+ * once the Almanac is open (the nav's button, full mode's Tools menu, a tab, or the plan's link).
  */
 export async function openAlmanacFace(page: Page, name: string, opts: { tap?: boolean } = {}): Promise<void> {
   const grid = page.getByRole('navigation', { name: 'Faces' });
-  const back = page.getByRole('button', { name: '← Almanac' });
+  const back = page.getByRole('button', { name: 'Almanac', exact: true });
   await expect(grid.or(back), 'the Almanac is open').toBeVisible({ timeout: 15_000 });
   if (await back.isVisible()) await (opts.tap ? back.tap() : back.click());
   const tile = grid.getByRole('button', { name, exact: true });

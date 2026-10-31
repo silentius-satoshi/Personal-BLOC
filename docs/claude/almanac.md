@@ -131,7 +131,8 @@ dock stops 0.5–11.5 px from each edge (20.5–31.5 at `d7145dd`).
 
 `AlmanacView` widened from 2 live faces (Halving/Cycle) + 2 disabled "soon" placeholders to a full **6-face**
 hub: **Halving / Cycle / Mining / Power Law / Sats / defense**. Locked design — **EMBED with per-face
-width**: the Almanac is only the roof (eyebrow + sub-nav; the grid since BL45); each tool keeps its own already-shipped container
+width**: the Almanac is only the roof (eyebrow + sub-nav; the grid since BL45; the eyebrow full mode's alone since
+2026-10-31 — § The header); each tool keeps its own already-shipped container
 byte-identical. `face` widened to `'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense'` (still
 local `useState`, default `'halving'`, nothing persisted/synced — unchanged §14.3).
 
@@ -160,7 +161,8 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
   - Mobile is unaffected either way: every viewport under the relevant max-width hits `width:100%`, whichever value
     is set.
 - **Render restructure:** the root wraps in a full-width `.shell` (`width:100%`, no max-width/padding); the
-  eyebrow+sub-nav (since BL45 the grid, or a face's "← Almanac") still sit inside `.container`; Halving/Cycle are re-wrapped in a SECOND `.container`
+  eyebrow+sub-nav (since BL45 the grid, or a face's "← Almanac"; since 2026-10-31 the grid alone — § The header) still
+  sit inside `.container`; Halving/Cycle are re-wrapped in a SECOND `.container`
   (unchanged content/props — `useChainTip()` stays the single per-mount data source for those two faces
   only); Mining/Sats (and Power Law, until its face redesign) render each tool's own main content **stacked
   with its input panel** in a new `.faceStack` (mobile: `display:flex; flex-direction:column; gap:16px`, no
@@ -2605,7 +2607,8 @@ badge + an off-mode `~`/`est.` precision marker differ.
   `...rest`, ABSENT from `buildSettingsPayload`/`SETTINGS_FIELDS`. Never synced → the owner's and a viewer's
   choices are independent (**viewer parity for free**). No `migrateState` entry (the custom `merge` fills the
   default, `simpleView` precedent).
-- **`FreshnessBadge.tsx`** (NEW, eyebrow row, in `AlmanacView`) — a plain `<button>` (NOT the auto-disabled
+- **`FreshnessBadge.tsx`** (NEW, eyebrow row, in `AlmanacView`; since 2026-10-31 at the right of the grid's Bitcoin
+  heading — § The header) — a plain `<button>` (NOT the auto-disabled
   `Toggle`, so a viewer can flip it). OFF: muted "date-only · live off"; LIVE: green "live · {ago} ·
   {source}" (amber when stale). Tap = the toggle: enabled→off (silent); else consented→on (silent); else →
   open the consent sheet. a11y `aria-label`. The badge is shared by both faces (single fetch in AlmanacView).
@@ -2630,7 +2633,8 @@ badge + an off-mode `~`/`est.` precision marker differ.
 
 The hub opens on its faces as a grid — the owner's ask, "a grid of apps … similar to clicking the apps button on macos"
 (BL40), and his pick of three mocks (BL45). Screens only (Standard): no store, sync, engine or format change.
-- **The page.** The eyebrow — the live-height badge — as before; under it, in place of the sub-nav pills, the faces as
+- **The page.** The eyebrow — the live-height badge — as before (since 2026-10-31 the eyebrow is full mode's alone and
+  the badge heads the Bitcoin group — § The header); under it, in place of the sub-nav pills, the faces as
   tiles in two groups: **Your plan** (Decision, Strategy, Ownership, Cycling, Ledger, Scenario, Emergency, FIRE), then
   **Bitcoin** (Halving Clock, Cycle Clock, Power Law, Mining, Sats) — each a 24px line icon over its name. Three to a row
   on a phone; five where the grid is 520px wide or more (a computer, a tablet); two where three wouldn't fit the longest
@@ -2649,12 +2653,13 @@ The hub opens on its faces as a grid — the owner's ask, "a grid of apps … si
   Almanac in one tap, from a face too. The edge swipe goes one level, as in Settings: `registerBack` reports the way to
   the grid while a face opened inside the hub is open — AppShell's `almanacBackRef` / `almanacEdgeBack` (Branch I), with
   `renderUnder` null then (plain app-bg one level deep) — so a face → the grid → out. Full mode has no swipe:
-  "← Almanac" is its way back.
+  "← Almanac" is its way back. (Since 2026-10-31 the way back is the header's "Almanac" — full mode's eyebrow's — and
+  the "← Almanac" row is gone: § The header.)
 - **The plan's link.** `initialFace` — the "other price paths" link on THIS MONTH, the Advisor tab and the CB Loan tab —
   still opens the Decision face directly, "from outside" (`fromOutside`): its swipe, like "← Back", returns to where the
-  owner came from, as before the grid. Any move inside the hub — a tile, "← Almanac", the Decision face's links to
-  Cycling, Ownership or Strategy and its crash row's "→ Emergency Console", the Cycle Clock's to the Halving Clock
-  (`openFace`) — ends that; the swipe then goes to the grid.
+  owner came from, as before the grid. Any move inside the hub — a tile, "← Almanac" (the header's "Almanac" since
+  2026-10-31), the Decision face's links to Cycling, Ownership or Strategy and its crash row's "→ Emergency Console",
+  the Cycle Clock's to the Halving Clock (`openFace`) — ends that; the swipe then goes to the grid.
 - **Gates.** An open face whose gate closes — the loan switched off, the log emptied, FIRE off this deploy (an
   `initialFace` of 'fire' there) — goes back to the grid, where its tile has gone too: one effect on `faceShown`, in place
   of the five per-face effects that fell back to the Halving Clock.
@@ -2672,6 +2677,37 @@ The hub opens on its faces as a grid — the owner's ask, "a grid of apps … si
   NARROW); every face spec opens its face through `openAlmanacFace` (`e2e/helpers.ts`). § Test Suite → "The Almanac
   grid".
 
+### The header (2026-10-31 — the owner's ask, on the grid's branch; store unchanged, NO bump)
+
+Nothing sits between the header and the page. After the grid's preview look the owner saw "a gap between the header and
+the content", on a phone and on a computer, and three "Almanac"s on a face — the header's title, the eyebrow and
+"← Almanac" — and asked for the bottom two to go and the header's to take him to the grid. Screens only (Standard):
+spec `pbloc-spec-almanac-header-v1`.
+- **Simple mode (Branch I).** No eyebrow and no "← Almanac" row: the page starts 16px under the header — a face's first
+  line where the eyebrow's "Almanac" was, and the grid's first heading on the same line (`.shellUnderHeader`, 12px, over
+  the 4px a face's `.head` and the grid's `.groupHead` each keep). On a face the header's "Almanac" is the link to the
+  grid, in the link colour of "← Back"; on the grid it is the plain white title. The hub hands the header the way to the
+  grid on any face, the plan's link's too, and null on the grid (`registerTitleLink` → AppShell's `almanacTitleLink`
+  state; the setter, `registerAlmanacTitleLink`, stable by `useCallback`, so the hub's effect runs on a move only).
+  `toGrid` rings the face left, as "← Almanac" did. The link keeps the title's line height (`line-height: inherit`), so
+  the header keeps its height when the title turns link — without it the header shrank 4px on a face (measured).
+  "← Back" still leaves in one tap, and the edge swipe is as before: a face → the grid → out (`registerBack`); a face
+  the plan's link opened swipes straight out.
+- **Full mode** has no header, so the hub keeps its eyebrow — "ALMANAC" and its line, in a bar of its own at the grid's
+  600px (`.eyebrowBar`), without the container's 32px foot. On a face its "Almanac" is the link (`.eyebrowLink`, the
+  same orange), the row's height unchanged. The bar keeps its margins (`display: flow-root`), so a face's first line
+  sits where the grid's first heading does; without it a face sat 4px higher (measured). No "← Almanac" row.
+- **The live-height badge** (`FreshnessBadge`) moved from the eyebrow to the right of the grid's Bitcoin heading
+  (`.groupHead`, on the heading's line), in both modes: the block height is bitcoin's — the Halving and Cycle Clocks
+  read it, and say "live" or "estimate" themselves — so its switch heads that group, on the grid alone. It sits inside
+  the grid's `nav`, so the e2e reads the tiles as `button[class*="tile"]`, never every button.
+- **The groups' spacing.** Each heading sits in `.groupHead` (`margin: 4px 2px 10px`; `.groupLabel`'s own margin 0), and
+  `.group + .group` went 24 → 32px, so the gap between the groups stays 36px.
+- Gone: `.faceBar`, `.backBtn`, and the eyebrow inside `.container`.
+- Tests: `almanacGrid.test.ts` TITLE and BADGE (new) and GRID, BACK and SHELL (moved); `e2e/almanacGrid.spec.ts` TITLE
+  (new: nothing between, the header's height, the link and its ring, the badge's place) and OPEN, LINK, FULL, NARROW
+  and the tile readers (moved); `openAlmanacFace` goes back by the title's link. § Test Suite → "The Almanac's header".
+
 ### Almanac face navigation — TAP-ONLY (the face swipe pager was REMOVED)
 
 Face switching happens **only** by tapping — a tile on the grid since BL45 (a sub-nav pill before), or a face's own link
@@ -2683,7 +2719,8 @@ data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still
   cycling and strategy iff `hasCbLoan`, FIRE iff `fireFaceOnDeploy` — the owner's deploy and dev) are simply absent
   from the grid. Thirteen faces in all; the FIRE face (batch 1 build 4), last of Your plan's, is off the public deploy
   and the sandbox until its borrow lane ships (build 4b — BL42). `idx`/`onPage`/`canPage`/`renderPane`/
-  `shouldStart` are deleted; the host renders the open face, `{face !== null && renderFace(face)}`, directly.
+  `shouldStart` are deleted; the host renders the open face, `{face !== null && renderFace(face)}`, directly (since
+  2026-10-31 in the grid's place: `face === null ? <the grid> : renderFace(face)`).
 - **ONE face mounts at a time.** The P3.1 real-neighbour panes are gone, so a heavy face (Power Law/Mining
   hooks) mounts exactly when its tile is tapped — never on a peek, and none on the grid. `useChainTip` still lives at the hub and is
   never remounted by a face change (§14.5 holds by construction, as before).

@@ -71,7 +71,7 @@ test.describe('Navigation gestures (P3)', () => {
     await openAlmanacFace(page, 'Halving Clock');
     await expect(page.getByText('Next halving')).toBeVisible();
     await expect(page.getByText('Open Halving Clock')).toHaveCount(0);
-    await openAlmanacFace(page, 'Cycle Clock');                        // ← Almanac, then the tile
+    await openAlmanacFace(page, 'Cycle Clock');                        // the header's Almanac, then the tile
     // 'Open Halving Clock' is CycleClock's onSwitchToHalving cross-link (CycleClock.tsx) — owned ONLY by the
     // Cycle face, so it proves the face actually swapped rather than merely rendering alongside.
     await expect(page.getByText('Open Halving Clock')).toHaveCount(1);  // exactly ONE face mounts — no neighbours
@@ -119,7 +119,7 @@ test.describe('Navigation gestures (P3)', () => {
       await openAlmanacFace(page, n);
       await expect(page.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
     }
-    await page.getByRole('button', { name: '← Almanac' }).click();
+    await page.getByRole('button', { name: 'Almanac', exact: true }).click();
     await expect(grid.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
   });
 
@@ -150,9 +150,9 @@ test.describe('Navigation gestures (P3)', () => {
     // either way; at 390 "Price and the bands" fits on one line beside the toolbar (the 360px test below pins the row).
     const loading = page.getByText('Loading price history…');
     await expect(loading).toBeVisible();
-    // The web font first: IBM Plex Mono swaps in (font-display: swap) and the bar above the face can move with it — the
-    // sub-nav pills grew 33 → 34px (line-height: normal); the face's "← Almanac" sits there since BL45 — so a reading
-    // taken before the swap can be off one taken after: a flake, not the layout.
+    // The web font first: IBM Plex Mono swaps in (font-display: swap) and a line set in it can move with it — the
+    // sub-nav pills above the face grew 33 → 34px (line-height: normal; since 2026-10-31 nothing sits between the
+    // header and the face) — so a reading taken before the swap can be off one taken after: a flake, not the layout.
     await page.evaluate(() => document.fonts.ready);
     const before = await loading.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
     release();

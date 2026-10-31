@@ -1,10 +1,10 @@
 import styles from './FreshnessBadge.module.css';
 
 /**
- * Almanac P3 — the freshness badge in the eyebrow row. It is ALSO the toggle affordance (a plain
- * <button>, NOT the auto-disabled Toggle — so a viewer can flip live block height on their own device →
- * viewer parity). OFF: muted "date-only · live off". LIVE: green "live · {ago} · {source}" (amber when
- * stale). The host owns the tap semantics (consent on first enable); this is presentation only.
+ * Almanac P3 — the freshness badge, at the right of the grid's Bitcoin heading (the eyebrow row until 2026-10-31). It
+ * is ALSO the toggle affordance (a plain <button>, NOT the auto-disabled Toggle — so a viewer can flip live block
+ * height on their own device → viewer parity). OFF: muted "date-only · live off". LIVE: green "live · {ago} · {source}"
+ * (amber when stale). The host owns the tap semantics (consent on first enable); this is presentation only.
  */
 export interface FreshnessBadgeProps {
   enabled: boolean;

@@ -909,7 +909,11 @@ src/
                                 # unchanged (a separate app-exit control). Branch I (Almanac) chains the same way since
                                 # BL45: almanacBackRef receives AlmanacView's registerBack (a face opened inside the hub →
                                 # the grid; null on the grid and for a face the plan's link opened), almanacEdgeBack and
-                                # renderUnder as Branch H's.
+                                # renderUnder as Branch H's. Since 2026-10-31 its header's title is the way to the grid
+                                # on a face: almanacTitleLink (state — the title redraws as the link) receives
+                                # AlmanacView's registerTitleLink through registerAlmanacTitleLink (useCallback,
+                                # stable) — any face, the link's too; null on the grid. Full mode passes none: the hub
+                                # draws its own eyebrow there.
                                 # The plan of record's Run 3: the Almanac opens on a requested face — almanacFace
                                 # (session state) → <AlmanacView initialFace> in both modes. goPlanPaths() opens the
                                 # Decision face (THIS MONTH's and the Advisor tab's "Your plan on other price paths"

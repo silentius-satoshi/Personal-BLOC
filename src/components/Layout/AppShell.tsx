@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -318,9 +318,14 @@ export function AppShell() {
   const settingsEdgeBack = () => { const b = settingsBackRef.current; if (b) b(); else setActiveTab(previousTab); };
   // The Almanac's grid (BL45) chains the same way: a face opened inside the hub — a tile, another face's link — reports
   // its way back to the grid (null on the grid, and for a face the plan's link opened), so Branch I's edge gesture goes
-  // face → grid → out. The visible ← Back always leaves the Almanac; a face's own "← Almanac" is the way to the grid.
+  // face → grid → out. The visible ← Back always leaves the Almanac; on a face, the header's "Almanac" is the way to
+  // the grid (the owner's ask, 2026-10-31 — no row of its own under the header).
   const almanacBackRef = useRef<(() => void) | null>(null);
   const almanacEdgeBack = () => { const b = almanacBackRef.current; if (b) b(); else setActiveTab(previousTab); };
+  // …which the hub hands the header on any face, the link's too (null on the grid): state, not a ref, since the title
+  // redraws as the link; the setter stable, so the hub's effect runs on a move only.
+  const [almanacTitleLink, setAlmanacTitleLink] = useState<(() => void) | null>(null);
+  const registerAlmanacTitleLink = useCallback((fn: (() => void) | null) => setAlmanacTitleLink(() => fn), []);
 
   // Branch J's owner journal fork (dashboard/daily/monthly) — shared by Branch J AND the edge-back
   // under-layer (renderSimpleUnder), so the parallax backdrop is EXACTLY the surface back-nav reveals.
@@ -417,14 +422,18 @@ export function AppShell() {
         </EdgeBackGesture>
       ) : simpleMode && activeTab === 'almanac' ? (
         // Branch I — same edge-swipe-back wrapper, and the same one-level chain as Branch H: from a face it reveals plain
-        // app-bg (it goes to the grid), from the grid the journal parallax.
+        // app-bg (it goes to the grid), from the grid the journal parallax. On a face the title is the link to the
+        // grid.
         <EdgeBackGesture onBack={almanacEdgeBack} renderUnder={() => (almanacBackRef.current ? null : renderSimpleUnder())}>
           <div className={styles.simpleModeSettings}>
             <div className={styles.simpleModeSettingsHeader}>
               <button className={styles.simpleModeBackBtn} onClick={() => setActiveTab(previousTab)}>← Back</button>
-              <span className={styles.simpleModeSettingsTitle}>Almanac</span>
+              {almanacTitleLink
+                ? <button type="button" className={styles.simpleModeTitleLink} onClick={almanacTitleLink}>Almanac</button>
+                : <span className={styles.simpleModeSettingsTitle}>Almanac</span>}
             </div>
-            <AlmanacView initialFace={almanacFace} registerBack={(fn) => { almanacBackRef.current = fn; }} />
+            <AlmanacView initialFace={almanacFace} registerBack={(fn) => { almanacBackRef.current = fn; }}
+              registerTitleLink={registerAlmanacTitleLink} />
           </div>
         </EdgeBackGesture>
       ) : simpleMode && activeTab !== 'settings' ? (

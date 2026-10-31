@@ -25,8 +25,8 @@ import { fireFaceOnDeploy } from '../../lib/fireDeploy';
 import styles from './AlmanacView.module.css';
 
 /**
- * Almanac — a HUB SHELL (eyebrow + the grid + face host) for THIRTEEN faces: Halving Clock / Cycle Clock (both
- * cycleModel-only, rendered inside the shared `.container`, which now itself `composes: toolContainer`),
+ * Almanac — a HUB SHELL (the grid + face host; full mode's eyebrow) for THIRTEEN faces: Halving Clock / Cycle Clock
+ * (both cycleModel-only, rendered inside the shared `.container`, which now itself `composes: toolContainer`),
  * Mining / Sats (each embeds the REAL tool's main content PLUS its own input panel, stacked in a `.faceStack` in
  * that tool's own mobile DOM order — mining panel-first, sats main-first, mirroring the presence/absence of
  * AppShell's converter-only `order` override; at ≥768px `.faceStack` goes two-column mirroring AppShell's own
@@ -44,16 +44,20 @@ import styles from './AlmanacView.module.css';
  * single useChainTip lives HERE and feeds the SAME height/mode to the
  * two clock faces, so switching faces is pure presentation and never remounts the data layer (§14.5 by
  * construction) — Mining/PowerLaw/Sats/defense don't consume it at all, and no face fetches a block height of
- * its own (D2), so the badge's "live off" holds everywhere. The eyebrow badge is the live-block-height toggle
- * (device-local; one-time consent on first enable).
+ * its own (D2), so the badge's "live off" holds everywhere. The badge is the live-block-height toggle (device-local;
+ * one-time consent on first enable); it heads the grid's Bitcoin group, whose two clocks read the height and say
+ * "live" or "estimate" themselves.
  *
  * THE GRID (BL40, BL45 — the owner's pick B). The hub opens on its faces as tiles in two groups — your plan's, then
  * bitcoin's — each a line icon over its name (`FaceIcon`); `almanacGrid.ts` is the ONE rule for which faces show, in
- * which group and order, from the three gates read here. A tap opens the face in place of the grid; "← Almanac" above it
- * returns to the grid, where the face just left is ringed — the way back from a Settings page ("← Settings"), and the
- * header's "← Back" still leaves the Almanac in one tap. The edge swipe goes one level, as in Settings: a face → the grid
- * → out (`registerBack`). A face the plan's link opens (`initialFace`) swipes straight out, as before the grid, until
- * the owner moves inside the hub. A gate that closes on an open face returns to the grid, where its tile has gone too.
+ * which group and order, from the three gates read here. A tap opens the face in place of the grid. On a face the
+ * header's "Almanac" is the link back to the grid (`registerTitleLink` — the owner's ask, 2026-10-31: nothing between
+ * the header and the page), where the face just left is ringed; the header's "← Back" still leaves the Almanac in one
+ * tap. Full mode has no header, so the hub keeps a one-row eyebrow there, whose "Almanac" is that link on a face. The
+ * edge swipe goes one level, as in Settings: a face → the grid → out (`registerBack`). A face the plan's link opens
+ * (`initialFace`) swipes straight out, as before the grid, until the owner moves inside the hub; its header's
+ * "Almanac" goes to the grid all the same. A gate that closes on an open face returns to the grid, where its tile has
+ * gone too.
  *
  * ⚠ FACE SWITCHING IS TAP-ONLY. The grid's tiles (and a face's own links to another) are the way to change face on
  * every platform — the horizontal swipe pager (SwipeStrip) was REMOVED, along with its `shouldStart` chart/edge
@@ -81,9 +85,13 @@ interface AlmanacViewProps {
   /** The edge swipe's one level (AppShell Branch I, as Settings' `registerBack`): a face opened inside the hub reports its
    *  way back to the grid; the grid — and a face the link opened — report null, so the swipe leaves the Almanac. */
   registerBack?: (fn: (() => void) | null) => void;
+  /** The header's title (AppShell Branch I — simple mode): handed the way to the grid while a face is open — any face,
+   *  the link's too — and null on the grid, so the header's "Almanac" is the link to the grid. Absent — full mode,
+   *  which has no header — the hub draws its own eyebrow, whose "Almanac" is that link on a face. */
+  registerTitleLink?: (fn: (() => void) | null) => void;
 }
 
-export default function AlmanacView({ initialFace, registerBack }: AlmanacViewProps = {}) {
+export default function AlmanacView({ initialFace, registerBack, registerTitleLink }: AlmanacViewProps = {}) {
   // The open face; null is the grid (BL45). The link opens its face directly.
   const [face, setFace] = useState<Face | null>(initialFace ?? null);
   // A face the link opened, until the owner moves inside the hub — its swipe leaves, as it did before the grid.
@@ -118,6 +126,12 @@ export default function AlmanacView({ initialFace, registerBack }: AlmanacViewPr
     return () => registerBack?.(null);
   }, [face, fromOutside, toGrid, registerBack]);
 
+  // The header's "Almanac" (simple mode): the way to the grid from any face — the link's too — and none on the grid.
+  useEffect(() => {
+    registerTitleLink?.(face !== null ? toGrid : null);
+    return () => registerTitleLink?.(null);
+  }, [face, toGrid, registerTitleLink]);
+
   const handleBadgeTap = () => {
     if (almanacLiveEnabled) {
       setAlmanacLiveEnabled(false);            // off — silent
@@ -151,27 +165,40 @@ export default function AlmanacView({ initialFace, registerBack }: AlmanacViewPr
   };
 
   return (
-    <div className={styles.shell}>
-      <div className={styles.container}>
-        <div className={styles.eyebrow}>
-          <span className={styles.eyebrowLabel}>Almanac</span>
-          <FreshnessBadge
-            enabled={almanacLiveEnabled}
-            mode={tip.mode}
-            source={tip.source}
-            lastUpdated={tip.lastUpdated}
-            isStale={tip.isStale}
-            onTap={handleBadgeTap}
-          />
-          <span className={styles.eyebrowLine} />
+    <div className={registerTitleLink ? `${styles.shell} ${styles.shellUnderHeader}` : styles.shell}>
+      {/* Full mode has no header, so the hub names itself: the eyebrow, whose "Almanac" is the way to the grid on a
+          face. Simple mode's header does both, and the page starts right under it. */}
+      {!registerTitleLink && (
+        <div className={styles.eyebrowBar}>
+          <div className={styles.eyebrow}>
+            {face === null
+              ? <span className={styles.eyebrowLabel}>Almanac</span>
+              : <button type="button" className={`${styles.eyebrowLabel} ${styles.eyebrowLink}`} onClick={toGrid}>Almanac</button>}
+            <span className={styles.eyebrowLine} />
+          </div>
         </div>
+      )}
 
-        {face === null ? (
-          // The grid — the hub's page (BL45). A tile is a button named by its face, its icon decorative.
+      {face === null ? (
+        <div className={styles.container}>
+          {/* The grid — the hub's page (BL45). A tile is a button named by its face, its icon decorative. */}
           <nav className={styles.grid} aria-label="Faces">
             {groups.map((g) => (
               <section key={g.group} className={styles.group} aria-labelledby={`almanac-group-${g.group}`}>
-                <h2 id={`almanac-group-${g.group}`} className={styles.groupLabel}>{g.label}</h2>
+                <div className={styles.groupHead}>
+                  <h2 id={`almanac-group-${g.group}`} className={styles.groupLabel}>{g.label}</h2>
+                  {/* The live block height is bitcoin's — the two clocks read it — so its toggle heads that group. */}
+                  {g.group === 'bitcoin' && (
+                    <FreshnessBadge
+                      enabled={almanacLiveEnabled}
+                      mode={tip.mode}
+                      source={tip.source}
+                      lastUpdated={tip.lastUpdated}
+                      isStale={tip.isStale}
+                      onTap={handleBadgeTap}
+                    />
+                  )}
+                </div>
                 <div className={styles.tiles}>
                   {g.tiles.map((t) => (
                     <button
@@ -188,16 +215,12 @@ export default function AlmanacView({ initialFace, registerBack }: AlmanacViewPr
               </section>
             ))}
           </nav>
-        ) : (
-          <div className={styles.faceBar}>
-            <button type="button" className={styles.backBtn} onClick={toGrid}>← Almanac</button>
-          </div>
-        )}
-      </div>
-
-      {/* Only the open face mounts — none on the grid, no neighbour panes — so a heavy face (Power Law/Mining hooks)
-          mounts exactly when its tile is tapped. */}
-      {face !== null && renderFace(face)}
+        </div>
+      ) : (
+        // Only the open face mounts — none on the grid, no neighbour panes — so a heavy face (Power Law/Mining hooks)
+        // mounts exactly when its tile is tapped.
+        renderFace(face)
+      )}
 
       <AlmanacConsentSheet
         open={consentOpen}

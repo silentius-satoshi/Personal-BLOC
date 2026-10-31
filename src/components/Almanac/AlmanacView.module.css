@@ -1,11 +1,17 @@
 /* Almanac container + eyebrow (P2) — ported re-tokenized from the preview .alm-eyebrow — and the grid that replaced the
-   sub-nav pills (BL45). */
+   sub-nav pills (BL45). Since 2026-10-31 (the owner's ask) the eyebrow is full mode's alone: simple mode's header names
+   the Almanac and links back to the grid, and the page starts right under it. */
 
 /* Hub expansion — full-width root, no max-width/padding: each face owns its own layout (Mining's 960px
    .main, the faces' 960px .face — Power Law's included — the CB tools' 600px toolShell) so it isn't squeezed into
    .container. */
 .shell {
   width: 100%;
+}
+/* Under simple mode's header: the first line of the page — a face's title, the grid's first heading (4px under its own
+   top, as a face's .head is) — sits 16px under the header, where the eyebrow's "Almanac" was. */
+.shellUnderHeader {
+  padding-top: 12px;
 }
 
 .container {
@@ -57,10 +63,22 @@
   }
 }
 
+/* Full mode's eyebrow — the hub's name, and on a face the way to the grid. Its own bar at the grid's width, without the
+   container's 32px foot, so nothing sits between it and a face. The row keeps its height when the name turns link, and
+   the bar keeps the row's margins (flow-root), so a face's first line sits where the grid's first heading does. */
+.eyebrowBar {
+  display: flow-root;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
 .eyebrow {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 18px;
   margin: 15px 2px 10px;
 }
 .eyebrowLabel {
@@ -70,6 +88,16 @@
   text-transform: uppercase;
   color: var(--text-faint);
 }
+/* The name as the link (a face open): the app's link colour, as the header's "← Back". */
+.eyebrowLink {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  line-height: inherit;
+  color: var(--orange);
+  cursor: pointer;
+}
 .eyebrowLine {
   flex: 1;
   height: 1px;
@@ -78,18 +106,28 @@
 
 /* The grid (BL40, BL45 — the owner's pick B): the faces in two groups, three to a row on a phone, five where there is
    room; each tile a line icon over its name. The face just left keeps the selected pill's green tint, so the eye finds
-   its place again. The group headings are the eyebrow's quiet type. The columns follow the grid's own width (a container
-   query), since full mode's padding and a phone's differ: three need 91px a tile — the longest names, "Ownership" and
-   "Emergency", on one line inside the tile's padding — so a narrower grid (a 320px phone) takes two. */
+   its place again. The group headings are the eyebrow's quiet type; Bitcoin's carries the live-height badge. The
+   columns follow the grid's own width (a container query), since full mode's padding and a phone's differ: three need
+   91px a tile — the longest names, "Ownership" and "Emergency", on one line inside the tile's padding — so a narrower
+   grid (a 320px phone) takes two. */
 .grid {
   container: almanac-grid / inline-size;
   margin-bottom: 16px;
 }
 .group + .group {
-  margin-top: 24px;
+  margin-top: 32px;
+}
+/* A heading and, for Bitcoin, the badge at its right. 4px over the heading, as a face's .head; 36px between the
+   groups. */
+.groupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 2px 10px;
 }
 .groupLabel {
-  margin: 12px 2px 10px;
+  margin: 0;
   font-family: var(--mono);
   font-size: 10.5px;
   font-weight: 400;
@@ -139,24 +177,4 @@
 }
 .tileName {
   overflow-wrap: anywhere;
-}
-
-/* A face's way back to the grid — Settings' "← Settings" button, in the place the pills held. */
-.faceBar {
-  margin-bottom: 16px;
-}
-.backBtn {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 13px;
-  color: var(--text-secondary);
-  padding: 6px 12px;
-  transition: border-color 0.15s, color 0.15s;
-}
-.backBtn:hover {
-  border-color: var(--text-secondary);
-  color: var(--text-primary);
 }
