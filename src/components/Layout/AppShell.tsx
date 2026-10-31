@@ -297,14 +297,14 @@ export function AppShell() {
   }, [hiddenTabs, activeTab, hasCbLoan]);
 
   const goSettings = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); };
-  // The face the Almanac opens on (Run 3): the Decision face from the plan's link — the Outlook's place — and the
-  // default (Halving) every other way in. Session-only. goAlmanac sets no face and takes no argument: the nav passes it
-  // as onClick, so a click event must never become a face.
+  // The face the Almanac opens on (Run 3): the Decision face from the plan's link — the Outlook's place — and the grid
+  // (BL45) every other way in. Session-only. goAlmanac sets no face and takes no argument: the nav passes it as onClick,
+  // so a click event must never become a face.
   const [almanacFace, setAlmanacFace] = useState<AlmanacFace | undefined>(undefined);
   const goAlmanac  = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); };
   const goPlanPaths = () => { setAlmanacFace('decision'); setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); };
   // Leaving the Almanac forgets the face asked for — the one mechanism, so the nav's button, full mode's Tools menu and
-  // a tab (which open the hub directly) all open the default face.
+  // a tab (which open the hub directly) all open the grid.
   useEffect(() => { if (activeTab !== 'almanac') setAlmanacFace(undefined); }, [activeTab]);
   // Full mode: the link shows only while the Almanac tab can open (a hidden tab bounces to the first visible one).
   const planPathsInFullMode = hiddenTabs.includes('almanac') ? null : goPlanPaths;
@@ -316,6 +316,11 @@ export function AppShell() {
   // The Branch-H edge gesture chains subpage→list first, else exits Settings — mirroring the visible ← Back.
   const settingsBackRef = useRef<(() => void) | null>(null);
   const settingsEdgeBack = () => { const b = settingsBackRef.current; if (b) b(); else setActiveTab(previousTab); };
+  // The Almanac's grid (BL45) chains the same way: a face opened inside the hub — a tile, another face's link — reports
+  // its way back to the grid (null on the grid, and for a face the plan's link opened), so Branch I's edge gesture goes
+  // face → grid → out. The visible ← Back always leaves the Almanac; a face's own "← Almanac" is the way to the grid.
+  const almanacBackRef = useRef<(() => void) | null>(null);
+  const almanacEdgeBack = () => { const b = almanacBackRef.current; if (b) b(); else setActiveTab(previousTab); };
 
   // Branch J's owner journal fork (dashboard/daily/monthly) — shared by Branch J AND the edge-back
   // under-layer (renderSimpleUnder), so the parallax backdrop is EXACTLY the surface back-nav reveals.
@@ -411,14 +416,15 @@ export function AppShell() {
           </div>
         </EdgeBackGesture>
       ) : simpleMode && activeTab === 'almanac' ? (
-        // Branch I — same edge-swipe-back wrapper.
-        <EdgeBackGesture onBack={() => setActiveTab(previousTab)} renderUnder={renderSimpleUnder}>
+        // Branch I — same edge-swipe-back wrapper, and the same one-level chain as Branch H: from a face it reveals plain
+        // app-bg (it goes to the grid), from the grid the journal parallax.
+        <EdgeBackGesture onBack={almanacEdgeBack} renderUnder={() => (almanacBackRef.current ? null : renderSimpleUnder())}>
           <div className={styles.simpleModeSettings}>
             <div className={styles.simpleModeSettingsHeader}>
               <button className={styles.simpleModeBackBtn} onClick={() => setActiveTab(previousTab)}>← Back</button>
               <span className={styles.simpleModeSettingsTitle}>Almanac</span>
             </div>
-            <AlmanacView initialFace={almanacFace} />
+            <AlmanacView initialFace={almanacFace} registerBack={(fn) => { almanacBackRef.current = fn; }} />
           </div>
         </EdgeBackGesture>
       ) : simpleMode && activeTab !== 'settings' ? (

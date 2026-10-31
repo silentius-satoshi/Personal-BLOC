@@ -4,6 +4,7 @@ import { join, relative } from 'node:path';
 import { SETTINGS_FIELDS, VALIDATE_WHITELIST } from '../../../store/settingsFields';
 import { atTriggerLine, cbTabCrashDayLine, CONSOLE_LINK, isCrashDay } from '../../Tools/crashPlaybookView';
 import { suggestedLineWords } from '../../Almanac/decisionView';
+import { FACE_TILES } from '../../Almanac/almanacGrid';
 import { planRuleRows, PLAN_RULE_LABEL } from '../../Almanac/supportPolicyView';
 import { planPolicySettingsOf } from '../../Almanac/planRun';
 import { PLAN_POLICY_DEFAULTS } from '../../../lib/planPolicy';
@@ -80,7 +81,8 @@ describe('⭐ GATE — D3: the Emergency Console runs with a Coinbase loan', () 
     expect(SHELL, 'GATE no tab without its loan').toMatch(/const shut = \(k: string\): boolean => hiddenTabs\.includes\(k\) \|\| \(!hasCbLoan && \(k === 'coinbase' \|\| k === 'liqsim'\)\);/);
     expect(SHELL, 'GATE no tab without its loan, on every change').toMatch(/\}, \[hiddenTabs, activeTab, hasCbLoan\]\);/);
     expect(SHELL, 'GATE no tab without its loan, on the open tab').toMatch(/if \(shut\(activeTab\)\) \{\s*const first = ALL_TABS_META\.find\(\(t\) => !shut\(t\.key\)\);/);
-    expect(ALMANAC, 'GATE the face').toMatch(/\.\.\.\(hasCbLoan \? \[\{ key: 'defense' as Face, label: '🚨 Emergency' \}\] : \[\]\),/);
+    // The Almanac's tile (the grid — BL45): named Emergency, on the loan.
+    expect(FACE_TILES.find((t) => t.key === 'defense'), 'GATE the face').toEqual({ key: 'defense', name: 'Emergency', group: 'plan', gate: 'cbLoan' });
     expect(code(ALMANAC), 'GATE the hub reads no strategy').not.toMatch(/cbPaymentStrategy/);
     expect(DECISION, 'GATE the Decision face').toMatch(/const consoleRuns = s\.hasCbLoan;/);
     expect(DECISION, 'GATE the card\'s context').toMatch(/\n\s+consoleRuns,\n/);

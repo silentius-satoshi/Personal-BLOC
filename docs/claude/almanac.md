@@ -131,7 +131,7 @@ dock stops 0.5–11.5 px from each edge (20.5–31.5 at `d7145dd`).
 
 `AlmanacView` widened from 2 live faces (Halving/Cycle) + 2 disabled "soon" placeholders to a full **6-face**
 hub: **Halving / Cycle / Mining / Power Law / Sats / defense**. Locked design — **EMBED with per-face
-width**: the Almanac is only the roof (eyebrow + sub-nav); each tool keeps its own already-shipped container
+width**: the Almanac is only the roof (eyebrow + sub-nav; the grid since BL45); each tool keeps its own already-shipped container
 byte-identical. `face` widened to `'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense'` (still
 local `useState`, default `'halving'`, nothing persisted/synced — unchanged §14.3).
 
@@ -160,7 +160,7 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
   - Mobile is unaffected either way: every viewport under the relevant max-width hits `width:100%`, whichever value
     is set.
 - **Render restructure:** the root wraps in a full-width `.shell` (`width:100%`, no max-width/padding); the
-  eyebrow+sub-nav still sit inside `.container`; Halving/Cycle are re-wrapped in a SECOND `.container`
+  eyebrow+sub-nav (since BL45 the grid, or a face's "← Almanac") still sit inside `.container`; Halving/Cycle are re-wrapped in a SECOND `.container`
   (unchanged content/props — `useChainTip()` stays the single per-mount data source for those two faces
   only); Mining/Sats (and Power Law, until its face redesign) render each tool's own main content **stacked
   with its input panel** in a new `.faceStack` (mobile: `display:flex; flex-direction:column; gap:16px`, no
@@ -204,7 +204,7 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
   not gated. A **defense button renders ONLY when `hasCbLoan`**, labeled `🚨 Emergency` / `Liq Sim` by
   `cbPaymentStrategy`, mirroring the `liqsim` tab's own label rule (always `🚨 Emergency` since the plan of record's
   Run 4). A guard `useEffect` falls back to
-  `'halving'` if the defense face is showing and `hasCbLoan` flips false mid-session. `.subnav` already had
+  `'halving'` if the defense face is showing and `hasCbLoan` flips false mid-session (to the grid since BL45). `.subnav` already had
   `overflow-x:auto` + hidden scrollbar + `flex:none` buttons (pre-existing) — scrolls gracefully at 6 buttons
   with no CSS change needed.
 - **ISOLATION WALL restated (unchanged):** `cycleModel`/`HalvingClock`/`CycleClock` import nothing from the
@@ -229,9 +229,9 @@ A SEVENTH Almanac face **Ledger** — a READ-ONLY accounting table of `monthlyLo
 arc refers to the *Daily* writing surface — this table is a pure projection/export, not that Ledger). The
 `face` union widens in place to add `'ledger'` (still local `useState`, default `'halving'`, nothing
 persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
-- **Data-presence gate:** the sub-nav Ledger button (LAST position, glyph `▤`) renders only when
+- **Data-presence gate:** the sub-nav Ledger button (LAST position, glyph `▤`; its tile since BL45) renders only when
   `ledgerFaceAvailable(monthlyLog)` (= `monthlyLog.length > 0`) — a safe viewer with an empty log never
-  sees it. A fallback `useEffect` (mirrors the defense pattern) sends `face → 'halving'` if the log empties
+  sees it. A fallback `useEffect` (mirrors the defense pattern) sends `face → 'halving'` (the grid since BL45) if the log empties
   while Ledger is showing. `AlmanacView` gains a `monthlyLog` selector for the gate; `LedgerFace` reads the
   store itself. Rendered BARE in the ternary (own container, like `<CbDefenseTool/>`).
 - **`src/lib/ledgerCsv.ts`** (PURE, no React) — `ledgerFaceAvailable(monthlyLog)` + `buildLedgerCsv(entries,
@@ -307,7 +307,7 @@ An EIGHTH Almanac face **Scenario** (`⚖ Scenario`) — the UI over the Phase 3
 hypothetical overlay, and read the what-if diff. **READ-ONLY by construction** — the ONLY store write is
 `setPinnedScenario` (device-local pin, `pinnedScenario` field); the overlay is `useState<ScenarioOverlay>`
 and is NEVER persisted (the `sandboxCollateralBtc` sandbox precedent). Ungated — the `Face` union widens in
-place (`+ 'scenario'`, still local `useState`, default `'halving'`), the sub-nav/pager `visibleFaces` array
+place (`+ 'scenario'`, still local `useState`, default `'halving'`), the sub-nav/pager `visibleFaces` array (`almanacGrid.ts` since BL45)
 APPENDS it LAST (after the ledger spread — preserves the e2e face-order assumptions), and `renderFace` wraps
 it in the hub `.container` (the halving/cycle simple-content path). No guard `useEffect`, no
 store-shape change.
@@ -339,7 +339,8 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   session-ephemeral local `useState` overlay (`value = overlay[k] ?? live`), with a ghost "Reset to live".
 - **GATED on `hasCbLoan`** (the strategy IS a Strike→Coinbase refinance loop) with the `defense`-face
   fallback `useEffect`, and **appended LAST** in `visibleFaces` so `halving` stays the first (default) face.
-  (The old index-0/index-1 e2e pin is gone — the face-nav specs now tap pills by NAME, not position.)
+  (The old index-0/index-1 e2e pin is gone — the face-nav specs now tap pills by NAME, not position. Since BL45 its
+  tile sits in Your plan, `almanacGrid.ts`, and the specs open faces by tile name, `openAlmanacFace`.)
 - **`src/components/Almanac/CyclingFace.tsx`** (+ `.module.css`) — LedgerFace chrome + its 960px `.face`.
   Sections: price path (band buttons + Reversion window + Horizon) → verdict → 6 stat cards → CB-LTV chart →
   paired price/collateral charts → paired cash-flow/strategy cards → rates → constraint notices → milestones (a
@@ -1745,7 +1746,7 @@ Outlook became a link to the Decision face.
   (`AppShell.goPlanPaths` → `<AlmanacView initialFace>`): the plan's own face, open without a Coinbase loan — the
   plan of record's move, then the plan it starts, on the price path the owner picks (one of six; the support floor by
   default). D5 had named the Strategy face, which a Coinbase loan gates — the owner's call, BL25. Every other way in — the nav's Almanac button, full mode's Tools menu
-  — still opens the default face:
+  — opens the grid (BL45; the default face, the Halving Clock, before):
   leaving the hub forgets the face asked for (one effect on the tab), and `goAlmanac` sets none — it takes no argument
   (HeaderNavCluster passes it as `onClick`, so a click event must never become a face).
   Full mode shows the link only while the Almanac tab isn't hidden (a hidden tab bounces). Simple mode's This Month /
@@ -1786,7 +1787,8 @@ what its buttons do.
 - **D3 — the console's gate is the Coinbase loan** (§ Emergency Console). `CbDefenseTool` renders `EmergencyConsole`
   with a loan (`hasCbLoan`), nothing without; the Liq Sim (`LiqSimulator`, its `.module.css`, `liqSimulatorView` and
   its test) is deleted — it had no other screen. The `liqsim` tab is always "Emergency" / "Emerg" (`ALL_TABS_META`;
-  `withEmergencyLabel` is gone; the key stays `liqsim`) and the Almanac's defense face always "🚨 Emergency"; Settings'
+  `withEmergencyLabel` is gone; the key stays `liqsim`) and the Almanac's defense face always "Emergency" (its grid
+  tile since BL45; its pill read `🚨 Emergency`); Settings'
   own tab list (SettingsMain's `ALL_TABS`, kept in step — ui.md) names it "Emergency" too, and its Strike collateral
   hint names what reads the figure now (the plan, the Safety card, the Emergency Console). The crash day, `isCrashDay({ hasCbLoan,
   cbDebt, cbCollateralBtc, price, triggerPct })`, has no `ltvTriggered`: THIS MONTH and the Advisor tab (both through
@@ -2058,7 +2060,8 @@ break-even, milestones). The ₿ held on Position and the verdict on Flywheel th
 mismatch would mean two runs crept in (a hand check pins the two against the parent Cycling face).
 
 - **GATED on `hasCbLoan`** like `cycling` (the strategy is a Strike→Coinbase loop), with the same fallback
-  `useEffect`; the pill is appended **after** `ownership` — `halving` must stay first, it is the default.
+  `useEffect`; the pill is appended **after** `ownership` — `halving` must stay first, it is the default. (Since BL45:
+  its tile in Your plan, after Decision's; the hub opens on the grid.)
 - **⚠ `renderFace` needs an explicit `if (f === 'unified')` branch ABOVE the final return** — the fallback
   renders the Converter, so a face added to the union without a branch compiles clean and silently shows the
   wrong tool (the C8 trap already recorded in that file).
@@ -2110,9 +2113,10 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
 
 - **Identity.** Key `decision`, **UNGATED** (decision 2: without a Coinbase loan the whole schedule shows, with
   `coinbaseLoanLine` saying when the plan opens one) and **appended LAST** — `halving` stays first, it is the default.
+  (Since BL45: its tile first in Your plan; the hub opens on the grid.)
   ⚠ `renderFace` has an explicit `if (f === 'decision')` branch ABOVE the Converter fallback (the C8 trap).
   `onNavigate` is a narrow union (`'cycling' | 'ownership' | 'unified' | 'defense'`), so the face never imports the
-  hub's `Face` type back; the hub passes `setFace`.
+  hub's `Face` type back; the hub passes `openFace` (`setFace` before BL45), so a link moves inside the hub.
 - **ONE run, many lenses (D8).** One `engineInputs` memo → the base run and the stress run; every card reads the same
   `sim`. `evaluatePaths(engineInputs, paths, …)` only picks the **Worst (modeled)** crown — never a second truth.
 - **THE MOVE** = the engine's steps 5 and 9, previewed (`placementPlan`). 🔴 **B1 — ONE `placementInput` memo** feeds
@@ -2376,12 +2380,13 @@ income can't pay outside the buy zone (spec v0.38) — and until it ships the fa
 sandbox (F6; Identity, below). No simulation (D1 A′), no chart zoom, no committed price series. Its inputs are one
 device-local key (`docs/claude/store.md` § FIRE's own inputs).
 
-- **Identity.** Key `fire`, **appended LAST**, after Decision's pill (`halving` stays first, the default) — **on the
-  owner's deploy and in dev only** (build 4b, BL42): the pill shows only where neither `VITE_LANDING` nor `VITE_DEMO` is
+- **Identity.** Key `fire`, its tile **last in Your plan** (BL45; before the grid, its pill appended LAST, after
+  Decision's) — **on the owner's deploy and in dev only** (build 4b, BL42): the tile shows only where neither `VITE_LANDING` nor `VITE_DEMO` is
   '1', so never on the public deploy or the sandbox (`commercialization.md`'s table), and dev — so the e2e — keeps it.
   One pure rule, `fireFaceOnDeploy` (`src/lib/fireDeploy.ts`, zero imports); the hub reads the two flags once, at module
-  scope, into `FIRE_ON_THIS_DEPLOY`, which the pill's entry is spread on — never `hasCbLoan` — and a fallback effect
-  reads, as the loan-gated faces' do, so the face is unreachable where its pill is hidden. The face's code still ships
+  scope, into `FIRE_ON_THIS_DEPLOY`, which it passes to `almanacGrid.ts`'s rule — the FIRE tile's gate is `'fireDeploy'`,
+  never `hasCbLoan` — and the hub's one fallback effect (`faceShown`) reads it too, so the face is unreachable where its
+  tile is hidden. The face's code still ships
   in every bundle: hidden, not tree-shaken (the C8 branch below is unconditional). Never lift the gate before the
   borrow lane ships.
   ⚠ `renderFace` has an explicit `if (f === 'fire')` branch ABOVE the Converter fallback (the C8 trap); the hub's
@@ -2516,9 +2521,10 @@ device-local key (`docs/claude/store.md` § FIRE's own inputs).
   FACES (`MS_VIEWS_FIRE`, `MS_TABLE`), `supportPolicyView.test.ts`'s view-module walls (`fireFaceView.ts`; the pattern
   widened to `cycleReplays`, `pricePaths` and `'react'`), `numberInputModel.test.ts` SITES (eleven `'leave'`), build 3's
   `fireWalls.test.ts` BELIEF importers (the view, the replays and `lib/fireInputs.ts` — the face itself imports no FIRE
-  module), and `decisionWiring.test.ts`'s last pill (now just before FIRE's). Not joined: `resetMirror.test.ts` and
+  module), and `decisionWiring.test.ts`'s last pill (now just before FIRE's; since BL45 its tile, first in Your plan). Not joined: `resetMirror.test.ts` and
   `controlDockWiring.test.ts`'s PARENTS (Policy-tab and `runCyclingSim`-specific — FIRE's wiring test carries the dock
-  and the mirror); `navigation.spec.ts`'s pill list (no face whose fetch isn't stubbed, as for Decision).
+  and the mirror); `navigation.spec.ts`'s pill list — its every-face list since BL45 (no face whose fetch isn't stubbed,
+  as for Decision).
 - Tests: § Test Suite → "Batch 1 build 4 — the FIRE face" and "Batch 1's follow-ups".
 
 ### Milestones on a phone (the three parents' Milestones; store unchanged, NO bump)
@@ -2620,19 +2626,66 @@ badge + an off-mode `~`/`est.` precision marker differ.
   only after consent. Test: `src/hooks/__tests__/useChainTip.test.ts` (PROVIDERS parse per shape + guard range).
   Suite 419 → 425.
 
+### The Almanac grid (BL40, BL45 — the owner's pick B; store unchanged, NO bump)
+
+The hub opens on its faces as a grid — the owner's ask, "a grid of apps … similar to clicking the apps button on macos"
+(BL40), and his pick of three mocks (BL45). Screens only (Standard): no store, sync, engine or format change.
+- **The page.** The eyebrow — the live-height badge — as before; under it, in place of the sub-nav pills, the faces as
+  tiles in two groups: **Your plan** (Decision, Strategy, Ownership, Cycling, Ledger, Scenario, Emergency, FIRE), then
+  **Bitcoin** (Halving Clock, Cycle Clock, Power Law, Mining, Sats) — each a 24px line icon over its name. Three to a row
+  on a phone; five where the grid is 520px wide or more (a computer, a tablet); two where three wouldn't fit the longest
+  names, "Ownership" and "Emergency", on one line inside a tile — under 293px, a 320px phone. The columns follow the
+  grid's own width (a container query, `almanac-grid`), since full mode's padding and a phone's differ. The face just
+  left keeps the selected pill's green tint (`.tileLast`), so the eye finds its place; session-only, like the face.
+- **ONE catalogue.** `almanacGrid.ts` — `FACE_TILES` (key, name, group, gate), `FACE_GROUPS`, `faceShown`, `gridGroups`,
+  and the `Face` union (`AlmanacView` re-exports it as `AlmanacFace`) — is pure: the hub reads its three gates once
+  (`hasCbLoan`, `ledgerFaceAvailable(monthlyLog)`, `FIRE_ON_THIS_DEPLOY`) and passes them in, so every combination is a
+  unit test. The grid offers exactly the faces the pill row did — `almanacGrid.test.ts` PILLS keeps the pill row's rule
+  as its reference, in all eight combinations — so no viewer reaches a face it couldn't before. `visibleFaces` and the
+  `.subnav*` styles are gone.
+- **Open and back.** `face` is `Face | null`: null is the grid, the default whenever the hub mounts (the Halving Clock
+  was). A tile opens its face in place of the grid — only the open face mounts, none on the grid. "← Almanac" above the
+  face, where the pills were (Settings' "← Settings" button), returns to the grid; the header's "← Back" still leaves the
+  Almanac in one tap, from a face too. The edge swipe goes one level, as in Settings: `registerBack` reports the way to
+  the grid while a face opened inside the hub is open — AppShell's `almanacBackRef` / `almanacEdgeBack` (Branch I), with
+  `renderUnder` null then (plain app-bg one level deep) — so a face → the grid → out. Full mode has no swipe:
+  "← Almanac" is its way back.
+- **The plan's link.** `initialFace` — the "other price paths" link on THIS MONTH, the Advisor tab and the CB Loan tab —
+  still opens the Decision face directly, "from outside" (`fromOutside`): its swipe, like "← Back", returns to where the
+  owner came from, as before the grid. Any move inside the hub — a tile, "← Almanac", the Decision face's links to
+  Cycling, Ownership or Strategy and its crash row's "→ Emergency Console", the Cycle Clock's to the Halving Clock
+  (`openFace`) — ends that; the swipe then goes to the grid.
+- **Gates.** An open face whose gate closes — the loan switched off, the log emptied, FIRE off this deploy (an
+  `initialFace` of 'fire' there) — goes back to the grid, where its tile has gone too: one effect on `faceShown`, in place
+  of the five per-face effects that fell back to the Halving Clock.
+- **Icons.** `FaceIcon.tsx` — thirteen drawings, one a face, decorative (`aria-hidden`; a tile's name is its accessible
+  name). New because the pills' glyphs couldn't serve: ₿ (Cycle Clock, Power Law) and ⚖ (Scenario, Ownership) were
+  shared, and ⛏ and 🚨 showed as colour emoji on an iPhone. The Decision face's own links keep their glyphs ("♻ Cycling",
+  "⚖ Ownership", "◈ Strategy").
+- **Viewers.** Unchanged: the grid reads the same gates, so it offers a viewer exactly what the pills did (a trusted
+  viewer reaches the Almanac in full mode; the viewer work is BL40's second piece).
+- **This file's earlier sections** describe the pills: a face "appended LAST" in `visibleFaces`, a fallback to
+  `'halving'`, the sub-nav. Since BL45 a face's tile is its entry in `FACE_TILES`, the fallback goes to the grid, and the
+  sub-nav is the grid.
+- Tests: `src/components/Almanac/__tests__/almanacGrid.test.ts` (the rule in all eight gate combinations; the hub's and
+  the shell's wiring read off the source) and `e2e/almanacGrid.spec.ts` (GRID, GATED, OPEN, SWIPE, LINK, INSIDE, FULL,
+  NARROW); every face spec opens its face through `openAlmanacFace` (`e2e/helpers.ts`). § Test Suite → "The Almanac
+  grid".
+
 ### Almanac face navigation — TAP-ONLY (the face swipe pager was REMOVED)
 
-Face switching happens **only** by tapping a sub-nav pill, on desktop and mobile alike. The `<SwipeStrip>`
+Face switching happens **only** by tapping — a tile on the grid since BL45 (a sub-nav pill before), or a face's own link
+to another — on desktop and mobile alike. The `<SwipeStrip>`
 face pager (Gesture P3/P3.1) is GONE, along with everything that existed to arbitrate against it. No
 data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still page).
-- **`visibleFaces: { key: Face; label: string }[]`** remains the SINGLE source for the sub-nav pill map — now
-  the only face-switching surface. Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`,
+- **`almanacGrid.ts`** is the SINGLE source for the grid's tiles (it replaced `visibleFaces`, the sub-nav pill map, at
+  BL45 — § The Almanac grid). Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`,
   cycling and strategy iff `hasCbLoan`, FIRE iff `fireFaceOnDeploy` — the owner's deploy and dev) are simply absent
-  from the array. Thirteen faces in all; the last is the FIRE face (batch 1 build 4), off the public deploy and the
-  sandbox until its borrow lane ships (build 4b — BL42). `idx`/`onPage`/`canPage`/`renderPane`/
-  `shouldStart` are deleted; the host renders `{renderFace(face)}` directly.
+  from the grid. Thirteen faces in all; the FIRE face (batch 1 build 4), last of Your plan's, is off the public deploy
+  and the sandbox until its borrow lane ships (build 4b — BL42). `idx`/`onPage`/`canPage`/`renderPane`/
+  `shouldStart` are deleted; the host renders the open face, `{face !== null && renderFace(face)}`, directly.
 - **ONE face mounts at a time.** The P3.1 real-neighbour panes are gone, so a heavy face (Power Law/Mining
-  hooks) mounts exactly when its pill is tapped — never on a peek. `useChainTip` still lives at the hub and is
+  hooks) mounts exactly when its tile is tapped — never on a peek, and none on the grid. `useChainTip` still lives at the hub and is
   never remounted by a face change (§14.5 holds by construction, as before).
 - **The scoped `touch-action` block in `AlmanacView.module.css` is DELETED** (`.shell .recharts-wrapper/canvas
   { touch-action: none }` + `.shell [data-gesture-exempt] { touch-action: pan-x }`). It existed only to stop
@@ -2652,10 +2705,10 @@ data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still
   no touch-action CSS. See § Chart zoom.
 - ⚠ Do NOT re-introduce a face pager without re-deriving the chart/edge exclusions and the axis-ownership CSS
   above; the reason each existed is recorded here.
-- Tests: `e2e/navigation.spec.ts` (tap the sub-nav title halving→cycle, asserting `Open Halving Clock` has
+- Tests: `e2e/navigation.spec.ts` (open the Halving Clock, then the Cycle Clock, by their tiles, asserting `Open Halving Clock` has
   count **1** — ⚠ `Next halving` is NOT Halving-only, CycleClock's demoted halving card carries it too, so the
   Cycle-only string at count 1 is what proves a single mounted face; a committed mid-screen horizontal drag
-  does NOT change face; gated-face skip by tapping every pill while `!hasCbLoan`; a chart scrub stays on the
+  does NOT change face; gated-face skip by opening every face the grid offers but Decision and FIRE while `!hasCbLoan`; a chart scrub stays on the
   Power Law face; edge-swipe back still works on Almanac). `faceHostBox` was deleted from `e2e/helpers.ts`.
 
 ---

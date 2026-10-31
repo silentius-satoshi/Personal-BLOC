@@ -170,6 +170,20 @@ export async function openAlmanacSimple(page: Page): Promise<void> {
   await expect(page.getByTestId('edge-back-zone')).toBeVisible();
 }
 
+/**
+ * The Almanac's grid (BL45): open a face by its tile — the face's name, exactly ('Decision', 'Power Law', 'FIRE'). From a
+ * face, it goes back to the grid first by "← Almanac", as a person would. Call it once the Almanac is open (the nav's
+ * button, full mode's Tools menu, a tab, or the plan's link).
+ */
+export async function openAlmanacFace(page: Page, name: string, opts: { tap?: boolean } = {}): Promise<void> {
+  const grid = page.getByRole('navigation', { name: 'Faces' });
+  const back = page.getByRole('button', { name: '← Almanac' });
+  await expect(grid.or(back), 'the Almanac is open').toBeVisible({ timeout: 15_000 });
+  if (await back.isVisible()) await (opts.tap ? back.tap() : back.click());
+  const tile = grid.getByRole('button', { name, exact: true });
+  await (opts.tap ? tile.tap() : tile.click());
+}
+
 /** Seed a mid-strategy plan (current month ≥ 2) + land on DailyModeView. */
 export async function seedJournalMonths(page: Page): Promise<void> {
   await page.addInitScript(MULTI_MONTH_SEED);

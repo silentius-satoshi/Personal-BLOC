@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { seedLoanAndGoto, seedAndGoto, STORE_VERSION } from './helpers';
+import { seedLoanAndGoto, seedAndGoto, openAlmanacFace, STORE_VERSION } from './helpers';
 
 /**
  * The plan of record, Run 1 (spec pbloc-spec-plan-of-record-v1 v1.0): Settings' "Your plan" saves the support policy;
@@ -56,7 +56,7 @@ test.describe('the plan of record — Run 1', () => {
 
     // FACE — the Decision face's card opens on the plan
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /Decision/ }).first().click();
+    await openAlmanacFace(page, 'Decision');
     const card = page.locator('section:has(> p[class*="futures"])');
     await card.locator('summary').click();
     const face = slider(card, COINBASE);
@@ -264,19 +264,19 @@ test.describe('the plan of record — Run 3', () => {
     await page.getByRole('button', { name: LINK }).click();
     await expect(moveCard(page).getByText(PLAN_LINE), 'PATHS the Decision face').toBeVisible({ timeout: 15_000 });
 
-    // …and once the hub is left, full mode's Tools menu (which opens the tab directly) opens the default face again.
+    // …and once the hub is left, full mode's Tools menu (which opens the tab directly) opens the grid again (BL45).
     const tools = page.getByRole('button', { name: /^Tools/ });
     const menu = page.locator('[class*="toolsDropdown"]');
     await tools.click();
     await menu.getByRole('button', { name: 'Sats', exact: true }).click();
     await tools.click();
     await menu.getByRole('button', { name: 'Almanac', exact: true }).click();
-    await expect(page.getByText('Next halving'), 'PATHS forgotten on leaving — the default face').toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'PATHS forgotten on leaving — the grid').toBeVisible({ timeout: 15_000 });
     await expect(moveCard(page), 'PATHS not the Decision face').toHaveCount(0);
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });
 
-  test('PATHS — THIS MONTH has no Outlook switch; its link opens the Decision face; the nav still opens the default face', async ({ page }) => {
+  test('PATHS — THIS MONTH has no Outlook switch; its link opens the Decision face; the nav still opens the grid', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
     await hermetic(page);
     await seedLoanAndGoto(page);
@@ -289,9 +289,9 @@ test.describe('the plan of record — Run 3', () => {
     await page.getByRole('button', { name: '← Back' }).click();
     await expect(page.getByText(OVER), 'PATHS back on THIS MONTH').toBeVisible();
 
-    // The nav's Almanac button opens the hub on its default face — the link's face is forgotten once the hub is left.
+    // The nav's Almanac button opens the hub on the grid (BL45) — the link's face is forgotten once the hub is left.
     await page.getByLabel('Almanac').click();
-    await expect(page.getByText('Next halving'), 'PATHS the default face').toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'PATHS the grid').toBeVisible({ timeout: 15_000 });
     await expect(moveCard(page), 'PATHS not the Decision face').toHaveCount(0);
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });

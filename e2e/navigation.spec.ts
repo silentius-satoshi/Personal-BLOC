@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { seedAndGoto, seedLoanAndGoto, openSettingsSimple, openAlmanacSimple, mouseDragX, STORE_VERSION } from './helpers';
+import { seedAndGoto, seedLoanAndGoto, openSettingsSimple, openAlmanacSimple, openAlmanacFace, mouseDragX, STORE_VERSION } from './helpers';
 
 /** The four block explorers useChainTip tries once live height is on — the consent sheet's list. */
 const EXPLORERS = /mempool\.space|blockstream\.info|blockchain\.info\/q\/|blockchair\.com/;
@@ -23,8 +23,8 @@ async function expectToolbarInTitleRow(page: Page, title: string, boxTestId: str
 
 /**
  * Gesture & Motion System — P3 navigation specs: edge-swipe-back (AppShell Branch H/I) + Almanac face nav.
- * ⚠ The Almanac face-swipe pager was REMOVED — face switching is TAP-ONLY (the sub-nav pills). The specs
- * below pin that: a horizontal drag anywhere in the face host must NOT change face.
+ * ⚠ The Almanac face-swipe pager was REMOVED — face switching is TAP-ONLY (the grid's tiles since BL45; the sub-nav
+ * pills before). The specs below pin that: a horizontal drag anywhere in the face host must NOT change face.
  * The dev server bypasses every gate (import.meta.env.DEV), so the simple-mode seed reaches the two edge-back
  * surfaces. Gates never mount EdgeBackGesture — verified by the component-level grep in the summary (the
  * `edge-back-zone` testid is absent everywhere but Branch H/I; the journal spec below pins that).
@@ -64,11 +64,14 @@ test.describe('Navigation gestures (P3)', () => {
     // (Auth/viewer gates are unreachable under the dev bypass; the component-level grep covers them.)
   });
 
-  test('Almanac faces switch by TAPPING the sub-nav title (halving → cycle)', async ({ page }) => {
+  test('Almanac faces open by TAPPING a tile on the grid (halving → cycle)', async ({ page }) => {
     await openAlmanacSimple(page);
-    await expect(page.getByText('Next halving')).toBeVisible();        // default face = Halving Clock
+    await expect(page.getByRole('navigation', { name: 'Faces' })).toBeVisible();   // the hub opens on the grid (BL45)
+    await expect(page.getByText('Next halving')).toHaveCount(0);       // …where no face mounts
+    await openAlmanacFace(page, 'Halving Clock');
+    await expect(page.getByText('Next halving')).toBeVisible();
     await expect(page.getByText('Open Halving Clock')).toHaveCount(0);
-    await page.getByRole('button', { name: /Cycle Clock/ }).click();
+    await openAlmanacFace(page, 'Cycle Clock');                        // ← Almanac, then the tile
     // 'Open Halving Clock' is CycleClock's onSwitchToHalving cross-link (CycleClock.tsx) — owned ONLY by the
     // Cycle face, so it proves the face actually swapped rather than merely rendering alongside.
     await expect(page.getByText('Open Halving Clock')).toHaveCount(1);  // exactly ONE face mounts — no neighbours
@@ -76,6 +79,7 @@ test.describe('Navigation gestures (P3)', () => {
 
   test('a horizontal drag across the Almanac does NOT change face (pager removed)', async ({ page }) => {
     await openAlmanacSimple(page);
+    await openAlmanacFace(page, 'Halving Clock');
     await expect(page.getByText('Next halving')).toBeVisible();
     const h = page.viewportSize()!.height / 2;
     const w = page.viewportSize()!.width;
@@ -103,14 +107,20 @@ test.describe('Navigation gestures (P3)', () => {
 
   test('gated faces (defense) never appear while !hasCbLoan', async ({ page }) => {
     await openAlmanacSimple(page);
-    // The sub-nav renders ONLY visibleFaces; with the default seed (!hasCbLoan) defense is absent from it.
-    await expect(page.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
-    // Tap through every pill the sub-nav offers — the defense pill still never materialises.
-    const pills = page.locator('button', { hasText: /Halving Clock|Cycle Clock|Mining|Power Law|Sats|Scenario|Ownership/ });
-    for (let i = 0, n = await pills.count(); i < n; i++) {
-      await pills.nth(i).click();
+    const grid = page.getByRole('navigation', { name: 'Faces' });
+    // The grid renders ONLY the faces its gates allow; with the default seed (!hasCbLoan) defense is absent from it.
+    await expect(grid.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
+    // Open every face the grid offers whose fetch needs no stub (Decision's and FIRE's do — their own specs open them) —
+    // the defense tile still never materialises, on a face or back on the grid.
+    const names = (await grid.getByRole('button').allTextContents())
+      .filter((n) => /^(Halving Clock|Cycle Clock|Mining|Power Law|Sats|Scenario|Ownership)$/.test(n));
+    expect(names, 'every ungated face but the two').toHaveLength(7);
+    for (const n of names) {
+      await openAlmanacFace(page, n);
       await expect(page.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
     }
+    await page.getByRole('button', { name: '← Almanac' }).click();
+    await expect(grid.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
   });
 
   test('the Power Law face: the chart opens in view and holds still while the history and the price load; the toolbar in the title row; a drag zooms it; the tooltip and the legend name the bands; no explorer is contacted', async ({ page }) => {
@@ -135,13 +145,14 @@ test.describe('Navigation gestures (P3)', () => {
     });
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /Power Law/ }).click();      // tap to the powerlaw face
+    await openAlmanacFace(page, 'Power Law');                          // tap to the powerlaw face
     // STEADY (Z22) — the box's page top is the same while loading and once the chart arrives. The title row is 32px
     // either way; at 390 "Price and the bands" fits on one line beside the toolbar (the 360px test below pins the row).
     const loading = page.getByText('Loading price history…');
     await expect(loading).toBeVisible();
-    // The web font first: IBM Plex Mono swaps in (font-display: swap) and the sub-nav pills above grow 33 → 34px with it
-    // (line-height: normal), so a reading taken before the swap is 1px off one taken after — a flake, not the layout.
+    // The web font first: IBM Plex Mono swaps in (font-display: swap) and the bar above the face can move with it — the
+    // sub-nav pills grew 33 → 34px (line-height: normal); the face's "← Almanac" sits there since BL45 — so a reading
+    // taken before the swap can be off one taken after: a flake, not the layout.
     await page.evaluate(() => document.fonts.ready);
     const before = await loading.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
     release();
@@ -237,7 +248,7 @@ test.describe('Navigation gestures (P3)', () => {
         if (surface === 'almanac') {
           await seedAndGoto(page);
           await page.getByLabel('Almanac').click();
-          await page.getByRole('button', { name: /Power Law/ }).click();
+          await openAlmanacFace(page, 'Power Law');
         } else {
           await page.addInitScript(`
             window.__APP_BOOTED = true;
@@ -274,14 +285,14 @@ test.describe('Navigation gestures (P3)', () => {
 
   test('edge-swipe back works on Almanac (left bezel → journal)', async ({ page }) => {
     await openAlmanacSimple(page);
-    await expect(page.getByText('Next halving')).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Faces' })).toBeVisible();   // on the grid: one swipe leaves
     const h = page.viewportSize()!.height / 2;
     await mouseDragX(page, 8, h, 234);                                 // x=8 → the edge-back zone
     await expect(page.getByLabel('Log an event')).toBeVisible();       // left Almanac → journal
   });
 });
 
-// ── Decision face (Run B, G9) — nothing else ever mounts the face: the every-pill test above taps by an explicit
+// ── Decision face (Run B, G9) — nothing else ever mounts the face: the every-tile test above opens by an explicit
 // name list, and the repo has no render harness. So: open it, with the price history stubbed and with it failing.
 test.describe('Decision face — the smoke', () => {
   const MOVE_TITLE = "The support policy's move this month";
@@ -295,7 +306,7 @@ test.describe('Decision face — the smoke', () => {
     }));
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    await openAlmanacFace(page, 'Decision');
     const move = page.getByRole('region', { name: MOVE_TITLE });
     await expect(move).toBeVisible({ timeout: 8000 });
     await expect(move.getByText(/This is your plan of record's move this month/)).toBeVisible();
@@ -312,7 +323,7 @@ test.describe('Decision face — the smoke', () => {
     }));
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    await openAlmanacFace(page, 'Decision');
     const th = page.getByTestId('schedule-keep');
     for (const width of [390, 375]) {
       await page.setViewportSize({ width, height: 844 });
@@ -335,7 +346,7 @@ test.describe('Decision face — the smoke', () => {
     }));
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    await openAlmanacFace(page, 'Decision');
     const zoom = page.getByTestId('chart-zoom');
     await zoom.scrollIntoViewIfNeeded();
     await expect(zoom).toHaveAttribute('data-zoomed', 'false');
@@ -382,7 +393,7 @@ test.describe('Decision face — the smoke', () => {
     }));
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    await openAlmanacFace(page, 'Decision');
     const zoom = page.getByTestId('chart-zoom');
     await zoom.scrollIntoViewIfNeeded();
     await expect(zoom).toHaveAttribute('data-mode', 'none');            // premise: Scroll mode (nothing pressed)
@@ -441,7 +452,7 @@ test.describe('Decision face — the smoke', () => {
     await stubHistory(page);
     await seedAndGoto(page);
     await page.getByLabel('Almanac').tap();
-    await page.getByRole('button', { name: /◆ Decision/ }).tap();
+    await openAlmanacFace(page, 'Decision', { tap: true });
     const zoom = page.getByTestId('chart-zoom');
     await zoom.scrollIntoViewIfNeeded();
     await expect(zoom, 'PREMISE').toHaveAttribute('data-mode', 'none');            // Scroll mode (nothing pressed)
@@ -542,7 +553,7 @@ test.describe('Decision face — the smoke', () => {
     await stubHistory(page);
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    await openAlmanacFace(page, 'Decision');
     const zoom = page.getByTestId('chart-zoom');
     await zoom.scrollIntoViewIfNeeded();
     const yLabels = () => zoom.locator('.recharts-yAxis .recharts-cartesian-axis-tick-value').allTextContents();
@@ -590,7 +601,7 @@ test.describe('Decision face — the smoke', () => {
       await stubHistory(page);
       await seedAndGoto(page);
       await page.getByLabel('Almanac').click();
-      await page.getByRole('button', { name: /◆ Decision/ }).click();
+      await openAlmanacFace(page, 'Decision');
       const zoom = page.getByTestId('chart-zoom');
       await zoom.scrollIntoViewIfNeeded();
       await expect(zoom, 'MODE').toHaveAttribute('data-mode', 'zoom');              // premise: a fine pointer
@@ -613,7 +624,7 @@ test.describe('Decision face — the smoke', () => {
     await page.route(/blockchain\.info/, (r) => r.fulfill({ status: 500, body: '' }));
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    await openAlmanacFace(page, 'Decision');
     const move = page.getByRole('region', { name: MOVE_TITLE });
     await expect(move).toBeVisible({ timeout: 8000 });
     await expect(move.getByText("Price history didn't load, so this run assumes the model isn't treated as broken."))
@@ -631,7 +642,7 @@ test.describe('Sats face — the rates under the converter', () => {
     await page.route(/api\.coinbase\.com\/v2\/prices/, (r) =>
       r.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { amount: '82000' } }) }));
     await openAlmanacSimple(page);
-    await page.getByRole('button', { name: /丰 Sats/ }).click();
+    await openAlmanacFace(page, 'Sats');
     const rates = page.getByRole('region', { name: 'Satoshi Rates' });
     await expect(rates, 'S1').toBeVisible();
 
@@ -706,7 +717,7 @@ test.describe('InfoTip — one tap, on screen', () => {
     }));
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    await openAlmanacFace(page, 'Decision');
     await expect(page.getByRole('region', { name: "The support policy's move this month" })).toBeVisible({ timeout: 8000 });
 
     const trigger = page.getByRole('button', { name: 'About the support policy' });
@@ -827,7 +838,7 @@ test.describe('Policy v2 Run B — the cliff on screen', () => {
     await hermetic(page);
     await seedLoanAndGoto(page);
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    await openAlmanacFace(page, 'Decision');
     const move = page.getByRole('region', { name: MOVE_TITLE });
     await expect(move).toBeVisible({ timeout: 8000 });
     const cliff = move.getByText('Coinbase seizes this loan at $58,140 — 42% below today.', { exact: true });
@@ -851,18 +862,18 @@ test.describe('Policy v2 Run B — the cliff on screen', () => {
     await seedLoanAndGoto(page);
     await page.getByLabel('Almanac').click();
     // Cycling — the BTC price path card.
-    await page.getByRole('button', { name: /♻ Cycling/ }).click();
+    await openAlmanacFace(page, 'Cycling');
     const pricePath = page.locator('section', { hasText: 'BTC price path' });
     await pricePath.scrollIntoViewIfNeeded();
     await expect(pricePath.locator(SEIZES), 'CYCLING').toHaveCount(1);
     expect(await pricePath.locator(SEIZES).getAttribute('d'), 'CYCLING d').toBeTruthy();
     // Ownership and Strategy — the Price & liq chart.
-    for (const face of [/⚖ Ownership/, /◈ Strategy/]) {
-      await page.getByRole('button', { name: face }).click();
+    for (const face of ['Ownership', 'Strategy']) {
+      await openAlmanacFace(page, face);
       await page.getByRole('button', { name: 'Price & liq' }).click();
       const line = page.locator(SEIZES);
-      await expect(line, String(face)).toHaveCount(1);
-      expect(await line.getAttribute('d'), `${String(face)} d`).toBeTruthy();
+      await expect(line, face).toHaveCount(1);
+      expect(await line.getAttribute('d'), `${face} d`).toBeTruthy();
     }
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });

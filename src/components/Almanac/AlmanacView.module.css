@@ -1,5 +1,5 @@
-/* Almanac container + sub-nav (P2) — ported re-tokenized from the preview .alm-eyebrow / .subnav.
-   Active button = green-tinted (preview .subnav button.on); "soon" buttons disabled at opacity .5. */
+/* Almanac container + eyebrow (P2) — ported re-tokenized from the preview .alm-eyebrow — and the grid that replaced the
+   sub-nav pills (BL45). */
 
 /* Hub expansion — full-width root, no max-width/padding: each face owns its own layout (Mining's 960px
    .main, the faces' 960px .face — Power Law's included — the CB tools' 600px toolShell) so it isn't squeezed into
@@ -76,49 +76,87 @@
   background: var(--line-2);
 }
 
-.subnav {
-  display: flex;
-  gap: 7px;
+/* The grid (BL40, BL45 — the owner's pick B): the faces in two groups, three to a row on a phone, five where there is
+   room; each tile a line icon over its name. The face just left keeps the selected pill's green tint, so the eye finds
+   its place again. The group headings are the eyebrow's quiet type. The columns follow the grid's own width (a container
+   query), since full mode's padding and a phone's differ: three need 91px a tile — the longest names, "Ownership" and
+   "Emergency", on one line inside the tile's padding — so a narrower grid (a 320px phone) takes two. */
+.grid {
+  container: almanac-grid / inline-size;
   margin-bottom: 16px;
-  overflow-x: auto;
-  scrollbar-width: none;
 }
-.subnav::-webkit-scrollbar {
-  display: none;
+.group + .group {
+  margin-top: 24px;
 }
-.subnavBtn {
-  flex: none;
+.groupLabel {
+  margin: 12px 2px 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@container almanac-grid (max-width: 292.9px) {
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container almanac-grid (min-width: 520px) {
+  .tiles {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+.tile {
+  min-height: 84px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 14px;
   border: 1px solid var(--line);
   background: var(--surface);
-  color: var(--text-muted);
+  color: var(--text-primary);
   font-family: inherit;
+  font-size: 12px;
   font-weight: 600;
-  font-size: 12.5px;
-  padding: 7px 13px;
-  border-radius: 11px;
+  line-height: 15px;
+  text-align: left;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  white-space: nowrap;
 }
-.subnavBtnOn {
+.tileLast {
   border-color: color-mix(in srgb, var(--green) 40%, transparent);
   background: color-mix(in srgb, var(--green) 8%, transparent);
-  color: var(--text-primary);
 }
-.subnavBtnSoon {
-  opacity: 0.5;
-  cursor: default;
+.tileName {
+  overflow-wrap: anywhere;
 }
 
-.soonTag {
-  font-family: var(--mono);
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  border: 1px solid var(--line-2);
-  border-radius: 5px;
-  padding: 1px 4px;
+/* A face's way back to the grid — Settings' "← Settings" button, in the place the pills held. */
+.faceBar {
+  margin-bottom: 16px;
+}
+.backBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.backBtn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
 }

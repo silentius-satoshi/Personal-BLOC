@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { FIRE_INPUT_DEFAULTS } from '../../../lib/fireInputs';
+import { FACE_TILES, faceShown } from '../almanacGrid';
 
 /**
  * ⚠ STRUCTURAL GUARD — the FIRE face's wiring (batch 1 build 4). The repo has no render harness, so the wiring is read off
@@ -17,6 +18,7 @@ const importsOf = (src: string): string[] => [...src.matchAll(/^import[^;]*?from
 const FACE_PATH = 'src/components/Almanac/FireFace.tsx';
 const FACE = strip(read(FACE_PATH));
 const HUB = read('src/components/Almanac/AlmanacView.tsx');
+const GRID = read('src/components/Almanac/almanacGrid.ts');
 const VIEW = read('src/components/Almanac/fireFaceView.ts');
 const SCALE = strip(read('src/components/Almanac/FireScale.tsx'));
 const SOURCES = [
@@ -54,17 +56,24 @@ describe('⭐ the hub', () => {
     expect(branch, 'C8 above the fallback').toBeLessThan(fallback);
   });
 
-  it('⭐ DEPLOY GATE — appended last on the deploy rule, never the loan; the env read once, where the pill is built; unreachable where hidden (BL42)', () => {
-    const list = HUB.slice(HUB.indexOf('const visibleFaces'), HUB.indexOf('];', HUB.indexOf('const visibleFaces')));
-    const entries = list.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{') || l.startsWith('...'));
-    expect(entries[entries.length - 1], 'DEPLOY GATE last, on the rule').toBe("...(FIRE_ON_THIS_DEPLOY ? [{ key: 'fire' as Face, label: '◎ FIRE' }] : []),");
-    expect(entries.filter((e) => e.includes("key: 'fire'")), 'DEPLOY GATE one FIRE entry').toHaveLength(1);
-    expect(entries[0], 'DEPLOY GATE halving first').toBe("{ key: 'halving',  label: '◔ Halving Clock' },");
+  it('⭐ DEPLOY GATE — its tile last in your plan, on the deploy rule, never the loan; the env read once, where the grid is built; unreachable where hidden (BL42, BL45)', () => {
+    const fire = FACE_TILES.filter((t) => t.key === 'fire');
+    expect(fire, 'DEPLOY GATE one FIRE tile, on the rule').toEqual([{ key: 'fire', name: 'FIRE', group: 'plan', gate: 'fireDeploy' }]);
+    const plan = FACE_TILES.filter((t) => t.group === 'plan');
+    expect(plan[plan.length - 1].key, 'DEPLOY GATE last in your plan').toBe('fire');
+    // The rule reads the deploy flag alone: off the deploy it never shows, with or without the loan; on it, always.
+    for (const hasCbLoan of [false, true]) {
+      for (const ledgerAvailable of [false, true]) {
+        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, fireOnDeploy: false }), 'DEPLOY GATE never the loan').toBe(false);
+        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, fireOnDeploy: true }), 'DEPLOY GATE never the loan').toBe(true);
+      }
+    }
+    expect(strip(GRID), 'DEPLOY GATE the rule\'s case').toMatch(/case 'fireDeploy': return gates\.fireOnDeploy;/);
     // Every env check reads code, never a comment: a doc comment can't turn the gate red.
     const hub = strip(HUB);
     expect(hub, 'DEPLOY GATE never the loan').not.toMatch(/face === 'fire' && !hasCbLoan/);
     expect(hub, 'DEPLOY GATE the rule\'s import').toContain("import { fireFaceOnDeploy } from '../../lib/fireDeploy';");
-    expect(hub, 'DEPLOY GATE the env, read once where the pill is built').toMatch(
+    expect(hub, 'DEPLOY GATE the env, read once where the grid is built').toMatch(
       /const FIRE_ON_THIS_DEPLOY = fireFaceOnDeploy\(\{\s*VITE_LANDING: import\.meta\.env\.VITE_LANDING, VITE_DEMO: import\.meta\.env\.VITE_DEMO,\s*\}\);/);
     expect(count(hub, 'import.meta'), 'DEPLOY GATE the hub reads the env only there').toBe(2);
     const calls = srcFiles().flatMap((f) => {
@@ -74,12 +83,13 @@ describe('⭐ the hub', () => {
     expect(calls, 'DEPLOY GATE the rule\'s one call, in the hub').toEqual(['src/components/Almanac/AlmanacView.tsx']);
     for (const f of SOURCES) expect(strip(read(f)), `DEPLOY GATE ${f} reads no env`).not.toContain('import.meta');
     expect(hub, 'DEPLOY GATE unreachable where hidden: the fallback').toMatch(
-      /useEffect\(\(\) => \{\s*if \(face === 'fire' && !FIRE_ON_THIS_DEPLOY\) setFace\('halving'\);\s*\}, \[face\]\);/);
-    expect(count(hub, 'FIRE_ON_THIS_DEPLOY'), 'DEPLOY GATE one constant: declared, the pill, the fallback').toBe(3);
+      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable\]\);/);
+    expect(hub, 'DEPLOY GATE the grid, on the same rule').toContain('gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY })');
+    expect(count(hub, 'FIRE_ON_THIS_DEPLOY'), 'DEPLOY GATE one constant: declared, the grid, the fallback').toBe(3);
   });
 
   it('⭐ THIRTEEN — the union carries the face and the header counts it', () => {
-    expect(HUB, 'THIRTEEN the union').toMatch(/type Face = [^;]*\| 'fire';/);
+    expect(GRID, 'THIRTEEN the union').toMatch(/type Face =[^;]*\| 'fire';/);
     expect(HUB, 'THIRTEEN the header').toMatch(/for THIRTEEN faces/);
     expect(HUB, 'THIRTEEN no stale count').not.toMatch(/TWELVE/);
   });

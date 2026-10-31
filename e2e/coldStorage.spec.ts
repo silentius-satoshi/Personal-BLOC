@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { STORE_VERSION } from './helpers';
+import { openAlmanacFace, STORE_VERSION } from './helpers';
 
 /**
  * BL33 — cold storage, in Settings and on the four engine faces (Batch 1, build 2c; spec pbloc-spec-batch-1-v1 §2.2).
@@ -13,7 +13,7 @@ const MOVE = `{ id: 'c1', date: '2026-10-08', ts: ${ENTERED + 3 * 86_400_000}, k
 const STATE = `onboardingComplete: true, btcPriceMode: 'manual', btcPrice: 100000, advisorStartDate: '2026-10-01',
   simpleMode: true, simpleView: 'daily', hasCbLoan: true, cbLoanBalance: 50000, cbLoanBalanceAsOf: null, cbCollateralBtc: 1,
   coldStorageBtc: 0.5, coldStorageBtcAsOf: ${ENTERED}, dayLog: [${MOVE}]`;
-const FACES = [['cycling', /♻ Cycling/], ['strategy', /◈ Strategy/], ['ownership', /⚖ Ownership/], ['decision', /◆ Decision/]] as const;
+const FACES = [['cycling', 'Cycling'], ['strategy', 'Strategy'], ['ownership', 'Ownership'], ['decision', 'Decision']] as const;
 
 test.describe('cold storage — BL33', () => {
   test('COLD — Settings: its own group and what its figure is made of; an entry re-dates it; net coins count it; the four faces\' one card', async ({ page }) => {
@@ -50,8 +50,8 @@ test.describe('cold storage — BL33', () => {
     await page.getByRole('button', { name: '← Settings' }).click();
     await page.getByRole('button', { name: '← Back' }).click();
     await page.getByLabel('Almanac').click();
-    for (const [face, pill] of FACES) {
-      await page.getByRole('button', { name: pill }).first().click();
+    for (const [face, tile] of FACES) {
+      await openAlmanacFace(page, tile);
       const card = page.getByRole('region', { name: 'Cold storage' });
       await expect(card, `${face}: one card`).toHaveCount(1, { timeout: 15_000 });
       await expect(card, `${face}: the reserve`).toContainText('0.750 ₿ you hold today');

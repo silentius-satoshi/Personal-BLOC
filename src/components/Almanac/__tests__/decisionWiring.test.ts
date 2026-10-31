@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { FACE_TILES } from '../almanacGrid';
 
 /**
  * ⚠ STRUCTURAL GUARD — how the Decision face (Run B) is wired. The repo has no render harness, so, like resetMirror /
@@ -302,17 +303,15 @@ describe('⭐ I21 — the hub', () => {
   const HUB = read('AlmanacView.tsx');
 
   it('⭐ the renderFace branch sits ABOVE the Converter fallback (the C8 trap)', () => {
-    const branch = HUB.indexOf("if (f === 'decision')  return <DecisionFace onNavigate={setFace} />;");
+    const branch = HUB.indexOf("if (f === 'decision')  return <DecisionFace onNavigate={openFace} />;");
     const fallback = HUB.indexOf('return <div className={styles.faceStack}><ConverterMain />');
     expect(branch, 'the decision branch').toBeGreaterThan(0);
     expect(fallback, 'the fallback').toBeGreaterThan(0);
     expect(branch).toBeLessThan(fallback);
   });
 
-  it('⭐ the pill is ungated, just before FIRE\'s — batch 1 build 4 appends the FIRE face last', () => {
-    const list = HUB.slice(HUB.indexOf('const visibleFaces'), HUB.indexOf('];', HUB.indexOf('const visibleFaces')));
-    const entries = list.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('{') || l.startsWith('...'));
-    expect(entries[entries.length - 2]).toBe("{ key: 'decision' as Face, label: '◆ Decision' },");
+  it('⭐ the tile is ungated, first in your plan (the grid — BL45)', () => {
+    expect(FACE_TILES[0]).toEqual({ key: 'decision', name: 'Decision', group: 'plan' });
   });
 });
 

@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { seedLoanAndGoto, STORE_VERSION } from './helpers';
+import { seedLoanAndGoto, openAlmanacFace, STORE_VERSION } from './helpers';
 
 /**
  * The futures (spec pbloc-spec-policy-v2-lenses-v1): the Strategy face's readout and the Support policy card's line on
@@ -17,17 +17,17 @@ async function hermetic(page: Page): Promise<void> {
 }
 
 const FACES = [
-  { name: 'cycling', pill: /♻ Cycling/ },
-  { name: 'strategy', pill: /◈ Strategy/ },
-  { name: 'ownership', pill: /⚖ Ownership/ },
-  { name: 'decision', pill: /Decision/ },
+  { name: 'cycling', tile: 'Cycling' },
+  { name: 'strategy', tile: 'Strategy' },
+  { name: 'ownership', tile: 'Ownership' },
+  { name: 'decision', tile: 'Decision' },
 ] as const;
 
-async function openFace(page: Page, pill: RegExp): Promise<void> {
+async function openFace(page: Page, tile: string): Promise<void> {
   await hermetic(page);
   await seedLoanAndGoto(page);
   await page.getByLabel('Almanac').click();
-  await page.getByRole('button', { name: pill }).first().click();
+  await openAlmanacFace(page, tile);
 }
 
 const readoutOf = (page: Page): Locator => page.getByRole('region', { name: /^Across [\d,]+ simulations · / });
@@ -66,7 +66,7 @@ const SUB_SEIZED = new RegExp(String.raw`^of the simulations( — (${SHARE_OR_AL
 
 test.describe('the futures', () => {
   test('READOUT — Strategy: four numbers under the policy, the chance alone without it; run in a worker', async ({ page }) => {
-    await openFace(page, /◈ Strategy/);
+    await openFace(page, 'Strategy');
     const rows = await readRows(page, 'READOUT');
     // A readout shown only in the Flywheel lens (MF19) fails here: the face opens on Position
     expect(rows.map((r) => r[0]), 'READOUT terms').toEqual(['You own', 'In your cold storage', 'Beats never borrowing', 'Coinbase seizes']);
@@ -95,14 +95,14 @@ test.describe('the futures', () => {
   });
 
   test('LINE — the Support policy card carries the futures\' line on all four faces; another strategy, none', async ({ page }) => {
-    await openFace(page, FACES[0].pill);
+    await openFace(page, FACES[0].tile);
     for (const f of FACES) {
-      await page.getByRole('button', { name: f.pill }).first().click();
+      await openAlmanacFace(page, f.tile);
       // A face that passes no line (MF20 on Cycling) fails at LINE <face>
       expect(await landedLine(page, `LINE ${f.name}`), `LINE ${f.name}`).toMatch(LINE_ON);
     }
     // NOT-CYCLE — Strategy on Hold: the card says the policy is for Cycle only, and carries no line (MF22 fails here)
-    await page.getByRole('button', { name: /◈ Strategy/ }).first().click();
+    await openAlmanacFace(page, 'Strategy');
     await page.getByRole('button', { name: 'Hold', exact: true }).click();
     await expect(page.getByText('Applies to the Cycle strategy only.').first(), 'NOT-CYCLE: the card').toBeVisible();
     await expect(lineOf(page), 'NOT-CYCLE: no line').toHaveCount(0);
@@ -110,11 +110,11 @@ test.describe('the futures', () => {
   });
 
   test('SAME — the same inputs on the same day give the same readout, to the digit (a seeded run)', async ({ page }) => {
-    await openFace(page, /◈ Strategy/);
+    await openFace(page, 'Strategy');
     const a = await readRows(page, 'SAME first');
     await page.reload();
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◈ Strategy/ }).first().click();
+    await openAlmanacFace(page, 'Strategy');
     // Unseeded futures (MF24, Math.random) fail here
     expect(await readRows(page, 'SAME again'), 'SAME').toEqual(a);
   });
@@ -140,7 +140,7 @@ test.describe('the futures', () => {
       await page.goto('/');
       await page.getByRole('button', { name: /^Tools/ }).click({ timeout: 15_000 });
       await page.getByRole('button', { name: 'Almanac', exact: true }).click();
-      await page.getByRole('button', { name: /◈ Strategy/ }).first().click();
+      await openAlmanacFace(page, 'Strategy');
       const rows = await readRows(page, 'FIT');
       expect(rows[0][1], 'FIT: two-digit coins (non-vacuous)').toMatch(/^\d\d\./);
       // Values at a fixed 17 px (MF25) run past their cells here
@@ -159,12 +159,12 @@ test.describe('the futures', () => {
   });
 
   test('FALLBACK — with no Worker the same readout runs in-thread', async ({ page }) => {
-    await openFace(page, /◈ Strategy/);
+    await openFace(page, 'Strategy');
     const a = await readRows(page, 'FALLBACK worker');
     await page.addInitScript('delete window.Worker; window.Worker = undefined;');
     await page.reload();
     await page.getByLabel('Almanac').click();
-    await page.getByRole('button', { name: /◈ Strategy/ }).first().click();
+    await openAlmanacFace(page, 'Strategy');
     // A client that gives up without a worker (MF17) fails here
     expect(await readRows(page, 'FALLBACK'), 'FALLBACK').toEqual(a);
     expect(page.workers().some((w) => /futures\.worker/.test(w.url())), 'FALLBACK: no worker ran').toBe(false);

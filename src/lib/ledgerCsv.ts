@@ -3,7 +3,8 @@ import { bucketEventToMonth } from '../simulation/logUtils';
 
 /**
  * Ledger data utilities (M-L1) — PURE, no React. Backs the Almanac Ledger face:
- *  - `ledgerFaceAvailable` — the data-presence gate (sub-nav self-hides + fallback-to-halving when empty).
+ *  - `ledgerFaceAvailable` — the data-presence gate (the grid's tile hides + an open Ledger falls back to the grid when
+ *    empty — BL45; the sub-nav pill and the Halving Clock before).
  *  - `buildLedgerCsv` — a spreadsheet-ready CSV export of `monthlyLog` (Copy / Download buttons).
  *  - `coldMovedByMonth` / `hasColdColumn` / `coldTotals` / `coldFootnote` / `fmtColdBtc` — the computed "→ Cold"
  *    column, its row-scoped total, and the disclosure line for cold movement in months with no row.

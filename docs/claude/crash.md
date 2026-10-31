@@ -16,7 +16,8 @@ happen on the lenders' screens and are logged through the Daily flows. Monthly C
   ⚠ **The plan of record's Run 4 (D3):** the gate is the Coinbase loan — `CbDefenseTool` renders
   `hasCbLoan ? <EmergencyConsole/> : null`. `LiqSimulator` (with its CSS, `liqSimulatorView` and its test) is deleted;
   it had no other screen. The label is always `Emergency`/`Emerg` (`ALL_TABS_META`; `withEmergencyLabel` is gone, the
-  key stays `'liqsim'`), and the defense face is always labelled `🚨 Emergency`.
+  key stays `'liqsim'`), and the defense face is always "Emergency" — its grid tile since BL45 (its pill read
+  `🚨 Emergency`).
 - **The gate — the playbook runs at the TRIGGER and restores the TARGET (A0).** The Advisor's `cbLtvTriggered` and
   SimpleModeView's `cbTriggered` both fired at `>= cbLtvTriggerPct` (crash playbook Run 2; today the crash day,
   `isCrashDay`, does — the plan of record's Run 4); a target gate would tell the owner to draw on Strike on an ordinary 68% day.

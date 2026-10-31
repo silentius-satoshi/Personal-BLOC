@@ -12,7 +12,7 @@ import { SETTINGS_FIELDS, VALIDATE_WHITELIST } from '../../../store/settingsFiel
  *  - LOG — the month log's planned figures (the Advisor tab's log and the month overlay, on both screens) read the same
  *    run through `planLogRows`;
  *  - PATHS (D5) — the Outlook became a link: THIS MONTH and the Advisor tab open the Almanac on the Decision face; the
- *    nav's Almanac button still opens the default face;
+ *    nav's Almanac button opens the grid (BL45; the default face before);
  *  - INV6 — fields with no reader left are inert, never removed: no component reads them, and their keys stay in the
  *    settings list and the backup whitelist, so an older backup still restores.
  *
@@ -111,17 +111,17 @@ describe('⭐ PATHS — D5: the Outlook is a link to the Decision face', () => {
     expect(SHELL, 'PATHS hidden tab → no link').toMatch(/const planPathsInFullMode = hiddenTabs\.includes\('almanac'\) \? null : goPlanPaths;/);
     expect(SHELL, 'PATHS full mode').toMatch(/onOpenPlanPaths=\{planPathsInFullMode\}/);
   });
-  it('⭐ PATHS — the link opens the Decision face; the nav\'s button the default; leaving forgets the face', () => {
+  it('⭐ PATHS — the link opens the Decision face; the nav\'s button the grid; leaving forgets the face', () => {
     expect(SHELL, 'PATHS the face').toMatch(/const goPlanPaths = \(\) => \{ setAlmanacFace\('decision'\);/);
     // goAlmanac sets no face and takes NO argument: the nav passes it as onClick, so a click event must never become a
-    // face. Leaving the hub (the effect below) is what brings every other way in back to the default.
+    // face. Leaving the hub (the effect below) is what brings every other way in back to the grid (BL45).
     expect(SHELL, 'PATHS the nav').toMatch(
       /const goAlmanac {2}= \(\) => \{ setPreviousTab\(activeTab as Exclude<ActiveTab, 'settings'>\); setActiveTab\('almanac'\); \};/);
     expect(SHELL, 'PATHS forgotten on leaving').toMatch(
       /useEffect\(\(\) => \{ if \(activeTab !== 'almanac'\) setAlmanacFace\(undefined\); \}, \[activeTab\]\);/);
-    expect((SHELL.match(/<AlmanacView initialFace=\{almanacFace\} \/>/g) ?? []).length, 'PATHS both modes').toBe(2);
+    expect((SHELL.match(/<AlmanacView initialFace=\{almanacFace\}[ /]/g) ?? []).length, 'PATHS both modes').toBe(2);
     expect(SHELL, 'PATHS no bare hub').not.toMatch(/<AlmanacView \/>/);
-    expect(ALMANAC, 'PATHS read at mount').toMatch(/const \[face, setFace\] = useState<Face>\(initialFace \?\? 'halving'\);/);
+    expect(ALMANAC, 'PATHS read at mount').toMatch(/const \[face, setFace\] = useState<Face \| null>\(initialFace \?\? null\);/);
   });
   it('⭐ PATHS — the expenses prompt moved onto THIS MONTH, owner-only (its Update writes the plan)', () => {
     expect(SIMPLE, 'PATHS the prompt').toMatch(/\{showReanchor && !viewerMode && \(/);

@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { seedLoanAndGoto, STORE_VERSION } from './helpers';
+import { seedLoanAndGoto, openAlmanacFace, STORE_VERSION } from './helpers';
 
 /**
  * The Milestones on a phone (spec `pbloc-spec-milestones-phone-v1.md`, Run 2: the switch table). Under 768 px — and in
@@ -17,9 +17,9 @@ async function hermetic(page: Page): Promise<void> {
 }
 
 const FACES = [
-  { name: 'cycling', pill: /♻ Cycling/, framing: 'Draw on Strike, refinance to Coinbase, never sell.', fourYear: '4-yr cycle', picks: false },
-  { name: 'strategy', pill: /◈ Strategy/, framing: 'One run, two lenses — what you own, and what the flywheel earns.', fourYear: '4-yr cycle', picks: true },
-  { name: 'ownership', pill: /⚖ Ownership/, framing: 'Held · owed · yours — never sell.', fourYear: 'Ride the 4-yr cycle', picks: true },
+  { name: 'cycling', tile: 'Cycling', framing: 'Draw on Strike, refinance to Coinbase, never sell.', fourYear: '4-yr cycle', picks: false },
+  { name: 'strategy', tile: 'Strategy', framing: 'One run, two lenses — what you own, and what the flywheel earns.', fourYear: '4-yr cycle', picks: true },
+  { name: 'ownership', tile: 'Ownership', framing: 'Held · owed · yours — never sell.', fourYear: 'Ride the 4-yr cycle', picks: true },
 ] as const;
 type Face = (typeof FACES)[number];
 
@@ -35,7 +35,7 @@ async function openFace(page: Page, f: Face): Promise<Locator> {
   await hermetic(page);
   await seedLoanAndGoto(page);
   await page.getByLabel('Almanac').click();
-  await page.getByRole('button', { name: f.pill }).click();
+  await openAlmanacFace(page, f.tile);
   await expect(page.getByText(f.framing, { exact: true })).toBeVisible({ timeout: 8000 });
   const dock = dockOf(page);
   if (f.name === 'strategy') {
@@ -392,7 +392,7 @@ test.describe('Milestones — the dock\'s tabs (R3), and full mode', () => {
         const at = `${simple ? 'simple' : 'full'} ${w}`;
         const { ctx, page } = await almanacAt(browser, baseURL, w, simple);
         try {
-          await page.getByRole('button', { name: /◈ Strategy/ }).click();
+          await openAlmanacFace(page, 'Strategy');
           const dock = dockOf(page);
           await dock.getByRole('button', { name: /^Lens/ }).click();
           await dock.getByRole('button', { name: 'Flywheel', exact: true }).click();
@@ -417,7 +417,7 @@ test.describe('Milestones — the dock\'s tabs (R3), and full mode', () => {
       ', strikeCollateralBtc: 1.5, creditLine: 40000, expenses: 5000, income: 6000');
     try {
       for (const f of FACES) {
-        await page.getByRole('button', { name: f.pill }).click();
+        await openAlmanacFace(page, f.tile);
         await expect(page.getByText(f.framing, { exact: true })).toBeVisible({ timeout: 8000 });
         const dock = dockOf(page);
         const tab = async (re: RegExp): Promise<void> => {

@@ -555,7 +555,7 @@ goes red.)
       text-field skip → TABS-EDIT-ESC · MT4 `dropId` left on under 1024 px (the bar's document listener hears the page)
       → TABS-PAGE;
     - full mode (Δ1): one test, two contexts (the computer and the phone), `simpleMode: false`, Tools → Almanac →
-      ◆ Decision → the edge checks with a surface tag;
+      the Decision tile → the edge checks with a surface tag;
     - Run 2 — the parents (`expectPinned` takes `end` — the dock's preceding sibling, `.shell` on Ownership — and
       `minScroll` 600):
       - phone: Cycling (ONCE-DOM · TABS · EDGE · NOTE · the edge · PATH-TAB · REMOTE · TIMING · TIMING-REMOTE ·
@@ -1344,8 +1344,9 @@ goes red.)
     assertion).
   - e2e, `planOfRecord.spec.ts` — "the plan of record — Run 3" (+3): YEAR (the Advisor tab: the card's status, its
     to-do to the cent, no Skip, Pay or projection; LOG the plan's buy, paused; PATHS the Decision face; full mode's
-    Tools menu opens the default face once the hub is left) · PATHS (THIS MONTH: no Outlook switch; the link; ← Back;
-    the nav's button opens the default face — checked by its own words, "Next halving") · REANCHOR (the prompt to the
+    Tools menu opens the default face once the hub is left — the grid since BL45) · PATHS (THIS MONTH: no Outlook switch;
+    the link; ← Back; the nav's button opens the default face — checked by its own words, "Next halving"; since BL45 the
+    grid, by its navigation's name, "Faces") · REANCHOR (the prompt to the
     cent; Update; the field to the cent).
   - Red-first (`dcd6cb5`'s app code with the new tests): 25 red — 23 by an AssertionError, 2 by a TypeError
     (`planLogRows`, `planStrikePaidUsd`); `planYearWiring` and `planRunWiring` load only once `usePlanCardInputs.ts`
@@ -2250,6 +2251,38 @@ goes red.)
     store's files can't load (no `venueColors` module); the wiring 8 of 9 red (its ninth, STAYS, the same on `main`); each
     moved pin red, one test each; the e2e red at "ONE PAGE the row"; v3.1's new ONE PAGE assertion red with the viewer's
     early return removed.
+- **The Almanac grid (BL40, BL45) — the hub opens on its faces as a grid** (spec `pbloc-spec-almanac-grid-v1` v1.0;
+  Standard, the reviewer's prototype applied byte for byte; the suite 3,245 → 3,255 (+6 skipped), 223 → 224 files; e2e
+  130 → 138 (+2 skipped). 22 planted bugs — 19 through the unit tests, 20 through the e2e — each an exact-once edit, red
+  at its tagged tests, the files restored and md5-checked: `Claude outputs/almanac-grid/mutations-grid.json`):
+  - `src/components/Almanac/__tests__/almanacGrid.test.ts` (10, new; the rule pure, the wiring read off the source): ⭐
+    CATALOGUE (every face once, its name, its group) · ORDER (your plan's, then bitcoin's, as picked) · GATES (each of
+    the three gates on its own faces, all eight combinations) · PILLS (the grid offers exactly the faces the pill row
+    did — the pill row's rule kept as the reference) · GROUPS (never a heading over nothing) · GRID (the default is the
+    grid; the link's face opens from outside; no face mounts on the grid) · ONE RULE (the hub's gates go to the rule; no
+    gate of its own; the fallback to the grid) · BACK (a face reports its way to the grid; the link's does not; the ring)
+    · SHELL (Branch I's chain; full mode's hub) · ICONS (one drawing a face, no two alike, decorative).
+  - `e2e/almanacGrid.spec.ts` (8, new; every test that opens a plan face aborts live prices and stubs the history):
+    ⭐ GRID (the groups, the order, three to
+    a row, every icon its own, no face mounted) · GATED (no loan: its three faces gone; a logged month: the Ledger) · OPEN
+    (a tile, ← Almanac, the ring drawn and moving) · SWIPE (a face → the grid → out) · LINK (the plan's link: ← Back or one
+    swipe to THIS MONTH; ← Almanac to the grid) · INSIDE (the Decision face's link to Cycling moves inside the hub) · FULL
+    (full mode: five to a row; a face and back) · NARROW (two to a row at 320, three at 360 and 390; no name broken or
+    cut).
+  - `e2e/helpers.ts` gains `openAlmanacFace(page, name)` — the grid's way to a face, by "← Almanac" first from a face —
+    and every face spec opens its faces through it: `navigation.spec.ts` (the face-nav tests rewritten for the grid: the
+    hub opens on the grid; the Halving Clock, then the Cycle Clock, by their tiles; the drag test on the Halving Clock;
+    the gated-face skip over every face the grid offers but Decision and FIRE; the edge swipe from the grid),
+    `futures.spec.ts`, `controlDock.spec.ts`, `milestones.spec.ts`, `coldStorage.spec.ts`, `fire.spec.ts` (PILL: the FIRE
+    tile last in Your plan) and `planOfRecord.spec.ts` (PATHS: the grid, not the Halving Clock, once the hub is left).
+  - Moved on purpose — the hub's pins: `fireWiring.test.ts` (DEPLOY GATE on the FIRE tile and `faceShown`; THIRTEEN's
+    union in `almanacGrid.ts`), `decisionWiring.test.ts` (I21: the branch's `openFace`; the Decision tile ungated, first),
+    `planEdgesWiring.test.ts` (GATE: the console's tile, "Emergency", on the loan) and `planYearWiring.test.ts` (PATHS:
+    the grid read at mount; both modes pass `initialFace`). Nothing else moved.
+  - Red first (the reviewer's, on `main`'s app code with the new and changed tests and the two new modules alone, unwired
+    — spec §4): the hub's pins red at their tags — GRID, ONE RULE, BACK and SHELL, DEPLOY GATE, I21's branch, PATHS — while
+    the rule's own tests pass on the module; the e2e red at all eight: GRID, GATED, OPEN, SWIPE, LINK, INSIDE, FULL and
+    NARROW.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

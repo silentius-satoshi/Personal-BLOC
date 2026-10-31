@@ -17,7 +17,8 @@ the landing as its front door, and moves the origin-destructive sandbox to its O
 
 Unset flags → dead branches, tree-shaken. `vercel.json` rewrites every path to index.html.
 
-**The FIRE face is off the public deploy and the sandbox** (batch 1 build 4b — BL42): its pill shows only where neither
+**The FIRE face is off the public deploy and the sandbox** (batch 1 build 4b — BL42): its tile (its pill before the grid,
+BL45) shows only where neither
 `VITE_LANDING` nor `VITE_DEMO` is '1' — the owner's deploy and dev — until its borrow lane ships, so the public app never
 sees a sell-only face (F6). One pure rule, `fireFaceOnDeploy` (`src/lib/fireDeploy.ts`), read once in `AlmanacView.tsx`
 (`almanac.md` § FIRE face). Hidden and unreachable there, not tree-shaken: the face's code stays in every bundle.

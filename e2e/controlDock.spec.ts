@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { seedLoanAndGoto, STORE_VERSION } from './helpers';
+import { seedLoanAndGoto, openAlmanacFace, STORE_VERSION } from './helpers';
 
 /**
  * Sticky controls — the control dock on the Decision face (spec `pbloc-spec-sticky-controls-v1.md` v1.1). The dock is
@@ -29,12 +29,12 @@ async function dockOf(page: Page): Promise<Locator> {
   return dock;
 }
 
-/** Simple mode (the e2e default): the journal → Almanac → ◆ Decision. */
+/** Simple mode (the e2e default): the journal → Almanac → Decision. */
 async function openDecision(page: Page): Promise<Locator> {
   await hermetic(page);
   await seedLoanAndGoto(page);
   await page.getByLabel('Almanac').click();
-  await page.getByRole('button', { name: /◆ Decision/ }).click();
+  await openAlmanacFace(page, 'Decision');
   return dockOf(page);
 }
 
@@ -75,15 +75,15 @@ async function expectPinned(
 // ── Run 2 (spec v1.6, D6–D8) — the same dock on the three parents ──────────────────────────────────────────────────
 const PARENTS = [
   {
-    name: 'cycling', pill: /♻ Cycling/, framing: 'Draw on Strike, refinance to Coinbase, never sell.',
+    name: 'cycling', tile: 'Cycling', framing: 'Draw on Strike, refinance to Coinbase, never sell.',
     fair: 'Fair', fourYear: '4-yr cycle', chips: [/^Path/, /^Policy/],
   },
   {
-    name: 'ownership', pill: /⚖ Ownership/, framing: 'Held · owed · yours — never sell.',
+    name: 'ownership', tile: 'Ownership', framing: 'Held · owed · yours — never sell.',
     fair: 'To fair', fourYear: 'Ride the 4-yr cycle', chips: [/^Path/, /^Policy/],
   },
   {
-    name: 'strategy', pill: /◈ Strategy/, framing: 'One run, two lenses — what you own, and what the flywheel earns.',
+    name: 'strategy', tile: 'Strategy', framing: 'One run, two lenses — what you own, and what the flywheel earns.',
     fair: 'Fair', fourYear: '4-yr cycle', chips: [/^Path/, /^Policy/, /^Lens/],
   },
 ] as const;
@@ -98,13 +98,13 @@ async function faceDock(page: Page, framing: string, name: string): Promise<Loca
   return dock;
 }
 
-/** Simple mode: the journal → Almanac → the parent's pill. */
+/** Simple mode: the journal → Almanac → the parent's tile. */
 async function openFace(page: Page, name: ParentName): Promise<Locator> {
   const f = PARENT(name);
   await hermetic(page);
   await seedLoanAndGoto(page);
   await page.getByLabel('Almanac').click();
-  await page.getByRole('button', { name: f.pill }).click();
+  await openAlmanacFace(page, f.tile);
   return faceDock(page, f.framing, f.name);
 }
 
@@ -379,7 +379,7 @@ test.describe('Sticky controls — the parents on a computer (Run 2)', () => {
     await page.getByLabel('Almanac').click();
     for (const f of PARENTS) {
       await scrollBody(page, 0);
-      await page.getByRole('button', { name: f.pill }).click();
+      await openAlmanacFace(page, f.tile);
       const dock = await faceDock(page, f.framing, f.name);
       const month = dock.getByLabel('Inspect month');
       await expect(page.getByLabel('Inspect month'), `ONCE-DOM ${f.name}`).toHaveCount(1);
@@ -459,7 +459,7 @@ test.describe('Sticky controls — full mode', () => {
         await expect(tools, `LANDING ${s.name}`).toBeVisible({ timeout: 15_000 });
         await tools.click();
         await page.getByRole('button', { name: 'Almanac', exact: true }).click();
-        await page.getByRole('button', { name: /◆ Decision/ }).click();
+        await openAlmanacFace(page, 'Decision');
         const dock = await dockOf(page);
         await expectPinned(page, dock, s.edge, s.name);
       } finally {
@@ -500,7 +500,7 @@ test.describe('Sticky controls — full mode', () => {
         await expect(tools, `LANDING ${s.name}`).toBeVisible({ timeout: 15_000 });
         await tools.click();
         await page.getByRole('button', { name: 'Almanac', exact: true }).click();
-        await page.getByRole('button', { name: f.pill }).click();
+        await openAlmanacFace(page, f.tile);
         const dock = await faceDock(page, f.framing, s.name);
         await expectPinned(page, dock, s.edge, s.name, { end: before(dock), minScroll: 600 });
       } finally {

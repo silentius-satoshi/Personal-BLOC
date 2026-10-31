@@ -56,11 +56,12 @@ fold); the double-buffered snap needs retrying label assertions. **P3 `navigatio
 Settings returns to the journal (drag from x=8 past 50% width); a mid-page drag (x=60) does NOT back-nav; TAP
 FORWARDING (a tap over the zone at the ← Back button's 16–20px overlap forwards + navigates — the left 20px isn't
 dead); gate exclusion (the journal never mounts `data-testid="edge-back-zone"`; gates are dev-bypass-unreachable so
-the component-level grep covers them). **Almanac (face nav is TAP-ONLY — the pager was removed):** tapping the
-`Cycle Clock` pill switches face, asserted via `Open Halving Clock` at count **1** (⚠ NOT `Next halving`, which
+the component-level grep covers them). **Almanac (face nav is TAP-ONLY — the pager was removed):** opening the
+`Cycle Clock` by its tile (the grid since BL45; its pill before) switches face, asserted via `Open Halving Clock` at count **1** (⚠ NOT `Next halving`, which
 CycleClock's demoted halving card also carries — the Cycle-only string at count 1 is what proves exactly ONE
 mounted face, no neighbour panes); a committed mid-screen horizontal drag does NOT change face (the pager-removal
-regression pin); gated-face skip (`!hasCbLoan` → no defense pill after tapping every visible pill); a chart scrub
+regression pin); gated-face skip (`!hasCbLoan` → no defense tile after opening every face the grid offers but Decision
+and FIRE); a chart scrub
 stays on the Power Law face — the PowerLaw face's history route (`/blockchain\.info\/charts/`) is `page.route`-fulfilled
 with valid data so the chart renders, since PowerLawFace gates it on `!loading && error === null`; edge-swipe back still works on
 Almanac. **P3.1 additions:** NESTED edge-back (open a Settings subpage → one edge-back lands on the LIST [subpage
@@ -115,9 +116,9 @@ network answer is HELD or aborted:
 
 Its checks:
 - STEADY (Z22): the loaded `powerlaw-chart-box`'s page top (`rect.top + scrollY`) equals the loading box's. The first
-  reading waits for `document.fonts.ready`: IBM Plex Mono swaps in (`font-display: swap`) and the sub-nav pills above grow
-  33 → 34px with it (`line-height: normal`), so a reading taken before the swap was 1px off one taken after — a flake,
-  measured, never the layout;
+  reading waits for `document.fonts.ready`: IBM Plex Mono swaps in (`font-display: swap`) and the sub-nav pills above grew
+  33 → 34px with it (`line-height: normal`; the face's "← Almanac" sits there since BL45), so a reading taken before the
+  swap was 1px off one taken after — a flake, measured, never the layout;
 - TOP (R1): `window.scrollY` plus the `scrollTop` of every ancestor of the box is 0. The app scrolls `<body>`, not the
   window, so `window.scrollY` alone stays 0 while the page scrolls. A probe — a 300px spacer above the chart card and the
   body scrolled 300 at open — is red at TOP (300), where IN VIEW alone would pass;

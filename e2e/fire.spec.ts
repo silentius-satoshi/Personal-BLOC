@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { STORE_VERSION } from './helpers';
+import { openAlmanacFace, STORE_VERSION } from './helpers';
 
 /**
  * The FIRE face (batch 1 build 4 — the sell lane). Hermetic and date-proof: Playwright's clock fixed at 12 Oct 2026, the
@@ -63,7 +63,7 @@ async function start(page: Page, history: 'stub' | 'fail' = 'stub'): Promise<voi
 }
 async function openFire(page: Page): Promise<void> {
   await page.getByLabel('Almanac').click();
-  await page.getByRole('button', { name: /◎ FIRE/ }).click();
+  await openAlmanacFace(page, 'FIRE');
   await expect(page.getByText(FRAMING, { exact: true })).toBeVisible({ timeout: 8000 });
 }
 /** A tile by its label: [its value, its sub-line]. */
@@ -75,11 +75,12 @@ const dockOf = (page: Page): Locator => page.getByRole('region', { name: 'Contro
 const bottomOf = async (l: Locator) => { const b = (await l.boundingBox())!; return b.y + b.height; };
 
 test.describe('FIRE face', () => {
-  test('⭐ PILL — the thirteenth pill is the last one and ungated; it opens the face', async ({ page }) => {
+  test('⭐ PILL — the thirteenth face\'s tile is the last of your plan\'s, here without a loan; it opens the face', async ({ page }) => {
     await start(page);
     await page.getByLabel('Almanac').click();
-    await expect(page.locator('[class*="subnavBtn"]').last(), 'PILL last').toHaveText('◎ FIRE');
-    await page.locator('[class*="subnavBtn"]').last().click();
+    const plan = page.getByRole('region', { name: 'Your plan' }).getByRole('button');
+    await expect(plan.last(), 'PILL last').toHaveText('FIRE');
+    await plan.last().click();
     await expect(page.getByText(FRAMING, { exact: true }), 'PILL the framing').toBeVisible({ timeout: 8000 });
     await expect(page.getByText('FIRE', { exact: true }), 'PILL the title').toBeVisible();
     await expect(page.getByText('Something crashed'), 'PILL nothing crashed').toHaveCount(0);
@@ -152,7 +153,7 @@ test.describe('FIRE face', () => {
     await page.getByLabel('Almanac').click();
     await page.route(/blockchain\.info/, (r) => r.abort());
     await page.context().setOffline(true);
-    await page.getByRole('button', { name: /◎ FIRE/ }).click();
+    await openAlmanacFace(page, 'FIRE');
     await expect(page.getByText(OFFLINE, { exact: true }), 'OFFLINE').toBeVisible({ timeout: 8000 });
     expect((await tile(page, 'Spending that lasts every replay'))[0], 'OFFLINE the tile').toBe('—');
     await expect(page.getByText(/ bear: /), 'OFFLINE no replay lines').toHaveCount(0);

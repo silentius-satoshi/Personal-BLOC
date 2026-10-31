@@ -906,13 +906,17 @@ src/
                                 # registerBack prop); Branch H's edge onBack = settingsEdgeBack (subpage→list first, else
                                 # exit Settings) and renderUnder = settingsBackRef.current ? null (bg one level deep) :
                                 # renderSimpleUnder() — nav depth = parallax depth. The visible header ← Back is
-                                # unchanged (a separate app-exit control). Branch I (Almanac, no subpages) unchanged.
+                                # unchanged (a separate app-exit control). Branch I (Almanac) chains the same way since
+                                # BL45: almanacBackRef receives AlmanacView's registerBack (a face opened inside the hub →
+                                # the grid; null on the grid and for a face the plan's link opened), almanacEdgeBack and
+                                # renderUnder as Branch H's.
                                 # The plan of record's Run 3: the Almanac opens on a requested face — almanacFace
                                 # (session state) → <AlmanacView initialFace> in both modes. goPlanPaths() opens the
                                 # Decision face (THIS MONTH's and the Advisor tab's "Your plan on other price paths"
                                 # link — the Outlook's place); an effect forgets the face once the hub is left — the one
                                 # mechanism, so the nav, full mode's Tools menu and — on a device whose saved tab layout predates
-                                # the Almanac, which Settings can't move out of Tools — its tab open the default. goAlmanac()
+                                # the Almanac, which Settings can't move out of Tools — its tab open the grid (BL45; the
+                                # default face before). goAlmanac()
                                 # (the nav) sets no face and takes NO argument — HeaderNavCluster passes it as onClick,
                                 # so a click event must never become a face. Full mode passes the link only while the
                                 # Almanac tab isn't hidden (planPathsInFullMode — a hidden tab bounces). AdvisorMain gets
@@ -955,6 +959,10 @@ src/
                                 # builds → dead branch, tree-shaken
 
     Almanac/                    # (the faces are documented in § Almanac / CycleClock; listed here: Run 2's files)
+      almanacGrid.ts            # BL45 — the grid's ONE catalogue (pure, no store, no env): FACE_TILES (key, name, group,
+                                # gate) in the grid's order, FACE_GROUPS ("Your plan", "Bitcoin"), faceShown, gridGroups,
+                                # and the Face union. The hub passes its three gates in (§ The Almanac grid)
+      FaceIcon.tsx              # BL45 — the grid's thirteen line icons, one a face (24px, stroke 1.75, aria-hidden)
       DecisionFace.tsx          # Decision face (Run B) — the TWELFTH face (+ .module.css, composes the parents'). THE
                                 # MOVE card, the Coinbase-loan line, the chart, the schedule (Copy · Download .txt ·
                                 # Print), the outcome strip, the what-ifs, the tap-through. ONE run, many lenses. 🔴 It
@@ -1053,7 +1061,8 @@ src/
                                 # falls back to one tick PER DATA POINT, so the axis always takes explicit ticks.
                                 # + pathOnSupport(path, support, months) — the legend note's test: sameSeries over
                                 # months 1…horizon, bit for bit (month 0 is spot), never a tolerance
-      FireFace.tsx              # Batch 1 build 4 — the THIRTEENTH face, ◎ FIRE, appended last — on the owner's deploy and
+      FireFace.tsx              # Batch 1 build 4 — the THIRTEENTH face, FIRE (its tile last in Your plan since BL45; ◎
+                                # FIRE, its pill appended last, before) — on the owner's deploy and
                                 # in dev only (build 4b: the hub's FIRE_ON_THIS_DEPLOY, lib/fireDeploy) (+ .module.css:
                                 # composes CyclingFace's classes only, plus the doubled .faceDocked pair): selling to live.
                                 # The chart's two <Line>s, the legend and FireTip read FIRE_LINES (LineMark — a line's
@@ -1555,7 +1564,7 @@ src/
                                 # bottom-ALIGNED card, not a flush sheet — parked) + MonthEventsModal (future).
       SwipeStrip.tsx            # Gesture & Motion System P2 — shared horizontal 3-pane PAGER (Calendar month/week +
                                 # MonthlyLogOverlay months. ⚠ The P3 Almanac face pager was REMOVED — Almanac face
-                                # switching is TAP-ONLY via the sub-nav pills). Props {onPage(dir),canPage(dir),
+                                # switching is TAP-ONLY — the grid's tiles since BL45, the sub-nav pills before). Props {onPage(dir),canPage(dir),
                                 # renderPane(offset:-1|0|1),onSwipeStart?,shouldStart?,disabled?}. 300%-wide strip at rest
                                 # translateX(-33.3%); usePointerDrag axis 'x' (touch-action:pan-y → vertical scroll
                                 # never stolen), commitThreshold=0.35×measured-width, commitVelocity 800. onMove tracks

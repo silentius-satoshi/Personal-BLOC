@@ -285,7 +285,8 @@ viewer (father's device, `viewerMode`) is caught by branch G before J, so viewer
   "👁 Preview as viewer" → `setViewerPreview(true); setActiveTab(previousTab)`). `ViewerPreview` unchanged.
 - **GROWTH INVARIANT (documented, NOT built):** the cluster is **fixed at 5 icons** — every future tool becomes an
   **Almanac face** (the existing face-registration pattern), NEVER a new header icon; no grid-modal launcher — the
-  Almanac IS the app hub.
+  Almanac IS the app hub. (Since BL45 the hub itself opens on a grid of its faces — its own page, not a launcher over
+  the app; `almanac.md` § The Almanac grid.)
 - Tests: `src/store/__tests__/simpleView.test.ts` (default `'dashboard'`; setter accepts all 3; device-local /
   absent from `buildSettingsPayload`; rides `partializeState`; migrate-default no-clobber). The dashboard's
   live-figures path is the already-green `computeViewerSafety(null,…) → trusted` case in `safetyView.test.ts`.
