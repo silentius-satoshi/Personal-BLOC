@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openAlmanacFace, STORE_VERSION } from './helpers';
+import { openAlmanacFace, headerBack, STORE_VERSION } from './helpers';
 
 /**
  * BL33 — cold storage, in Settings and on the four engine faces (Batch 1, build 2c; spec pbloc-spec-batch-1-v1 §2.2).
@@ -48,7 +48,7 @@ test.describe('cold storage — BL33', () => {
 
     // FACES — one card on each, seeded from the live total; the Decision face leaves the total to its outcome strip
     await page.getByRole('button', { name: '← Settings' }).click();
-    await page.getByRole('button', { name: '← Back' }).click();
+    await headerBack(page).click();
     await page.getByLabel('Almanac').click();
     for (const [face, tile] of FACES) {
       await openAlmanacFace(page, tile);

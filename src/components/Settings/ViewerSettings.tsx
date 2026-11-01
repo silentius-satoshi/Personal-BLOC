@@ -7,7 +7,7 @@ import styles from './ViewerSettings.module.css';
 /**
  * Viewer V4 — the purpose-built FLAT viewer Settings (no subpages), rendered by SettingsMain in place
  * of the owner menu when viewerMode. AppShell's .simpleModeSettings wrapper already supplies the
- * ← Back header, so this is sections only. Deliberate scope cut: NO theme toggle (dark-only app).
+ * header and its "←", so this is sections only. Deliberate scope cut: NO theme toggle (dark-only app).
  *
  * NOTE: the shared ui/Toggle self-disables in viewerMode (read-only-viewer hardening), so the
  * Live-block-height switch here is a local role="switch" button — the same reason Almanac's

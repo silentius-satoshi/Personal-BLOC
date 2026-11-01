@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { STORE_VERSION } from './helpers';
+import { headerBack, STORE_VERSION } from './helpers';
 
 /**
  * BL14 — the plan's goal amount (Batch 1, build 2; spec pbloc-spec-batch-1-v1 §2.2): set in Settings → Your plan; THIS
@@ -35,7 +35,7 @@ async function openYourPlan(page: Page): Promise<void> {
 /** Back from Settings to the journal, then to Daily (Settings returns to whichever view opened it). */
 async function leaveSettings(page: Page): Promise<void> {
   await page.getByRole('button', { name: '← Settings' }).click();
-  await page.getByRole('button', { name: '← Back' }).click();
+  await headerBack(page).click();
   await page.getByRole('tab', { name: 'Daily' }).click();
   await expect(page.getByLabel('Log an event'), 'back on Daily').toBeVisible();
 }

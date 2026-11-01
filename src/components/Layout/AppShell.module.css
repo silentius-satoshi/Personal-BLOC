@@ -188,7 +188,7 @@
   color: var(--text-primary);
 }
 
-/* Branch I's title on an Almanac face: the link to the grid — the title's type in the link colour of "← Back". */
+/* Branch I's title on an Almanac face: the link to the grid — the title's type in the link colour of the "←". */
 .simpleModeTitleLink {
   background: none;
   border: none;

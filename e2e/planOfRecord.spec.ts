@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { seedLoanAndGoto, seedAndGoto, openAlmanacFace, STORE_VERSION } from './helpers';
+import { seedLoanAndGoto, seedAndGoto, openAlmanacFace, headerBack, STORE_VERSION } from './helpers';
 
 /**
  * The plan of record, Run 1 (spec pbloc-spec-plan-of-record-v1 v1.0): Settings' "Your plan" saves the support policy;
@@ -36,7 +36,7 @@ async function openYourPlan(page: Page): Promise<void> {
 
 async function leaveSettings(page: Page): Promise<void> {
   await page.getByRole('button', { name: '← Settings' }).click();
-  await page.getByRole('button', { name: '← Back' }).click();
+  await headerBack(page).click();
   await expect(page.getByLabel('Log an event'), 'back on the journal').toBeVisible();
 }
 
@@ -73,7 +73,7 @@ test.describe('the plan of record — Run 1', () => {
     await expect(face.value, 'WHAT-IF again').toHaveText('47%');
 
     // NEVER WRITES — Settings still holds 46%; "Back to the defaults (C1)" returns 45%
-    await page.getByRole('button', { name: '← Back' }).click();
+    await headerBack(page).click();
     await expect(page.getByLabel('Log an event'), 'back on the journal').toBeVisible();
     await openYourPlan(page);
     await expect(slider(page, COINBASE).value, 'NEVER WRITES').toHaveText('46%');
@@ -286,7 +286,7 @@ test.describe('the plan of record — Run 3', () => {
 
     await page.getByRole('button', { name: LINK }).click();
     await expect(moveCard(page).getByText(PLAN_LINE), 'PATHS the Decision face').toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: '← Back' }).click();
+    await headerBack(page).click();
     await expect(page.getByText(OVER), 'PATHS back on THIS MONTH').toBeVisible();
 
     // The nav's Almanac button opens the hub on the grid (BL45) — the link's face is forgotten once the hub is left.

@@ -891,22 +891,25 @@ src/
   components/
     Layout/
       AppShell.tsx              # ALL_TABS_META array, tab bar DndContext, sidebar/main routing,
-                                # hiddenTabs guard useEffect, [data-active-tab] on shell div;
+                                # hiddenTabs guard useEffect (full mode only — BL47), [data-active-tab] on shell div;
                                 # passes simpleView/setSimpleView as props to DailyModeView/SimpleModeView
                                 # (ViewToggle lives inside each view, not here). GESTURE P3: Branch J's owner journal
                                 # fork (dashboard→ViewerHomeView(ownerNav) / daily→DailyModeView / monthly→SimpleModeView)
                                 # is extracted to a local renderOwnerJournal() (Branch J = viewerPreview&&!viewerMode ?
                                 # <ViewerPreview/> : renderOwnerJournal()); renderSimpleUnder = viewerMode ?
                                 # <ViewerHomeView/> : renderOwnerJournal() (the surface back-nav reveals). Branch H
-                                # (simple-mode Settings) + Branch I (simple-mode Almanac) — the two ← Back surfaces — are
+                                # (simple-mode Settings) + Branch I (simple-mode Almanac) — the two header "←" surfaces — are
                                 # each wrapped in <EdgeBackGesture onBack={()=>setActiveTab(previousTab)}
                                 # renderUnder={renderSimpleUnder}> (iOS edge-swipe-back parallax; shared by owner+viewer).
                                 # No other branch mounts it (gates/onboarding/full-mode shell untouched). P3.1 NESTED
                                 # BACK-CHAIN: a `settingsBackRef` receives SettingsMain's one-level-back handler (via its
                                 # registerBack prop); Branch H's edge onBack = settingsEdgeBack (subpage→list first, else
                                 # exit Settings) and renderUnder = settingsBackRef.current ? null (bg one level deep) :
-                                # renderSimpleUnder() — nav depth = parallax depth. The visible header ← Back is
-                                # unchanged (a separate app-exit control). Branch I (Almanac) chains the same way since
+                                # renderSimpleUnder() — nav depth = parallax depth. The visible header "←" is a
+                                # separate app-exit control — since BL47 named for the page it opens (backPlace.ts:
+                                # "← Dashboard"/"← Journal", a viewer's "← Home", "← Preview", "← Almanac"); Branch I's,
+                                # and its edge back from the grid, go to almanacOut = almanacExit(previousTab) — never
+                                # the Almanac itself. Branch I (Almanac) chains the same way since
                                 # BL45: almanacBackRef receives AlmanacView's registerBack (a face opened inside the hub →
                                 # the grid; null on the grid and for a face the plan's link opened), almanacEdgeBack and
                                 # renderUnder as Branch H's. Since 2026-10-31 its header's title is the way to the grid
@@ -930,7 +933,8 @@ src/
                                 # <CbDefenseTool/>; CoinbaseLoanMain gets onOpenConsole (consoleInFullMode — none
                                 # while the Emergency tab is hidden) and onOpenPlanPaths (planPathsInFullMode). A tab the bar doesn't show can't stay open: the bounce effect
                                 # moves off a hidden tab, and — with hasCbLoan off — off `coinbase` and `liqsim` too (the console's
-                                # gate would leave an empty page), to the first tab that shows. 5e (F1): between gates F
+                                # gate would leave an empty page), to the first tab that shows — full mode only since BL47 (simple mode has no
+                                # bar; a redirect there sent hidden journal tabs to the Almanac, a dead end). 5e (F1): between gates F
                                 # and G (no new letter), one owner branch — `signedInApp && planLoading.up &&
                                 # !import.meta.env.DEV` → <PlanLoadingGate/> ("Loading your plan…") while the session's
                                 # first pull runs on a device without its plan (lib/nostr/firstPull — the plan, then the
@@ -955,6 +959,12 @@ src/
                                 # 'journal') and injected into ViewerHomeView via ownerNav (active 'dashboard').
                                 # GROWTH INVARIANT: fixed at 5 — new tools become Almanac faces, never header icons.
       HeaderNavCluster.module.css # boxed 34×34 .iconBtn + .iconBtnActive (--btc accent) highlight
+      backPlace.ts              # BL47 — the simple-mode header's way out, named (pure; spec pbloc-spec-back-label-v1):
+                                # backPlace(to, { viewerMode, viewerPreview, simpleView }) → 'Almanac' | 'Home' |
+                                # 'Preview' | 'Dashboard' | 'Journal' — the page setActiveTab(to) opens, in AppShell's
+                                # branch order; almanacExit(previousTab) — the Almanac's way out, its "←" and its swipe
+                                # from the grid — never 'almanac' ('living' instead). Tests: __tests__/backPlace.test.ts,
+                                # e2e/backPlace.spec.ts.
       DemoBanner.tsx            # C0/C2 — slim STICKY (position:sticky;top:0, C2 — not fixed) sandbox strip (+ .module.css).
                                 # Mounted by ONE AppShell line `{import.meta.env.VITE_DEMO === '1' && <DemoBanner/>}` (first
                                 # child of the top-level fragment → sticky keeps it in flow, PUSHING content down instead of
@@ -1613,8 +1623,8 @@ src/
                                 # TAP FORWARDING: a sub-slop cancel (movement < slop = a tap) re-dispatches the tap to the
                                 # content beneath via zone.pointerEvents='none' + document.elementFromPoint(x,y)?.click()
                                 # — the left 20px is never a dead strip. reduced-motion: no continuous track, committed →
-                                # onBack immediately. a11y: zone aria-hidden (the visible ← Back button is the accessible
-                                # path). MOUNTS ONLY on AppShell Branch H/I (simple-mode Settings/Almanac ← Back surfaces),
+                                # onBack immediately. a11y: zone aria-hidden (the header's visible "←" button is the accessible
+                                # path). MOUNTS ONLY on AppShell Branch H/I (simple-mode Settings/Almanac "←" surfaces),
                                 # NEVER on an auth/viewer gate, onboarding, or the full-mode shell (grep-proven: 2 sites).
                                 # BL34–BL35 (F1): blurFocused() before a committed swipe's onBack() and before a forwarded
                                 # tap's click — React runs no onBlur for a field it unmounts, and neither moves focus, so

@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { seedAndGoto, seedLoanAndGoto, openSettingsSimple, openAlmanacSimple, openAlmanacFace, mouseDragX, STORE_VERSION } from './helpers';
+import { seedAndGoto, seedLoanAndGoto, openSettingsSimple, openAlmanacSimple, openAlmanacFace, mouseDragX, headerBack, STORE_VERSION } from './helpers';
 
 /** The four block explorers useChainTip tries once live height is on — the consent sheet's list. */
 const EXPLORERS = /mempool\.space|blockstream\.info|blockchain\.info\/q\/|blockchair\.com/;
@@ -50,16 +50,16 @@ test.describe('Navigation gestures (P3)', () => {
 
   test('tap forwarding — the left 20px is not a dead strip', async ({ page }) => {
     await openSettingsSimple(page);
-    const back = page.getByRole('button', { name: '← Back' });
+    const back = headerBack(page);
     const box = (await back.boundingBox())!;
-    expect(box.x).toBeLessThan(20);                  // precondition: the ← Back button overlaps the 20px zone
-    // A pure TAP over the zone (box.x + 2 < 20) must forward to the ← Back button beneath → navigates back.
+    expect(box.x).toBeLessThan(20);                  // precondition: the header's "←" overlaps the 20px zone
+    // A pure TAP over the zone (box.x + 2 < 20) must forward to the header's "←" beneath → navigates back.
     await page.mouse.click(box.x + 2, box.y + box.height / 2);
     await expect(page.getByLabel('Log an event')).toBeVisible();
   });
 
   test('gate exclusion — the journal (Branch J) never mounts the edge-back zone', async ({ page }) => {
-    await seedAndGoto(page);   // DailyModeView (Branch J) — no ← Back, no EdgeBackGesture
+    await seedAndGoto(page);   // DailyModeView (Branch J) — no header "←", no EdgeBackGesture
     await expect(page.getByTestId('edge-back-zone')).toHaveCount(0);
     // (Auth/viewer gates are unreachable under the dev bypass; the component-level grep covers them.)
   });

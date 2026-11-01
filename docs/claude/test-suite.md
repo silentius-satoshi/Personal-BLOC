@@ -2305,6 +2305,37 @@ goes red.)
     12 red — GRID, TITLE, BADGE and SHELL; the e2e red at TITLE, OPEN, LINK and FULL — GRID, GATED, SWIPE, INSIDE and
     NARROW pass, reading the old grid the same way — and at `navigation.spec.ts`'s three tests that go back from a face
     through `openAlmanacFace`.
+- **The header's way out, named (BL47, 2026-10-31) — "← Dashboard" or "← Journal" for where it goes; the Almanac's
+  never itself** (spec `pbloc-spec-back-label-v1` v1.0; Standard, the reviewer's prototype applied byte for byte; the
+  suite 3,257 → 3,266 (+6 skipped), 224 → 225 files; e2e 139 → 144 (+2 skipped). 17 planted bugs — 17 through the
+  unit tests, 14 through the e2e (three — a viewer's "Home", the preview's name, the viewer checked before the Almanac
+  — the dev server can't reach) — each an exact-once edit, red at its tagged tests, the files restored and
+  md5-checked: `Claude outputs/back-label/mutations-back.json`):
+  - `src/components/Layout/__tests__/backPlace.test.ts` (9, new; the rule pure, the wiring read off the source): ⭐
+    NAMES (the owner's journal by its view, every tab but the Almanac's) · VIEWER ("Home", whatever the view) · PREVIEW
+    · ALMANAC (a Settings trip from the Almanac goes back to it, for anyone) · EXIT (never the Almanac itself; so never
+    named so) · WIRED (both headers say the rule's name; no bare "← Back") · EXIT WIRED (the Almanac's button and its
+    swipe leave by `almanacExit`; Settings' swipe keeps `previousTab`) · ORDER (the branches the rule mirrors) · GUARD
+    (the hidden-tab guard is full mode's, re-run on a switch of mode — Claude Code's F1).
+  - `e2e/backPlace.spec.ts` (5, new): ⭐ DASH (from the Dashboard: "← Dashboard" in Settings, on the grid and on a
+    face; a tap opens the Dashboard) · JOURNAL (from Daily: "← Journal"; a tap opens Daily) · MONTH (from THIS MONTH:
+    "← Journal"; a tap opens THIS MONTH) · NOWHERE (full mode's Almanac → the brand menu's Settings → the simple view:
+    "← Almanac"; the Almanac then says "← Journal" and leaves — by its "←", and by its swipe from the grid; the swipe's
+    proof is the Almanac gone, since its under-layer shows the journal while it animates) · HIDDEN (the five journal tabs
+    hidden, no loan: simple mode opens the journal, both "←" go where they say; full mode still opens the first tab shown).
+  - `e2e/helpers.ts` gains `headerBack(page)` — the header's "←" by any of its five names — read by every spec that left
+    by "← Back": `navigation.spec.ts` (tap forwarding), `planOfRecord.spec.ts` (three), `coldStorage.spec.ts`,
+    `goal.spec.ts`, `customization.spec.ts`, `numberField.spec.ts`, `numberFieldSwipe.spec.ts` (TAP) and
+    `almanacGrid.spec.ts` (the header's bottom); LINK reads "← Journal" by name.
+  - Moved on purpose — `almanacGrid.test.ts` TITLE (Branch I's "←": the way out, named) and SHELL (the swipe from the
+    grid: `almanacOut`); `planEdgesWiring.test.ts` GATE (the guard's dependencies carry the mode). Nothing else moved.
+  - Red first (the reviewer's, on `3618327`'s app code with the new and changed tests and `backPlace.ts` alone, unwired):
+    the unit tests red at WIRED, EXIT WIRED and GUARD, TITLE and SHELL, and GATE — the rule's own five pass on the
+    module, and ORDER on AppShell; the e2e red at all five of `backPlace.spec.ts` (HIDDEN: simple mode opened on the
+    Almanac), and at the twelve that leave by the header — `navigation`'s
+    tap forwarding, `planOfRecord`'s PLAN and PATHS, `almanacGrid`'s TITLE and LINK, `coldStorage`'s COLD, `goal`'s GOAL,
+    `customization`'s CUSTOMIZE, `numberField`'s COINBASE, BUTTON and DATED, `numberFieldSwipe`'s TAP — each waiting on
+    the header's new name. Seventeen of the 69 tests in the nine files.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

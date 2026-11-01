@@ -59,6 +59,7 @@ import { BackupNagCard }     from '../Entry/BackupNagCard';
 import { ViewerPreview }     from '../Viewer/ViewerPreview';
 import { HeaderNavCluster }  from './HeaderNavCluster';
 import { DemoBanner }        from './DemoBanner';
+import { backPlace, almanacExit } from './backPlace';
 import { EdgeBackGesture }   from '../ui/EdgeBackGesture';
 import { CbDefenseTool }    from '../Tools/CbDefenseTool';
 import AlmanacView, { type AlmanacFace } from '../Almanac/AlmanacView';
@@ -285,16 +286,20 @@ export function AppShell() {
   };
 
   useEffect(() => {
-    if (activeTab === 'settings') return;
+    if (simpleMode || activeTab === 'settings') return;
     // A tab the bar doesn't show can't stay open: one the owner hid, or — with the Coinbase loan switched off — the CB
     // Loan tab and the Emergency Console's (the plan of record's Run 4: the console's gate is the loan, so without one
-    // its tab would open on an empty page).
+    // its tab would open on an empty page). Full mode's rule — only full mode has a tab bar (BL47). In simple mode
+    // every tab but Settings and the Almanac opens the journal, so nothing there is redirected: with the five journal
+    // tabs hidden and no loan, a redirect opened simple mode on the Almanac with no way out — no nav, its "←" going
+    // nowhere — and the header's "←" would have named a journal it couldn't reach (Claude Code's F1, measured on
+    // 3618327).
     const shut = (k: string): boolean => hiddenTabs.includes(k) || (!hasCbLoan && (k === 'coinbase' || k === 'liqsim'));
     if (shut(activeTab)) {
       const first = ALL_TABS_META.find((t) => !shut(t.key));
       if (first) setActiveTab(first.key);
     }
-  }, [hiddenTabs, activeTab, hasCbLoan]);
+  }, [hiddenTabs, activeTab, hasCbLoan, simpleMode]);
 
   const goSettings = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); };
   // The face the Almanac opens on (Run 3): the Decision face from the plan's link — the Outlook's place — and the grid
@@ -313,15 +318,19 @@ export function AppShell() {
   const consoleInFullMode = hiddenTabs.includes('liqsim') ? null : () => setActiveTab('liqsim');
 
   // P3.1 nested settings back-chain: SettingsMain reports its one-level-back handler here (null on the list).
-  // The Branch-H edge gesture chains subpage→list first, else exits Settings — mirroring the visible ← Back.
+  // The Branch-H edge gesture chains subpage→list first, else exits Settings — mirroring the header's "←".
   const settingsBackRef = useRef<(() => void) | null>(null);
   const settingsEdgeBack = () => { const b = settingsBackRef.current; if (b) b(); else setActiveTab(previousTab); };
   // The Almanac's grid (BL45) chains the same way: a face opened inside the hub — a tile, another face's link — reports
   // its way back to the grid (null on the grid, and for a face the plan's link opened), so Branch I's edge gesture goes
-  // face → grid → out. The visible ← Back always leaves the Almanac; on a face, the header's "Almanac" is the way to
+  // face → grid → out. The header's "←" always leaves the Almanac; on a face, the header's "Almanac" is the way to
   // the grid (the owner's ask, 2026-10-31 — no row of its own under the header).
+  // BL47 — the header's "←" names the page it opens (`backPlace`): Settings' goes to previousTab; the Almanac's, and its
+  // swipe from the grid, to `almanacExit(previousTab)` — never the Almanac itself.
+  const backState  = { viewerMode, viewerPreview, simpleView };
+  const almanacOut = almanacExit(previousTab);
   const almanacBackRef = useRef<(() => void) | null>(null);
-  const almanacEdgeBack = () => { const b = almanacBackRef.current; if (b) b(); else setActiveTab(previousTab); };
+  const almanacEdgeBack = () => { const b = almanacBackRef.current; if (b) b(); else setActiveTab(almanacOut); };
   // …which the hub hands the header on any face, the link's too (null on the grid): state, not a ref, since the title
   // redraws as the link; the setter stable, so the hub's effect runs on a move only.
   const [almanacTitleLink, setAlmanacTitleLink] = useState<(() => void) | null>(null);
@@ -413,7 +422,7 @@ export function AppShell() {
                 className={styles.simpleModeBackBtn}
                 onClick={() => setActiveTab(previousTab)}
               >
-                ← Back
+                {`← ${backPlace(previousTab, backState)}`}
               </button>
               <span className={styles.simpleModeSettingsTitle}>Settings</span>
             </div>
@@ -427,7 +436,9 @@ export function AppShell() {
         <EdgeBackGesture onBack={almanacEdgeBack} renderUnder={() => (almanacBackRef.current ? null : renderSimpleUnder())}>
           <div className={styles.simpleModeSettings}>
             <div className={styles.simpleModeSettingsHeader}>
-              <button className={styles.simpleModeBackBtn} onClick={() => setActiveTab(previousTab)}>← Back</button>
+              <button className={styles.simpleModeBackBtn} onClick={() => setActiveTab(almanacOut)}>
+                {`← ${backPlace(almanacOut, backState)}`}
+              </button>
               {almanacTitleLink
                 ? <button type="button" className={styles.simpleModeTitleLink} onClick={almanacTitleLink}>Almanac</button>
                 : <span className={styles.simpleModeSettingsTitle}>Almanac</span>}

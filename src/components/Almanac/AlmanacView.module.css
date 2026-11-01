@@ -88,7 +88,7 @@
   text-transform: uppercase;
   color: var(--text-faint);
 }
-/* The name as the link (a face open): the app's link colour, as the header's "← Back". */
+/* The name as the link (a face open): the app's link colour, as the header's "←". */
 .eyebrowLink {
   margin: 0;
   padding: 0;

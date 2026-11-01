@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { STORE_VERSION } from './helpers';
+import { headerBack, STORE_VERSION } from './helpers';
 
 /**
  * BL15 — Customization (batch spec §2.4): Settings' "Display" and "Tabs" are one page, with the venue colours on it. A
@@ -45,7 +45,7 @@ async function openCustomization(page: Page): Promise<void> {
 }
 async function leaveSettings(page: Page): Promise<void> {
   await page.getByRole('button', { name: '← Settings' }).click();
-  await page.getByRole('button', { name: '← Back' }).click();
+  await headerBack(page).click();
   await page.getByRole('tab', { name: 'Daily' }).click();
   await expect(page.getByLabel('Log an event'), 'back on Daily').toBeVisible();
 }

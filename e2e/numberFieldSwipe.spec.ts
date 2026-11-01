@@ -1,9 +1,9 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { STORE_VERSION } from './helpers';
+import { headerBack, STORE_VERSION } from './helpers';
 
 /**
  * BL34–BL35 (F1) — leaving a page by the edge swipe-back, or by a tap on its left 20px, saves a typed plan setting as a
- * tap on "← Back" does (spec pbloc-spec-batch-1-v1 §2.2d). React runs no onBlur for a field it unmounts, and neither a
+ * tap on the header's "←" does (spec pbloc-spec-batch-1-v1 §2.2d). React runs no onBlur for a field it unmounts, and neither a
  * touch swipe nor the zone's forwarded tap moves focus, so `EdgeBackGesture` blurs the focused field first. A real
  * touch stream (CDP touch events, as on a phone): a mouse drag's mousedown blurs the field itself, so
  * navigation.spec.ts's swipes can't show it. Hermetic: round synthetic figures, live prices aborted, the price history
@@ -71,13 +71,13 @@ test.describe('number fields — leaving the page (BL34–BL35, F1)', () => {
     await expect(page.getByText('Something crashed'), 'no crash').toHaveCount(0);
   });
 
-  test('TAP — a typed plan setting saves when a tap on the edge strip leaves through "← Back"', async ({ page }) => {
+  test('TAP — a typed plan setting saves when a tap on the edge strip leaves through the header\'s "←"', async ({ page }) => {
     await start(page);
     await openSubpage(page, /Strike Strategy/);
     const expenses = fieldOf(page, 'Monthly expenses');
     await typeByTouch(expenses, '4200');
-    const back = (await page.getByRole('button', { name: '← Back' }).boundingBox())!;
-    expect(back.x + 2, 'PREMISE the tap lands on the 20px zone, over "← Back"').toBeLessThan(20);
+    const back = (await headerBack(page).boundingBox())!;
+    expect(back.x + 2, 'PREMISE the tap lands on the 20px zone, over the header\'s "←"').toBeLessThan(20);
     await page.touchscreen.tap(back.x + 2, back.y + back.height / 2);
     await expect(page.getByLabel('Settings'), 'TAP left Settings').toBeVisible();
     expect(await saved(page, 'expenses'), 'TAP saved').toEqual([4200]);

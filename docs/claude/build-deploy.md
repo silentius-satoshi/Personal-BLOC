@@ -54,7 +54,7 @@ Snackbar → UNDO restores; one-open-row (`data-open`); ⭐ a fast flick NEVER d
 renders 3 panes), `event-row`/`swipe-delete-btn`; a month-scope cell needs `scrollIntoViewIfNeeded` (below the
 fold); the double-buffered snap needs retrying label assertions. **P3 `navigation.spec.ts`:** edge-swipe-back from
 Settings returns to the journal (drag from x=8 past 50% width); a mid-page drag (x=60) does NOT back-nav; TAP
-FORWARDING (a tap over the zone at the ← Back button's 16–20px overlap forwards + navigates — the left 20px isn't
+FORWARDING (a tap over the zone at the header "←" button's 16–20px overlap forwards + navigates — the left 20px isn't
 dead); gate exclusion (the journal never mounts `data-testid="edge-back-zone"`; gates are dev-bypass-unreachable so
 the component-level grep covers them). **Almanac (face nav is TAP-ONLY — the pager was removed):** opening the
 `Cycle Clock` by its tile (the grid since BL45; its pill before) switches face, asserted via `Open Halving Clock` at count **1** (⚠ NOT `Next halving`, which

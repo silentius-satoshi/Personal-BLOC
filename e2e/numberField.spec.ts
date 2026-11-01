@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { STORE_VERSION } from './helpers';
+import { headerBack, STORE_VERSION } from './helpers';
 
 /**
  * BL34–BL35 — a number field saves only what the owner typed, when he says so (Batch 1, build 2d — F-2c-1; spec
@@ -82,7 +82,7 @@ async function openCoinbaseLoan(page: Page): Promise<void> {
 }
 async function backToDashboard(page: Page): Promise<void> {
   await page.getByRole('button', { name: '← Settings' }).click();
-  await page.getByRole('button', { name: '← Back' }).click();
+  await headerBack(page).click();
 }
 
 test.describe('number fields — BL34–BL35', () => {

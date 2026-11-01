@@ -221,7 +221,7 @@ Three small viewer-side phases. Builds on Viewer V2.
 - **V4 — the stripped viewer Settings (`components/Settings/ViewerSettings.tsx` + `.module.css`, NEW).**
   `SettingsMain` early-returns `<ViewerSettings/>` when `viewerMode` (a viewer never reaches the owner
   menu/subpages/`accessFlow`); AppShell mounts it as `<SettingsMain hideHeader/>` inside `.simpleModeSettings`,
-  which supplies the ← Back header. One FLAT screen (no subpages): **YOU** (Your name — inline edit: tap →
+  which supplies the header and its "←" — "← Home" for a viewer (BL47). One FLAT screen (no subpages): **YOU** (Your name — inline edit: tap →
   field + Save/Cancel; empty Save clears to null) · **DEVICE** (Live block height — a LOCAL `role="switch"`
   button, NOT the shared `ui/Toggle` which self-disables in viewerMode; sets `almanacLiveConsented`+`Enabled`)
   · **CONNECTION** (Sync status: green/amber dot + `relativeAge(viewerLastSyncAt)`; **Refresh now** →

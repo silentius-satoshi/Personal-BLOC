@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { seedLoanAndGoto, openAlmanacSimple, openAlmanacFace, mouseDragX, STORE_VERSION } from './helpers';
+import { seedLoanAndGoto, openAlmanacSimple, openAlmanacFace, mouseDragX, headerBack, STORE_VERSION } from './helpers';
 
 /**
  * The Almanac's grid (BL40, BL45 — the owner's pick B), on screen: the groups and their order, the gates, a tile
@@ -34,10 +34,10 @@ const tilesOf = (page: Page, group: string): Promise<string[]> => tilesIn(page.g
 const toGrid = (page: Page) => page.getByRole('button', { name: 'Almanac', exact: true });
 /** The live-height badge — named for what it switches. */
 const badge = (page: Page) => page.getByRole('button', { name: /^Live block height/ });
-/** An element's top, and the simple-mode header's bottom (the parent of its "← Back"). */
+/** An element's top, and the simple-mode header's bottom (the parent of its "←"). */
 const topOf = (l: Locator): Promise<number> => l.evaluate((x) => x.getBoundingClientRect().top);
 const headerBottom = (page: Page): Promise<number> =>
-  page.getByRole('button', { name: '← Back' }).evaluate((x) => x.parentElement!.getBoundingClientRect().bottom);
+  headerBack(page).evaluate((x) => x.parentElement!.getBoundingClientRect().bottom);
 const MOVE_TITLE = "The support policy's move this month";
 /** THIS MONTH's link to the Decision face (planMonthView's PLAN_PATHS_LINK — Playwright can't import src/). */
 const LINK = "Your plan on other price paths — the Almanac's Decision face →";
@@ -165,7 +165,7 @@ test.describe('the Almanac grid (BL45)', () => {
     await expect(page.getByLabel('Log an event'), 'SWIPE the grid → out').toBeVisible();
   });
 
-  test('⭐ LINK — the plan\'s link opens the Decision face; ← Back or one swipe returns to THIS MONTH; the header\'s Almanac goes to the grid', async ({ page }) => {
+  test('⭐ LINK — the plan\'s link opens the Decision face; "← Journal" or one swipe returns to THIS MONTH; the header\'s Almanac goes to the grid', async ({ page }) => {
     await hermetic(page);
     await seedLoanAndGoto(page);
     await page.getByRole('tab', { name: 'Monthly' }).click();
@@ -174,9 +174,9 @@ test.describe('the Almanac grid (BL45)', () => {
     await link.click();
     await expect(page.getByText(MOVE_TITLE).first(), 'LINK the Decision face').toBeVisible({ timeout: 15_000 });
     await expect(grid(page), 'LINK straight to the face').toHaveCount(0);
-    // ← Back: one tap to THIS MONTH, as before the grid.
-    await page.getByRole('button', { name: '← Back' }).click();
-    await expect(link, 'LINK ← Back, one tap').toBeVisible();
+    // "← Journal" — named for where it goes, THIS MONTH's Journal (BL47): one tap to THIS MONTH, as before the grid.
+    await page.getByRole('button', { name: '← Journal', exact: true }).click();
+    await expect(link, 'LINK "← Journal", one tap').toBeVisible();
     // One swipe too — a face the link opened swipes straight back out.
     await link.click();
     await expect(page.getByText(MOVE_TITLE).first()).toBeVisible({ timeout: 15_000 });

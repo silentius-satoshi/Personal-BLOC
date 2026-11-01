@@ -11,9 +11,9 @@ import styles from './EdgeBackGesture.module.css';
  * in behind it at scale(0.92)→1 with a 40%→0 dim (iOS parallax grammar). Commit (≥50% width OR flick) →
  * animate off-right → `onBack()`; else spring back.
  *
- * SCOPE: mounts ONLY on the two simple-mode "← Back" surfaces (AppShell Branch H/I) — NEVER on an
+ * SCOPE: mounts ONLY on the two simple-mode "←" surfaces (AppShell Branch H/I) — NEVER on an
  * auth/viewer gate, onboarding, or the full-mode shell. The gesture only NAVIGATES (non-negotiable 1);
- * the visible "← Back" button remains the accessible path (the zone is aria-hidden).
+ * the header's visible "←" button remains the accessible path (the zone is aria-hidden).
  *
  * ⚠ The zone is `touch-action: pan-y` (NOT `none`): a vertical stroke starting at the bezel must still
  * scroll the page natively THROUGH the zone; the contested axis here is horizontal, which pan-y leaves to
@@ -52,7 +52,7 @@ export function EdgeBackGesture({ onBack, renderUnder, disabled, children }: Edg
   reducedRef.current = reduced;
 
   const width = () => wrapRef.current?.clientWidth ?? 0;
-  // BL34–BL35 (F1) — leave the page as a tap on "← Back" does: blur the focused field first, so its own rule runs (a
+  // BL34–BL35 (F1) — leave the page as a tap on "←" does: blur the focused field first, so its own rule runs (a
   // typed plan setting saves; a held 'button' figure goes with the page). React runs no onBlur for a field it unmounts,
   // and neither a touch swipe nor this zone's forwarded tap — a click dispatched at pointerup, before any mouse event —
   // moves focus off it.

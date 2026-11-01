@@ -2692,7 +2692,8 @@ spec `pbloc-spec-almanac-header-v1`.
   `toGrid` rings the face left, as "← Almanac" did. The link keeps the title's line height (`line-height: inherit`), so
   the header keeps its height when the title turns link — without it the header shrank 4px on a face (measured).
   "← Back" still leaves in one tap, and the edge swipe is as before: a face → the grid → out (`registerBack`); a face
-  the plan's link opened swipes straight out.
+  the plan's link opened swipes straight out. (Since BL47 the "←" is named for where it goes: § The header's way out,
+  named.)
 - **Full mode** has no header, so the hub keeps its eyebrow — "ALMANAC" and its line, in a bar of its own at the grid's
   600px (`.eyebrowBar`), without the container's 32px foot. On a face its "Almanac" is the link (`.eyebrowLink`, the
   same orange), the row's height unchanged. The bar keeps its margins (`display: flow-root`), so a face's first line
@@ -2707,6 +2708,34 @@ spec `pbloc-spec-almanac-header-v1`.
 - Tests: `almanacGrid.test.ts` TITLE and BADGE (new) and GRID, BACK and SHELL (moved); `e2e/almanacGrid.spec.ts` TITLE
   (new: nothing between, the header's height, the link and its ring, the badge's place) and OPEN, LINK, FULL, NARROW
   and the tile readers (moved); `openAlmanacFace` goes back by the title's link. § Test Suite → "The Almanac's header".
+
+### The header's way out, named (2026-10-31 — BL47; store unchanged, NO bump)
+
+The header's "←" says where it goes. After the header's look the owner asked whether "← Back" should read
+"← Dashboard". It goes back to wherever the Almanac was opened from — the Dashboard, or the Journal on its Daily or
+Monthly tab (the plan's link lives on THIS MONTH) — so it names that page: his call A, Settings' header too. Screens
+only (Standard): spec `pbloc-spec-back-label-v1`.
+- **The name.** `Layout/backPlace.ts` (pure): `backPlace(to, { viewerMode, viewerPreview, simpleView })` names the page
+  `setActiveTab(to)` opens in simple mode, in AppShell's own order — "Almanac" (Branch I, for anyone), a viewer's
+  "Home" (Branch G — its bottom bar's word), the owner's "Preview" (Branch J's preview — its banner's word), else
+  "Dashboard" or "Journal" by `simpleView` (Daily and Monthly are both the Journal — the nav's two icons). On a face
+  the header reads "← Dashboard" then "Almanac": the way out, then the way to the grid.
+- **Never nowhere.** Settings opened from inside the Almanac — full mode's brand menu on the Almanac tab, or a corner
+  notice ("⚠ Plan not loaded", "⚠ Too large to sync") on any page — sets `previousTab` to 'almanac', and it is
+  persisted. In simple mode Settings then went back to the Almanac, whose "← Back" opened the page it was on and did
+  nothing — nor did its swipe from the grid — until the app restarted (measured on `3618327`; the Almanac's first
+  bugfix, `setPreviousTab` before navigating, fixed the nav's ways in, not these). `almanacExit(previousTab)` is the
+  Almanac's way out, its button's and its swipe's: never 'almanac' — the app's first tab, 'living', instead (the
+  journal; a viewer's home). Settings keeps `previousTab`: the Almanac is a place it goes back to, as "← Almanac".
+- **Hidden tabs** (Claude Code's F1, in its plan's checks). AppShell's hidden-tab guard ran in both modes, sending a
+  hidden tab to the first tab shown; with the five journal tabs hidden (Settings → Customization) and no Coinbase loan,
+  that is the Almanac — so simple mode opened on the Almanac, with no nav, its "←" going nowhere, and a reload kept it
+  there (measured on `3618327`). The guard is full mode's now — only full mode has a tab bar — and re-runs on a switch
+  of mode; simple mode redirects nothing, so the journal opens and every "←" goes where it says.
+- Tests: `src/components/Layout/__tests__/backPlace.test.ts` (new: NAMES, VIEWER, PREVIEW, ALMANAC, EXIT; the wiring —
+  WIRED, EXIT WIRED, ORDER, GUARD — read off the source); `e2e/backPlace.spec.ts` (new: DASH, JOURNAL, MONTH, NOWHERE,
+  HIDDEN); `almanacGrid.test.ts` TITLE and SHELL and `planEdgesWiring.test.ts` GATE moved; `e2e/helpers.ts`'s `headerBack(page)` for every spec that leaves by the
+  header. § Test Suite → "The header's way out, named".
 
 ### Almanac face navigation — TAP-ONLY (the face swipe pager was REMOVED)
 

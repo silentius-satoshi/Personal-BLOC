@@ -156,6 +156,15 @@ export async function mouseDragX(page: Page, startX: number, startY: number, dxP
   if (release) { await page.mouse.up(); await page.waitForTimeout(40); }   // release:false → inspect mid-drag
 }
 
+/**
+ * The simple-mode header's way out (AppShell Branches H and I — Settings and the Almanac), named for the page it opens
+ * (BL47): "← Dashboard" or "← Journal" for the owner, "← Home" for a viewer, "← Preview" in the owner's preview,
+ * "← Almanac" back to the Almanac. A test that only leaves reads it here; a test of the name reads the name itself.
+ */
+export function headerBack(page: Page): Locator {
+  return page.getByRole('button', { name: /^← (Dashboard|Journal|Home|Preview|Almanac)$/ });
+}
+
 /** seedAndGoto (daily journal) → open the simple-mode Settings subpage (AppShell Branch H, edge-back wrapped). */
 export async function openSettingsSimple(page: Page): Promise<void> {
   await seedAndGoto(page);

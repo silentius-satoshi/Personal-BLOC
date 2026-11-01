@@ -128,8 +128,8 @@ describe('⭐ the hub', () => {
     expect(SHELL, 'TITLE the header\'s state').toContain('const [almanacTitleLink, setAlmanacTitleLink] = useState<(() => void) | null>(null);');
     expect(SHELL, 'TITLE the setter, stable').toContain(
       'const registerAlmanacTitleLink = useCallback((fn: (() => void) | null) => setAlmanacTitleLink(() => fn), []);');
-    expect(SHELL, 'TITLE the link on a face, the name on the grid; ← Back still leaves').toMatch(
-      /<button className=\{styles\.simpleModeBackBtn\} onClick=\{\(\) => setActiveTab\(previousTab\)\}>← Back<\/button>\s*\{almanacTitleLink\s*\? <button type="button" className=\{styles\.simpleModeTitleLink\} onClick=\{almanacTitleLink\}>Almanac<\/button>\s*: <span className=\{styles\.simpleModeSettingsTitle\}>Almanac<\/span>\}/);
+    expect(SHELL, 'TITLE the link on a face, the name on the grid; the header\'s "←" still leaves (BL47: named)').toMatch(
+      /<button className=\{styles\.simpleModeBackBtn\} onClick=\{\(\) => setActiveTab\(almanacOut\)\}>\s*\{`← \$\{backPlace\(almanacOut, backState\)\}`\}\s*<\/button>\s*\{almanacTitleLink\s*\? <button type="button" className=\{styles\.simpleModeTitleLink\} onClick=\{almanacTitleLink\}>Almanac<\/button>\s*: <span className=\{styles\.simpleModeSettingsTitle\}>Almanac<\/span>\}/);
   });
 
   it('⭐ BADGE — the live-height badge heads the Bitcoin group, once', () => {
@@ -139,7 +139,7 @@ describe('⭐ the hub', () => {
 
   it('⭐ SHELL — Branch I chains the edge swipe through the grid; full mode has no swipe to chain', () => {
     expect(SHELL, 'SHELL the chain').toContain(
-      'const almanacEdgeBack = () => { const b = almanacBackRef.current; if (b) b(); else setActiveTab(previousTab); };');
+      'const almanacEdgeBack = () => { const b = almanacBackRef.current; if (b) b(); else setActiveTab(almanacOut); };');
     expect(SHELL, 'SHELL the gesture').toContain(
       '<EdgeBackGesture onBack={almanacEdgeBack} renderUnder={() => (almanacBackRef.current ? null : renderSimpleUnder())}>');
     expect(SHELL, 'SHELL the report').toMatch(

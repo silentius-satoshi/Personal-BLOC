@@ -52,7 +52,7 @@ import styles from './AlmanacView.module.css';
  * bitcoin's — each a line icon over its name (`FaceIcon`); `almanacGrid.ts` is the ONE rule for which faces show, in
  * which group and order, from the three gates read here. A tap opens the face in place of the grid. On a face the
  * header's "Almanac" is the link back to the grid (`registerTitleLink` — the owner's ask, 2026-10-31: nothing between
- * the header and the page), where the face just left is ringed; the header's "← Back" still leaves the Almanac in one
+ * the header and the page), where the face just left is ringed; the header's "←" still leaves the Almanac in one
  * tap. Full mode has no header, so the hub keeps a one-row eyebrow there, whose "Almanac" is that link on a face. The
  * edge swipe goes one level, as in Settings: a face → the grid → out (`registerBack`). A face the plan's link opens
  * (`initialFace`) swipes straight out, as before the grid, until the owner moves inside the hub; its header's

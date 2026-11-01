@@ -184,7 +184,7 @@ interface SettingsMainProps {
   hideHeader?: boolean;
   /**
    * P3.1 nested back-chain: SettingsMain reports a one-level-back handler to its host so an edge-swipe-back can
-   * mirror the visible ← Back. Called with `() => setSettingsPage('menu')` while a subpage is open, `null` on
+   * mirror the header's visible "←". Called with `() => setSettingsPage('menu')` while a subpage is open, `null` on
    * the main list (and on cleanup). The host (AppShell Branch H) chains: subpage-back first, else exit Settings.
    */
   registerBack?: (fn: (() => void) | null) => void;
@@ -413,7 +413,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
 
   // Viewer V4 — a viewer gets the purpose-built FLAT settings screen, NOT the owner menu/subpages
   // (a viewer never reaches accessFlow — those rows are !viewerMode). AppShell mounts this as
-  // <SettingsMain hideHeader/> inside .simpleModeSettings, which supplies the ← Back header.
+  // <SettingsMain hideHeader/> inside .simpleModeSettings, which supplies the header and its "←".
   if (viewerMode) {
     return (
       <div className={styles.main}>
