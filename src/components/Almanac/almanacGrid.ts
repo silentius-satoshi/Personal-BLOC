@@ -68,6 +68,18 @@ export function faceShown(face: Face, gates: FaceGates): boolean {
   }
 }
 
+/** A computer (BL46's A — the owner's pick): from this width the hub shows its faces as a list beside the open face, with
+ *  no grid page and no step back. 1200 px is where every face keeps its own width beside the list in either mode — the
+ *  plan faces' 960 px, the widest (AlmanacView.module.css's `.listLayout`); narrower — a phone, an iPad, a narrower
+ *  window — keeps the grid. */
+export const ALMANAC_LIST = '(min-width: 1200px)';
+
+/** The face a computer's list opens on when none is asked for: the face last open in this session while the list still
+ *  shows it, else Decision — ungated, so always there. Reads the groups as drawn, so the list's gates are the grid's. */
+export function firstListFace(last: Face | null, groups: readonly { tiles: readonly FaceTile[] }[]): Face {
+  return last !== null && groups.some((g) => g.tiles.some((t) => t.key === last)) ? last : 'decision';
+}
+
 /** The grid as drawn: each group with the tiles it shows, in order. A group left with no tile is dropped (none can be
  *  today — Decision, Ownership and Scenario are ungated, and so is every bitcoin face). */
 export function gridGroups(gates: FaceGates): { group: FaceGroup; label: string; tiles: FaceTile[] }[] {

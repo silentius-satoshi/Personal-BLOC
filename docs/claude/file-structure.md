@@ -585,6 +585,8 @@ src/
                                 # dock reads '(min-width: 1024px)' for ONE markup at a time: the bar from 1024 px, the tabs below
                                 # it. The three parents' Milestones read MS_TABLE / MS_TABLE_OWNERSHIP (cyclingFaceView)
                                 # the same way — the table from 768 px, the switch table under it (§ Milestones on a phone)
+                                # — and the Almanac's hub ALMANAC_LIST (almanacGrid.ts): the faces as a list from 1200 px,
+                                # the grid under it (BL46's A — § The Almanac on a computer)
     useChartZoom.ts             # Chart zoom — the thin React adapter over lib/chartZoom (§ Chart zoom). useChartZoom(
                                 # full: View, scales, reach = full, min = MIN_SPAN_TIME_LOG) → { view, zoomed, mode,
                                 # pressMode, zoomIn, zoomOut, reset, dragging, quiet, areaRef, boxRef, plotStyle,
@@ -911,12 +913,13 @@ src/
                                 # and its edge back from the grid, go to almanacOut = almanacExit(previousTab) — never
                                 # the Almanac itself. Branch I (Almanac) chains the same way since
                                 # BL45: almanacBackRef receives AlmanacView's registerBack (a face opened inside the hub →
-                                # the grid; null on the grid and for a face the plan's link opened), almanacEdgeBack and
-                                # renderUnder as Branch H's. Since 2026-10-31 its header's title is the way to the grid
-                                # on a face: almanacTitleLink (state — the title redraws as the link) receives
-                                # AlmanacView's registerTitleLink through registerAlmanacTitleLink (useCallback,
-                                # stable) — any face, the link's too; null on the grid. Full mode passes none: the hub
-                                # draws its own eyebrow there.
+                                # the grid; null on the grid, for a face the plan's link opened, and in the list — from
+                                # 1200 px, BL46's A, no grid page), almanacEdgeBack and renderUnder as Branch H's. Since
+                                # 2026-10-31 its header's title is the way to the grid on a face: almanacTitleLink (state
+                                # — the title redraws as the link) receives AlmanacView's registerTitleLink through
+                                # registerAlmanacTitleLink (useCallback, stable) — any face, the link's too; null on the
+                                # grid and in the list. Full mode passes none: the hub draws its own eyebrow there (in
+                                # the list, the list's title).
                                 # The plan of record's Run 3: the Almanac opens on a requested face — almanacFace
                                 # (session state) → <AlmanacView initialFace> in both modes. goPlanPaths() opens the
                                 # Decision face (THIS MONTH's and the Advisor tab's "Your plan on other price paths"
@@ -975,7 +978,11 @@ src/
     Almanac/                    # (the faces are documented in § Almanac / CycleClock; listed here: Run 2's files)
       almanacGrid.ts            # BL45 — the grid's ONE catalogue (pure, no store, no env): FACE_TILES (key, name, group,
                                 # gate) in the grid's order, FACE_GROUPS ("Your plan", "Bitcoin"), faceShown, gridGroups,
-                                # and the Face union. The hub passes its three gates in (§ The Almanac grid)
+                                # and the Face union. The hub passes its three gates in (§ The Almanac grid). BL46's A:
+                                # ALMANAC_LIST ('(min-width: 1200px)' — from there the hub draws the same groups as a
+                                # list beside the open face) and firstListFace (the face the list opens on: the last open
+                                # this session while shown, else Decision). § The Almanac on a computer; pinned by
+                                # __tests__/almanacGrid.test.ts and e2e/almanacGrid.spec.ts + e2e/almanacList.spec.ts
       FaceIcon.tsx              # BL45 — the grid's thirteen line icons, one a face (24px, stroke 1.75, aria-hidden)
       DecisionFace.tsx          # Decision face (Run B) — the TWELFTH face (+ .module.css, composes the parents'). THE
                                 # MOVE card, the Coinbase-loan line, the chart, the schedule (Copy · Download .txt ·

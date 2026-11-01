@@ -2336,6 +2336,34 @@ goes red.)
     tap forwarding, `planOfRecord`'s PLAN and PATHS, `almanacGrid`'s TITLE and LINK, `coldStorage`'s COLD, `goal`'s GOAL,
     `customization`'s CUSTOMIZE, `numberField`'s COINBASE, BUTTON and DATED, `numberFieldSwipe`'s TAP — each waiting on
     the header's new name. Seventeen of the 69 tests in the nine files.
+- **The Almanac on a computer (BL46's A, 2026-11-01) — from 1200px the faces are a list beside the open face** (spec
+  `pbloc-spec-almanac-desktop-v1` v1.0; Standard, the reviewer's prototype applied byte for byte; the suite 3,266 →
+  3,270 (+6 skipped), 225 files; e2e 144 → 155 (+2 skipped). 17 planted bugs — 16 through the unit tests, 15 through
+  the e2e — each an exact-once edit, red at its tagged tests, the files restored and md5-checked:
+  `Claude outputs/almanac-desktop/mutations-list.json`):
+  - `almanacGrid.test.ts` 12 → 16: ⭐ WIDTH (new — from 1200px; the list's footprint read off the CSS, 192px; a 960px
+    face fits beside it in full mode; the control bar's own 1024) · FIRST (new — the face last open while the list
+    shows it, else Decision, in all eight gate combinations; non-vacuous) · LIST (new — the drawn groups as buttons, the
+    open one marked, its icon and name; the hub's name only where no header gives it) · KEEP (new — one tree both sides
+    of 1200: the two wrappers, `display: contents`; the list's face kept as the open one; the session's last face in
+    memory only). Moved: GRID (the face on screen is `shown`, in its wrapper), BACK and TITLE (none in the list), BADGE
+    (one element, under Bitcoin's heading in the list).
+  - `e2e/almanacList.spec.ts` (11, new; every test aborts live prices and stubs the history): ⭐ LIST (at 1280 the
+    grid's faces in its order, Decision first and marked, its face beside the list; no grid page, no link; the header's
+    "←" leaves) · ONE CLICK (a face in place, the list kept) · GATED (no loan, no log: the grid's faces for that plan) ·
+    SWIPE (one stroke out) · STAY (the list in view after a 1,500px scroll) · AGAIN (the face last open on return; a
+    reload, Decision) · EDGE (1199 the grid, 1200 the list; the list's face kept on narrowing; a face's element kept
+    across 1200 both ways) · FULL (full mode: the list's title, Decision, one click, the switch; under the tab bar after
+    a scroll) · BADGE (under Bitcoin's heading, over its first face, inside the list) · FIT ×2 (at 1200, simple and
+    full: room for 960px; each face its own width; nothing sideways; the plan faces' bar one line, over the face;
+    non-vacuous).
+  - Moved on purpose — `e2e/almanacGrid.spec.ts` FULL (1280 → 1199px, the widest window the grid serves); a comment in
+    `e2e/helpers.ts` (`openAlmanacFace` finds a face in the list as well). Nothing else moved: `controlDock`,
+    `milestones` and `navigation`'s computer tests reach their faces through the list at 1280 and 1440, unchanged.
+  - Red first (the reviewer's, on `a04a1fc`'s app code with the new and changed tests and `almanacGrid.ts`'s two new
+    exports alone, unwired): the unit tests red at GRID, BACK, TITLE, BADGE, WIDTH, LIST and KEEP — FIRST passes on the
+    module; the e2e red at all eleven of `almanacList.spec.ts`, while `almanacGrid.spec.ts`'s nine pass — the grid as
+    before.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

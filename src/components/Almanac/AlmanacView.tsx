@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import HalvingClock from './HalvingClock';
 import CycleClock from './CycleClock';
 import FreshnessBadge from './FreshnessBadge';
@@ -19,7 +20,7 @@ import UnifiedFace from './UnifiedFace';
 import DecisionFace from './DecisionFace';
 import FireFace from './FireFace';
 import FaceIcon from './FaceIcon';
-import { faceShown, gridGroups, type Face } from './almanacGrid';
+import { ALMANAC_LIST, faceShown, firstListFace, gridGroups, type Face } from './almanacGrid';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import { fireFaceOnDeploy } from '../../lib/fireDeploy';
 import styles from './AlmanacView.module.css';
@@ -59,6 +60,15 @@ import styles from './AlmanacView.module.css';
  * "Almanac" goes to the grid all the same. A gate that closes on an open face returns to the grid, where its tile has
  * gone too.
  *
+ * A COMPUTER (BL46's A — the owner's pick). From 1200 px (`ALMANAC_LIST`) the grid is a list of the same faces — its
+ * groups, order, names and icons, from the same `gridGroups` — at the left, with the open face beside it: one click
+ * between faces, and the list stays. There is no grid page, so no step back: the header's "Almanac" is plain, and the
+ * edge swipe leaves the Almanac. A face is always open there — the one asked for, else the face last open in this
+ * session while the list shows it, else Decision (`firstListFace`; in memory only — nothing persisted, nothing synced).
+ * A gate that closes on the open face opens Decision. The badge sits under the list's Bitcoin heading. Narrower — a
+ * phone, an iPad, a narrower window — the grid as above. The open face keeps its place in the tree across 1200 px (two
+ * wrappers drawn `display: contents` on the grid's side), so resizing the window never remounts it.
+ *
  * ⚠ FACE SWITCHING IS TAP-ONLY. The grid's tiles (and a face's own links to another) are the way to change face on
  * every platform — the horizontal swipe pager (SwipeStrip) was REMOVED, along with its `shouldStart` chart/edge
  * exclusions, the neighbour-pane preload, and the scoped `touch-action` rules that existed only to arbitrate against
@@ -77,6 +87,10 @@ export type AlmanacFace = Face;
 const FIRE_ON_THIS_DEPLOY = fireFaceOnDeploy({
   VITE_LANDING: import.meta.env.VITE_LANDING, VITE_DEMO: import.meta.env.VITE_DEMO,
 });
+
+/** The face last open in this session (BL46's A): a computer's list reopens on it. In memory only — nothing persisted,
+ *  nothing synced; a reload forgets it. */
+let lastOpenFace: Face | null = null;
 
 interface AlmanacViewProps {
   /** Read at mount only (the hub mounts each time it is opened): a face to open on, from outside the hub — the plan's
@@ -99,6 +113,8 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
   // The face just left, ringed on the grid. Session-only, like the face.
   const [lastFace, setLastFace] = useState<Face | null>(null);
   const [consentOpen, setConsentOpen] = useState(false);
+  // A computer (BL46's A): from 1200 px the faces are a list beside the open face — no grid page, no back step.
+  const listMode = useMediaQuery(ALMANAC_LIST);
 
   const tip = useChainTip();
   const almanacLiveEnabled = useStore((s) => s.almanacLiveEnabled);
@@ -122,15 +138,15 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
   // The edge swipe's one level, reported to the host as Settings reports its page (null on the grid and for a face the
   // link opened — the swipe leaves the Almanac then).
   useEffect(() => {
-    registerBack?.(face !== null && !fromOutside ? toGrid : null);
+    registerBack?.(face !== null && !fromOutside && !listMode ? toGrid : null);
     return () => registerBack?.(null);
-  }, [face, fromOutside, toGrid, registerBack]);
+  }, [face, fromOutside, toGrid, registerBack, listMode]);
 
   // The header's "Almanac" (simple mode): the way to the grid from any face — the link's too — and none on the grid.
   useEffect(() => {
-    registerTitleLink?.(face !== null ? toGrid : null);
+    registerTitleLink?.(face !== null && !listMode ? toGrid : null);
     return () => registerTitleLink?.(null);
-  }, [face, toGrid, registerTitleLink]);
+  }, [face, toGrid, registerTitleLink, listMode]);
 
   const handleBadgeTap = () => {
     if (almanacLiveEnabled) {
@@ -143,6 +159,23 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
   };
 
   const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY });
+  // In the list a face is always open (BL46's A): with none asked for, the face last open in this session while it shows,
+  // else Decision — drawn at once, and kept as the open face, so narrowing the window keeps it too.
+  const listFace: Face | null = listMode && face === null ? firstListFace(lastOpenFace, groups) : null;
+  useEffect(() => { if (listFace !== null) setFace(listFace); }, [listFace]);
+  const shown: Face | null = face ?? listFace;
+  useEffect(() => { if (shown !== null) lastOpenFace = shown; }, [shown]);
+
+  const badge = (
+    <FreshnessBadge
+      enabled={almanacLiveEnabled}
+      mode={tip.mode}
+      source={tip.source}
+      lastUpdated={tip.lastUpdated}
+      isStale={tip.isStale}
+      onTap={handleBadgeTap}
+    />
+  );
 
   // The face content for a face key. Pure presentation — switching faces never remounts the hub's
   // useChainTip (§14.5).
@@ -164,11 +197,14 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
     return <div className={styles.faceStack}><ConverterMain /><div className={`${styles.facePanel} ${styles.facePanelInset}`}><ConverterSidebar /></div></div>;
   };
 
+  // The list (a computer — BL46's A) and the grid's side share one tree: two wrappers that the grid's side draws as
+  // `display: contents`, so crossing the width never remounts the open face (its month, its stress, its open chip).
   return (
     <div className={registerTitleLink ? `${styles.shell} ${styles.shellUnderHeader}` : styles.shell}>
-      {/* Full mode has no header, so the hub names itself: the eyebrow, whose "Almanac" is the way to the grid on a
-          face. Simple mode's header does both, and the page starts right under it. */}
-      {!registerTitleLink && (
+      {/* Full mode has no header, so the hub names itself — on the grid's side the eyebrow, whose "Almanac" is the way
+          to the grid on a face; in the list, the list's title. Simple mode's header does both, and the page starts
+          right under it. */}
+      {!listMode && !registerTitleLink && (
         <div className={styles.eyebrowBar}>
           <div className={styles.eyebrow}>
             {face === null
@@ -179,48 +215,67 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
         </div>
       )}
 
-      {face === null ? (
-        <div className={styles.container}>
-          {/* The grid — the hub's page (BL45). A tile is a button named by its face, its icon decorative. */}
-          <nav className={styles.grid} aria-label="Faces">
+      <div className={listMode ? styles.listLayout : styles.contents}>
+        {listMode && (
+          // The faces as a list at the left — the grid's groups, names and icons — the open face marked: one click
+          // between faces, no grid page, no step back.
+          <nav className={styles.list} aria-label="Faces">
+            {!registerTitleLink && <div className={`${styles.eyebrowLabel} ${styles.listTitle}`}>Almanac</div>}
             {groups.map((g) => (
-              <section key={g.group} className={styles.group} aria-labelledby={`almanac-group-${g.group}`}>
-                <div className={styles.groupHead}>
-                  <h2 id={`almanac-group-${g.group}`} className={styles.groupLabel}>{g.label}</h2>
-                  {/* The live block height is bitcoin's — the two clocks read it — so its toggle heads that group. */}
-                  {g.group === 'bitcoin' && (
-                    <FreshnessBadge
-                      enabled={almanacLiveEnabled}
-                      mode={tip.mode}
-                      source={tip.source}
-                      lastUpdated={tip.lastUpdated}
-                      isStale={tip.isStale}
-                      onTap={handleBadgeTap}
-                    />
-                  )}
-                </div>
-                <div className={styles.tiles}>
-                  {g.tiles.map((t) => (
-                    <button
-                      key={t.key}
-                      type="button"
-                      className={`${styles.tile} ${t.key === lastFace ? styles.tileLast : ''}`}
-                      onClick={() => openFace(t.key)}
-                    >
-                      <FaceIcon face={t.key} />
-                      <span className={styles.tileName}>{t.name}</span>
-                    </button>
-                  ))}
-                </div>
+              <section key={g.group} className={styles.listGroup} aria-labelledby={`almanac-group-${g.group}`}>
+                <h2 id={`almanac-group-${g.group}`} className={`${styles.groupLabel} ${styles.listHead}`}>{g.label}</h2>
+                {/* The live block height is bitcoin's — its toggle under that group's heading (the list is narrow). */}
+                {g.group === 'bitcoin' && <div className={styles.listBadge}>{badge}</div>}
+                {g.tiles.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    className={`${styles.listItem} ${t.key === shown ? styles.listItemOn : ''}`}
+                    aria-current={t.key === shown ? 'page' : undefined}
+                    onClick={() => openFace(t.key)}
+                  >
+                    <FaceIcon face={t.key} />
+                    <span className={styles.listName}>{t.name}</span>
+                  </button>
+                ))}
               </section>
             ))}
           </nav>
-        </div>
-      ) : (
-        // Only the open face mounts — none on the grid, no neighbour panes — so a heavy face (Power Law/Mining hooks)
-        // mounts exactly when its tile is tapped.
-        renderFace(face)
-      )}
+        )}
+        {shown === null ? (
+          <div className={styles.container}>
+            {/* The grid — the hub's page (BL45). A tile is a button named by its face, its icon decorative. */}
+            <nav className={styles.grid} aria-label="Faces">
+              {groups.map((g) => (
+                <section key={g.group} className={styles.group} aria-labelledby={`almanac-group-${g.group}`}>
+                  <div className={styles.groupHead}>
+                    <h2 id={`almanac-group-${g.group}`} className={styles.groupLabel}>{g.label}</h2>
+                    {/* The live block height is bitcoin's — the two clocks read it — so its toggle heads that group. */}
+                    {g.group === 'bitcoin' && badge}
+                  </div>
+                  <div className={styles.tiles}>
+                    {g.tiles.map((t) => (
+                      <button
+                        key={t.key}
+                        type="button"
+                        className={`${styles.tile} ${t.key === lastFace ? styles.tileLast : ''}`}
+                        onClick={() => openFace(t.key)}
+                      >
+                        <FaceIcon face={t.key} />
+                        <span className={styles.tileName}>{t.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </nav>
+          </div>
+        ) : (
+          // Only the open face mounts — none on the grid, no neighbour panes — so a heavy face (Power Law/Mining hooks)
+          // mounts exactly when its tile is tapped.
+          <div className={listMode ? styles.pane : styles.contents}>{renderFace(shown)}</div>
+        )}
+      </div>
 
       <AlmanacConsentSheet
         open={consentOpen}

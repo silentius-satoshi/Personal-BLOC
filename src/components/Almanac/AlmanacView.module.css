@@ -178,3 +178,96 @@
 .tileName {
   overflow-wrap: anywhere;
 }
+
+/* A computer (BL46's A — the owner's pick): from 1200 px (`ALMANAC_LIST`) the faces are a list at the left and the open
+   face beside it — one click between faces, no grid page, no step back. 1200 is where every face keeps its own width
+   beside the list in both modes — the plan faces' 960px, the widest (full mode's .main pads 20px a side): 12 + 168 + 12
+   + 960 + 40 = 1192 — narrower, the plan faces' control bar wraps its slider heads (measured), so a narrower window
+   keeps the grid. The list keeps the grid's groups, names and icons; the open face is marked as the grid marks the face
+   just left. It stays in view while the face scrolls: under full mode's 40px tab bar, or at the window's top in simple
+   mode, whose header scrolls away. */
+.listLayout {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  padding-left: 12px;
+}
+/* The same two wrappers on the grid's side, without a box of their own: the layout is the grid's as before, and the
+   open face keeps its place in the tree when the window crosses 1200 px. */
+.contents {
+  display: contents;
+}
+.list {
+  position: sticky;
+  top: 52px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 4px 2px 16px;
+}
+.shellUnderHeader .list {
+  top: 12px;
+  max-height: calc(100vh - 24px);
+}
+/* Full mode's name for the hub, as its eyebrow on the grid. */
+.listTitle {
+  display: block;
+  margin: 15px 2px 14px;
+}
+.listGroup + .listGroup {
+  margin-top: 20px;
+}
+.listHead {
+  margin: 4px 2px 8px;
+}
+.listBadge {
+  margin: 0 2px 8px;
+}
+.listItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 2px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.listItem svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.listItem:hover {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+.listItemOn,
+.listItemOn:hover {
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  color: var(--text-primary);
+}
+.listName {
+  overflow-wrap: anywhere;
+}
+.pane {
+  min-width: 0;
+}
+/* The badge in the list: its live label ("live · 59m ago · blockstream.info", about 230px) wraps inside the list's
+   width rather than widen it. */
+.listBadge > button {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.3;
+}

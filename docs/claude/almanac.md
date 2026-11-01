@@ -2641,6 +2641,8 @@ The hub opens on its faces as a grid — the owner's ask, "a grid of apps … si
   names, "Ownership" and "Emergency", on one line inside a tile — under 293px, a 320px phone. The columns follow the
   grid's own width (a container query, `almanac-grid`), since full mode's padding and a phone's differ. The face just
   left keeps the selected pill's green tint (`.tileLast`), so the eye finds its place; session-only, like the face.
+  (Since BL46's A a window 1200px wide or more shows the faces as a list beside the open face instead — § The Almanac
+  on a computer.)
 - **ONE catalogue.** `almanacGrid.ts` — `FACE_TILES` (key, name, group, gate), `FACE_GROUPS`, `faceShown`, `gridGroups`,
   and the `Face` union (`AlmanacView` re-exports it as `AlmanacFace`) — is pure: the hub reads its three gates once
   (`hasCbLoan`, `ledgerFaceAvailable(monthlyLog)`, `FIRE_ON_THIS_DEPLOY`) and passes them in, so every combination is a
@@ -2737,10 +2739,50 @@ only (Standard): spec `pbloc-spec-back-label-v1`.
   HIDDEN); `almanacGrid.test.ts` TITLE and SHELL and `planEdgesWiring.test.ts` GATE moved; `e2e/helpers.ts`'s `headerBack(page)` for every spec that leaves by the
   header. § Test Suite → "The header's way out, named".
 
+### The Almanac on a computer (BL46's A — the owner's pick; store unchanged, NO bump)
+
+On a computer the faces are a list beside the open face — the owner's pick of three layouts drawn in the real app
+(BL46 A): the two groups at the left, an icon and a name each, the open face marked, and the open face beside them: one
+click between faces, no grid page, no step back. Screens only (Standard): spec `pbloc-spec-almanac-desktop-v1`.
+- **From 1200px** (`ALMANAC_LIST` in `almanacGrid.ts`, read through `useMediaQuery`). BL46 drew it from 1024px; there
+  the list leaves a face 832px (simple mode) or 792px (full mode), and the plan faces' control bar wraps its slider
+  heads onto two lines — Decision's and Strategy's 87 → 106px tall, and Cycling's in full mode (measured). From 1200
+  every face keeps its own width — the plan faces' 960px — beside the list in either mode: 12 + 168 + 12 + 960 + full
+  mode's 40 = 1192. Mining and Sats, two columns up to 1240px, fill what is left, as in any window under 1240 — at 1280,
+  1088px in simple mode and 1048 in full; all 1240 from 1432 and 1472. Narrower — a phone, an iPad, a narrower window —
+  keeps the grid, as before. The width decides, not the device: a 12.9" iPad in landscape (1366px) gets the list. The
+  owner's call (spec C1).
+- **The list** (`nav` "Faces", 168px): the grid's groups, order, names and icons — the same `gridGroups`, so the same
+  gates — each face a button, the open one marked (`.listItemOn`, the grid's ring tint; `aria-current="page"`). It
+  stays in view while the face scrolls (`position: sticky` — under full mode's 40px tab bar, or at the window's top in
+  simple mode, whose header scrolls away) and scrolls on its own in a short window. The open face sits beside it in
+  `.pane` (`min-width: 0`) at its own width; the hub adds none.
+- **A face is always open.** There is no grid page: with no face asked for, the list opens on the face last open in
+  this session while the list shows it, else Decision (`firstListFace(lastOpenFace, groups)`). `lastOpenFace` is a
+  module variable — in memory only: nothing persisted, nothing synced, and a reload forgets it. The plan's link opens
+  its face as before. A gate that closes on the open face opens Decision, which is ungated.
+- **No step back.** On every face the header's "Almanac" is plain (`registerTitleLink` gets null) and the edge swipe
+  leaves the Almanac (`registerBack` gets null): there is no grid to go back to. The header's "←" leaves as before,
+  named for where it goes (BL47). Full mode draws no eyebrow: the list's own title, "ALMANAC", names the hub.
+- **The live-height badge** sits under the list's Bitcoin heading, over its first face; its live label wraps inside the
+  list's width rather than widen it.
+- **Crossing 1200px keeps the face.** The list layout and the grid's side are one tree — two wrappers drawn
+  `display: contents` on the grid's side — so a window resized across 1200 never remounts the open face (its month,
+  its stress, an open chip). Widening from the grid opens the face last open; narrowing keeps the open face, with the
+  grid's way back.
+- **The plan faces' control bar** floats over the face, not the window, by construction: `ControlDock` is `position:
+  sticky` inside the face — 928px wide at 1200, inside the pane (measured). Its own breakpoint (`WIDE`, 1024px) is
+  unchanged.
+- **Viewers.** Unchanged: the list reads the same gates as the grid.
+- Tests: `almanacGrid.test.ts` WIDTH, FIRST, LIST and KEEP (new) and GRID, BACK, TITLE and BADGE (moved);
+  `e2e/almanacList.spec.ts` (new: LIST, ONE CLICK, GATED, SWIPE, STAY, AGAIN, EDGE, FULL, BADGE, FIT);
+  `e2e/almanacGrid.spec.ts` FULL moved from 1280 to 1199px, the widest window the grid serves. `openAlmanacFace` reaches
+  a face by the list as well — it is the same "Faces" nav. § Test Suite → "The Almanac on a computer".
+
 ### Almanac face navigation — TAP-ONLY (the face swipe pager was REMOVED)
 
-Face switching happens **only** by tapping — a tile on the grid since BL45 (a sub-nav pill before), or a face's own link
-to another — on desktop and mobile alike. The `<SwipeStrip>`
+Face switching happens **only** by tapping — a tile on the grid since BL45 (a sub-nav pill before; on a computer, since
+BL46's A, the list), or a face's own link to another — on desktop and mobile alike. The `<SwipeStrip>`
 face pager (Gesture P3/P3.1) is GONE, along with everything that existed to arbitrate against it. No
 data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still page).
 - **`almanacGrid.ts`** is the SINGLE source for the grid's tiles (it replaced `visibleFaces`, the sub-nav pill map, at

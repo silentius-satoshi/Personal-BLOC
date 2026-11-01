@@ -202,8 +202,10 @@ test.describe('the Almanac grid (BL45)', () => {
     expect(await ringed(page), 'INSIDE the face left').toEqual(['Cycling']);
   });
 
+  // 1199 px: the widest window the grid serves — from 1200 a computer shows the faces as a list (BL46's A —
+  // e2e/almanacList.spec.ts).
   test('⭐ FULL — full mode on a computer: Tools → Almanac opens the grid, five to a row; a tile opens its face, right under the eyebrow; the eyebrow\'s Almanac returns', async ({ browser, baseURL }) => {
-    const ctx = await browser.newContext({ baseURL, viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
+    const ctx = await browser.newContext({ baseURL, viewport: { width: 1199, height: 900 }, serviceWorkers: 'block' });
     try {
       const page = await ctx.newPage();
       await hermetic(page);
