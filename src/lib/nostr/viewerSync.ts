@@ -143,6 +143,35 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
   } catch { nostrLog('warn', 'viewer payload parse failed (skipped)'); }
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * BL48 (the independent check) — what a TRUSTED snapshot must carry before any of it applies: the plan itself. `settings`
+ * an object with the plan's four figures (income, expenses, the line and its rate) numbers, its start date a string and
+ * `hasCbLoan` a boolean; `records` an object with `entries` a list; `privacyMode` 'trusted' (or none — a pre-V2 owner's).
+ * Every owner build since the per-viewer addresses (M2) has sent them. Without the plan the device would load, without its
+ * safe block, on the seed's figures — the tier reads that as trusted. What an older owner's snapshot may lack still falls
+ * back as before (the apply's `??`: the deletions, the Strike block, the collateral and cold figures, the deposit date), but
+ * what's there must be what the apply takes — a map of numbers, three balances each a number or null, numbers, a string.
+ * Not checked: `snapshotVersion` (a newer owner's additions are ignored, as before), the other settings (they apply as
+ * sent, as before), each month's own fields (the owner's own Ledger reads the same months) and the cold moves
+ * (`coldMovesFromSnapshot` checks them on the way in).
+ */
+function trustedSnapshotOk(snap: ViewerSnapshot): boolean {
+  const o: Record<string, unknown> = { ...snap };   // decrypted JSON: unknown until checked, whatever its declared type
+  if (o.privacyMode !== undefined && o.privacyMode !== 'trusted') return false;
+  const { settings, records, strike } = o;
+  if (!isObject(settings) || !['income', 'expenses', 'creditLine', 'blocApr'].every((k) => isNum(settings[k]))) return false;
+  if (typeof settings.advisorStartDate !== 'string' || typeof settings.hasCbLoan !== 'boolean') return false;
+  if (!isObject(records) || !Array.isArray(records.entries)) return false;
+  const { deletions } = records;
+  if (deletions != null && !(isObject(deletions) && Object.values(deletions).every(isNum))) return false;
+  if (strike != null && !(isObject(strike) && [strike.usd, strike.btcAvail, strike.rate].every((v) => v === null || isNum(v)))) return false;
+  if (![o.cbCollateralBtc, o.strikeCollateralBtc, o.coldStorageBtc].every((v) => v == null || isNum(v))) return false;
+  return o.strikeLastDepositISO == null || typeof o.strikeLastDepositISO === 'string';
+}
+
 /**
  * Apply one DECRYPTED owner snapshot to this viewer's store — the relay path's one apply (applyViewerEvent calls it
  * after the decrypt and the ordering check). Exported for the e2e (BL48): the dev server skips the viewer gates
@@ -152,6 +181,13 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
 export function applyViewerSnapshot(snap: ViewerSnapshot): void {
   const s = useStore.getState();
   if (!s.viewerMode) return;
+  // BL48 (the independent check) — FAIL CLOSED before anything applies: a payload that isn't an object (JSON's null, 42 or
+  // []) is no tombstone and no mode. It wipes, as a trusted snapshot that isn't well-formed does below. (`as unknown`: the
+  // decrypted JSON may be anything — the declared type is what a well-formed one is.)
+  if (!isObject(snap as unknown)) {
+    s.clearViewerData();
+    throw new Error('viewer snapshot is not an object');
+  }
   if (snap.revoked) {
     // Owner revoked this viewer — wipe hydrated data (viewerDataLoaded → false → ViewerWaitingGate). No hydrate.
     nostrLog('info', 'viewer access revoked by owner');
@@ -178,10 +214,15 @@ export function applyViewerSnapshot(snap: ViewerSnapshot): void {
   }
   // C-TRUSTED (or a pre-V2 snapshot with no privacyMode) — the full hydrate. Clear any prior safe snapshot first
   // so a trusted→ nothing-stale mix can't linger (ViewerHomeView reads viewerSafeSnapshot to pick its mode).
-  // BL48 — FAIL CLOSED: a trusted snapshot that can't apply (a malformed one throws part-way — `applyViewerSettings` on a
-  // non-object) leaves nothing: never a loaded device with its safe block cleared, which the tier reads as trusted
-  // (Layout/viewerAccess.ts) — the Almanac opened for a safe viewer on the seed's figures. The throw goes on to the
-  // event's catch, which skips the event.
+  // BL48 — FAIL CLOSED: a trusted snapshot that can't apply leaves nothing — never a loaded device with its safe block
+  // cleared, which the tier reads as trusted (Layout/viewerAccess.ts): the Almanac opened for a safe viewer on the seed's
+  // figures. Twice: one that isn't well-formed (trustedSnapshotOk) wipes before any of it applies — the independent check's
+  // `settings: null` threw nothing and got through; and whatever still throws part-way wipes in the catch. Either throw
+  // goes on to the event's catch, which skips the event.
+  if (!trustedSnapshotOk(snap)) {
+    s.clearViewerData();
+    throw new Error('trusted viewer snapshot is not well-formed');
+  }
   try {
     s.setViewerSafeSnapshot(null);
     const settings = snap.settings ?? {};

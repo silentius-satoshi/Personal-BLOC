@@ -562,8 +562,9 @@ goes red.)
         PATH-4YR · POLICY-TAB · REMOTE-POLICY); Ownership (RENAME · READOUT · TABS · EDGE · NOTE · the edge, END under
         `.shell` · PATH-TAB · REMOTE · POLICY-TAB); Strategy (TABS · EDGE · LENS-ONCE · VIEW · STRESS · LENS ·
         STRESS-HOLDS · LENS-BACK · NOTE · the edge);
-      - computer: the three bars in one test (ONCE-DOM · LIVE · NO-WRAP at 1440 and 1024 · UP · 4YR-UP · the edge at
-        888); Strategy's Lens chip (LENS-CHIP · LENS-UP · LENS-VIEW · ESCAPE · ESCAPE-FOCUS);
+      - computer: the three bars in one test (ONCE-DOM · LIVE · NO-WRAP at 1440 and 1024, each width's layout awaited
+        first · UP · 4YR-UP · the edge at 888); Strategy's Lens chip (LENS-CHIP · LENS-UP · LENS-VIEW · ESCAPE ·
+        ESCAPE-FOCUS);
       - full mode: Ownership, the computer and the phone.
     - Run 2's red-at: MP1 Cycling's dock first → P-ONE-DOCK, PINNED at 0 · MP2 Ownership's dock in `.side` →
       P-ONE-DOCK, PINNED at 0 (full mode, phone), NO-WRAP (Ownership at 1440) · MP3 the switch also on the page → P-LENS
@@ -2365,9 +2366,10 @@ goes red.)
     module; the e2e red at all eleven of `almanacList.spec.ts`, while `almanacGrid.spec.ts`'s nine pass — the grid as
     before.
 - **Trusted viewers in the Almanac (BL48, 2026-11-01) — a trusted viewer opens the hub from his home's bar; a safe
-  viewer never** (spec `pbloc-spec-trusted-viewers-v1` v1.1; Heavy, the reviewer's prototype applied byte for byte; the
-  suite 3,270 → 3,298 (+6 skipped), 225 → 229 files; e2e 155 → 164 (+2 skipped). 36 planted bugs — 36 through the unit
-  tests, 28 through the e2e — each an exact-once edit, red at its tagged tests, the files restored and md5-checked:
+  viewer never** (spec `pbloc-spec-trusted-viewers-v1` v1.4; Heavy, the reviewer's prototype applied byte for byte, then
+  the pre-merge independent check's fix, v1.3, the same way; the suite 3,270 → 3,300 (+6 skipped), 225 → 229 files; e2e
+  155 → 164 (+2 skipped). 54 planted bugs — 54 through the unit tests, 29 through the e2e — each an exact-once edit, red
+  at its tagged tests, the files restored and md5-checked:
   `Claude outputs/trusted-viewers/mutations-viewers.json`):
   - `src/components/Layout/__tests__/viewerAccess.test.ts` (7, new; the tier pure, AppShell's wiring read off the
     source): ⭐ TIER (by the last snapshot applied — trusted without a safe block, safe with one, none for the owner or
@@ -2385,9 +2387,14 @@ goes red.)
     device, the owner's copy on a viewer's, never his own journal) · ROUND TRIP (the owner's months through the
     snapshot's JSON and the check read the same) · CHECKED (a whole month ≥ 1 and a finite number, or dropped; nothing
     valid → null) · FACE (the Ledger reads the rule; no Copy CSV or Download for a viewer).
-  - `src/components/Almanac/__tests__/viewerAlmanacWiring.test.ts` (5, new): ⭐ WRITES (the hub's import closure, the
-    store excepted, calls only the listed store functions — two reads, the viewer's own tools, three writes no viewer
-    reaches; checked against the real store's functions; a new face write fails it until it is decided) · COPIES (no
+  - `src/components/Almanac/__tests__/viewerAlmanacWiring.test.ts` (6, new): ⭐ WRITES (the hub's import closure, the
+    store excepted, names only the listed store functions — two reads, the viewer's own tools, three writes no viewer
+    reaches; checked against the real store's functions; a face that names a new one fails it until it is decided) ·
+    WAYS IN (the pre-merge independent check: fails on a store module imported for anything but the hook or a type,
+    `useStore` other than `useStore(` or `useStore.getState().name`, `getState()` not followed by a name, an inline arrow
+    selector returning or indexing its state; each rule sees its plant. It reads text — comments stripped, imports by
+    quoted relative path — and the re-check of the fix found thirteen ways past it and WRITES alike: a new store access
+    is still the review's) · COPIES (no
     copy, download or print of the schedule for a viewer, V5 A) · PIN (Scenario's Pin row and drift line the owner's
     only; the viewer's framing) · NO WORD (the family word the first viewer's examples used — in no file git would
     commit, `00-MASTER-SPEC-INDEX.md` included; the file builds it from its letters, so it passes its own sweep) ·
@@ -2398,11 +2405,17 @@ goes red.)
     and KEEP (the face inside the provider), FIRST's title. `viewerSync.test.ts` 11 → 14: ⭐ DEMOTE flipped on purpose —
     it pinned the bug (a safe snapshot cleared nothing, D13); now the wipe first, then the safe block (by
     `invocationCallOrder`); new ⭐ COLD ×2 (the trusted apply raw-sets the checked copy; an older snapshot's none → null)
-    and ⭐ OWNER (`applyViewerSnapshot` is a no-op off `viewerMode`). `viewerSnapshot.test.ts` 16 → 17: the trusted
+    and ⭐ OWNER (`applyViewerSnapshot` is a no-op off `viewerMode`); since the independent check its trusted fixtures
+    carry the plan (`PLAN`) — nothing they assert moved. `viewerSnapshot.test.ts` 16 → 17: the trusted
     shape gains `coldMovedByMonth`; new ⭐ COLD (the Ledger's own rule over the owner's journal; the safe payload never
-    carries it). `clearViewerData.test.ts` 2 → 3: its test tagged ⭐ WIPE — it now resets `viewerColdMovedByMonth` and
-    `venueColors` (V6 A), the layout prefs kept; new ⭐ CLOSED (on the real store: a trusted snapshot that throws
-    part-way wipes the device — never loaded without its safe block, which the tier reads as trusted).
+    carries it). `clearViewerData.test.ts` 2 → 4: its test tagged ⭐ WIPE — it now resets `viewerColdMovedByMonth` and
+    `venueColors` (V6 A), the layout prefs kept; new, on the real store, ⭐ SHAPE (the independent check: a payload that
+    isn't an object, or a trusted one without the plan or with what an older owner's may lack there but the wrong kind,
+    is refused and wipes before any of it applies — its nine shapes and a case for each rule; a revocation still returns
+    before the check; the owner's own payload, the real builder's through JSON, applies, and an older owner's without
+    what it may lack) and ⭐ CLOSED (a well-formed
+    one whose months' write throws part-way wipes too — never loaded without its safe block, which the tier reads as
+    trusted).
     `characterization.test.ts`: 110 persisted keys with `viewerColdMovedByMonth`, its seed null. `fireWiring.test.ts`:
     the tile owner-only; VIEWER pins FIRE's provider. `controlDockWiring.test.ts` ONCE: the dock's Line a what-if, no
     longer locked for a viewer (R1 → V4 B). `backPlace.test.ts`: ORDER (AppShell's branch strings) and GUARD (the
@@ -2413,7 +2426,8 @@ goes red.)
     figures, live prices aborted, the history stubbed, a fixed day): PARITY (a phone, the loan and a logged month:
     twelve faces — the owner's thirteen less FIRE — field for field and line for line but BL48's own lines; the
     Ledger's "→ Cold" the owner's) · PARITY LIST (a computer's list, no loan and no log: the same, face for face; FIRE's
-    entry the owner's alone) · WAY IN · SAFE (and a trusted-shaped snapshot that can't apply: wiped, never trusted) ·
+    entry the owner's alone) · WAY IN · SAFE (and trusted-shaped snapshots that can't apply — settings not an object, and the independent check's
+    `settings: null`, which threw nothing: wiped, never trusted) ·
     DEMOTE (a safe snapshot with a plan face open: home; the store and the saved store without the owner's months, loan,
     colours or cold moves) · FULL MODE (the owner's full mode with the Almanac's tab hidden: the viewer's pages his own,
     the Almanac open) · WHAT-IF (five plan faces' sliders, Decision's dock Line and Scenario's lever move the face; the
@@ -2423,6 +2437,9 @@ goes red.)
     whose CLOSED imports the tier); WRITES green on the base (it holds today; V4i shows it bites); the e2e red at all
     nine — at their setup on the base (`applyViewerSnapshot` is new), and with the base's apply exported alone each at
     its own step.
+  - The pre-merge independent check's fix (v1.3, spec §14) — red first on `c9ec715`'s app code with its new and changed
+    tests: SHAPE red (CLOSED, WAYS IN and the sync tests green — CLOSED pins the catch v1.2 had, WAYS IN holds today and
+    Y1–Y4 show it bites); e2e SAFE red at the `settings: null` case.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

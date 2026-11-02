@@ -710,7 +710,10 @@ src/
                                     # the viewer's dayLog stays []. BL48: the decrypted apply is applyViewerSnapshot —
                                     # exported (the e2e's seam), a no-op off viewerMode; its SAFE branch runs
                                     # clearViewerData first; the trusted one also raw-sets viewerColdMovedByMonth
-                                    # (coldMovesFromSnapshot). useViewerSync (hook) mounts it on foreground; gated on viewerMode
+                                    # (coldMovesFromSnapshot). It fails closed: a payload that isn't an object, or a
+                                    # trusted one without the plan (trustedSnapshotOk), is wiped and thrown before any of
+                                    # it applies; a part-way throw wipes too (viewer.md § BL48).
+                                    # useViewerSync (hook) mounts it on foreground; gated on viewerMode
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → initialSettingsPullDone → publish-if-dirty: records, plan, prefs, revocations); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run. Phase 4e RETIRED genesis (pickPlanFields + the synthesize block) and the settings push. 5b: a channel refused for its size (`refusedForSize`) doesn't raise Reconnect. 5c: nor does a publish HELD because this device hasn't loaded the plan (`heldWithoutPlan`) — the log says "held until the plan loads here, not a signer problem". 5e (F1): it marks the session's first pull for the loading screen — `firstPullStarts` first in the `try`, `firstPullLands` right after `fetchAndSync` returns (before any publish) and in the `finally` — and nothing else changed.
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery. DEFAULT_RELAYS = the SINGLE
                                     # source for the default relay list (store nostrRelays default + Network "Restore
@@ -1306,8 +1309,10 @@ a v17-migrant holder until the one-time wrap.
   `viewerColdMovedByMonth` → null and `venueColors` → undefined, the owner's cold moves and colours with them); pure local `set`, **no
   emit** (no plan event, no publish). Called from **VIEWER paths only** (audited): `resetViewer` (before `setViewerMode(false)`),
   `applyViewerEvent` decrypt-failure, `fetchViewerSnapshot` zero-events, a SAFE snapshot's apply (BL48 — first, so a
-  demotion leaves nothing), onboarding viewer-provision (before
-  `setViewerMode(true)`) — NEVER the owner's Remove or any owner edit (it would wipe the owner's real data; it has
+  demotion leaves nothing), a revocation (below), a trusted one that can't apply (BL48 — a payload that isn't an object
+  or a trusted one without the plan, before any of it applies; one that throws part-way, in its catch), onboarding
+  viewer-provision (before `setViewerMode(true)`) — NEVER the owner's Remove or any owner edit (it would wipe the
+  owner's real data; it has
   **no internal `viewerMode` guard** by design, because the onboarding call precedes `setViewerMode(true)`).
   (2) **`viewerDataLoaded`** (transient, non-persisted, in the partialize exclusion) is set true ONLY after a VALID
   `applyViewerEvent` hydrate; AppShell gates the viewer render on it — `viewerMode && !viewerDataLoaded` →
@@ -1317,7 +1322,7 @@ a v17-migrant holder until the one-time wrap.
 - **Real-time revocation (tombstone — Option A).** Settings → VIEWER ACCESS **Revoke** (was "Remove") calls
   `publishViewerRevocationNow()` (store, mirrors `publishViewerSnapshotNow`) BEFORE clearing the viewer fields —
   it seals an EMPTY payload + `revoked: true` (a `ViewerSnapshot` field) to the still-set `viewerPubkey`. The
-  viewer's `applyViewerEvent` detects `snap.revoked` right after JSON.parse → `clearViewerData()` + return (no
+  viewer's apply (`applyViewerSnapshot` since BL48) detects `snap.revoked` before any hydrate → `clearViewerData()` + return (no
   hydrate) → `viewerDataLoaded` false → `ViewerWaitingGate`. So the viewer EXITS the data in real-time (online via
   the live sub) or on reconnect (offline). `viewer:v1` is replaceable, so the tombstone supersedes the old
   snapshot (no NIP-09 needed). Fire-and-forget, log-only — never touches the owner's own sync.

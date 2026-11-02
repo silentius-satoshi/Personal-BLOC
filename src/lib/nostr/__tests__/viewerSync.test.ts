@@ -33,6 +33,10 @@ vi.mock('../../../store/useStore', () => ({
 import { fetchViewerSnapshot, setUnwrappedViewerKey, getViewerPubkeyHex, openViewerSync, closeViewerSync, applyViewerSnapshot } from '../viewerSync';
 import { viewerDTag } from '../publish';
 
+// BL48 (the independent check) — a trusted snapshot applies only with the plan itself: its four figures, its start date
+// and its loan flag (`trustedSnapshotOk`). Every trusted fixture here carries this one; the tests' own fields go over it.
+const PLAN = { income: 4000, expenses: 3500, creditLine: 10000, blocApr: 13, advisorStartDate: '2026-01-01', hasCbLoan: false };
+
 function resetStore(overrides: Partial<Record<string, any>> = {}) {
   Object.keys(mockState).forEach((k) => delete mockState[k]);
   Object.assign(mockState, {
@@ -72,7 +76,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
 
   it('BUG3: raw-sets cb+strike collateral scalars from the snapshot AND leaves dayLog empty (no spurious readings)', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
-      settings: {}, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 3.33, strikeCollateralBtc: 4.44, coldStorageBtc: 5.55,
+      settings: PLAN, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 3.33, strikeCollateralBtc: 4.44, coldStorageBtc: 5.55,
     }));
 
     await fetchViewerSnapshot();
@@ -88,7 +92,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
 
   it('a pre-P3/pre-C-P4 snapshot without the scalars leaves the existing values (fallback)', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
-      settings: {}, records: { entries: [], deletions: {} }, strike: null,   // no cbCollateralBtc / strikeCollateralBtc
+      settings: PLAN, records: { entries: [], deletions: {} }, strike: null,   // no cbCollateralBtc / strikeCollateralBtc
     }));
 
     await fetchViewerSnapshot();
@@ -101,7 +105,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
 
   it('⭐ HOLD — Run 2 (D9): a trusted snapshot raw-sets the owner\'s latest Strike deposit date (the hold\'s one fact)', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
-      settings: {}, records: { entries: [], deletions: {} }, strike: null, strikeLastDepositISO: '2026-09-01',
+      settings: PLAN, records: { entries: [], deletions: {} }, strike: null, strikeLastDepositISO: '2026-09-01',
     }));
 
     await fetchViewerSnapshot();
@@ -112,7 +116,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
 
   it('⭐ HOLD — a pre-Run-2 owner snapshot carries no date: the viewer reads no hold (null), never a stale one', async () => {
     resetStore({ viewerStrikeDepositISO: '2020-01-01' });
-    decryptImpl.fn.mockResolvedValue(JSON.stringify({ settings: {}, records: { entries: [], deletions: {} }, strike: null }));
+    decryptImpl.fn.mockResolvedValue(JSON.stringify({ settings: PLAN, records: { entries: [], deletions: {} }, strike: null }));
 
     await fetchViewerSnapshot();
 
@@ -161,7 +165,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
 
   it('⭐ COLD — BL48 (V2 A): a trusted snapshot raw-sets the owner\'s month-by-month cold moves, checked on the way in', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
-      settings: {}, records: { entries: [], deletions: {} }, strike: null,
+      settings: PLAN, records: { entries: [], deletions: {} }, strike: null,
       coldMovedByMonth: { 1: 0.1, 2: -0.05, x: 3, 0: 1, 3: 'junk', 4: null },
     }));
 
@@ -173,7 +177,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
 
   it('⭐ COLD — an older owner\'s snapshot carries none: null (no column), never a stale copy', async () => {
     resetStore({ viewerColdMovedByMonth: { 1: 9 } });
-    decryptImpl.fn.mockResolvedValue(JSON.stringify({ settings: {}, records: { entries: [], deletions: {} }, strike: null }));
+    decryptImpl.fn.mockResolvedValue(JSON.stringify({ settings: PLAN, records: { entries: [], deletions: {} }, strike: null }));
 
     await fetchViewerSnapshot();
 
@@ -195,7 +199,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     // Mutation: restore that recompute in applyViewerEvent → month 1 reads 5.2 → red.
     const base = { date: '2026-01-01', income: 0, paydown: 0, strikeBal: 0, strikeLtv: 0, loggedAt: 1, expensesActual: 0 };
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
-      settings: { advisorActualBtcHeld: 5 },
+      settings: { ...PLAN, advisorActualBtcHeld: 5 },
       records: { entries: [{ ...base, month: 1, btcBought: 0.2, btcHeld: 0.3 }, { ...base, month: 2, btcBought: 0.1 }], deletions: {} },
       strike: null,
     }));
@@ -210,7 +214,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
   it('C-trusted snapshot hydrates the full store and clears the safe snapshot', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
       snapshotVersion: 2, privacyMode: 'trusted',
-      settings: { income: 5000 }, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 1.1,
+      settings: { ...PLAN, income: 5000 }, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 1.1,
     }));
 
     await fetchViewerSnapshot();
@@ -231,7 +235,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     decryptImpl.fn.mockImplementation((_pk: string, content: string) => content === 'old'
       ? oldDecrypt
       : Promise.resolve(JSON.stringify({
-        snapshotVersion: 2, privacyMode: 'trusted', settings: { income: 5000 },
+        snapshotVersion: 2, privacyMode: 'trusted', settings: { ...PLAN, income: 5000 },
         records: { entries: [], deletions: {} }, strike: null,
       })));
 
@@ -240,7 +244,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     onEvent!({ content: 'new', created_at: 2 });
     await new Promise((resolve) => setTimeout(resolve, 0));
     resolveOld(JSON.stringify({
-      snapshotVersion: 2, privacyMode: 'trusted', settings: { income: 4000 },
+      snapshotVersion: 2, privacyMode: 'trusted', settings: { ...PLAN, income: 4000 },
       records: { entries: [], deletions: {} }, strike: null,
     }));
     await new Promise((resolve) => setTimeout(resolve, 0));

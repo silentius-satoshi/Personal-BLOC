@@ -2811,8 +2811,14 @@ BL48). Heavy: spec `pbloc-spec-trusted-viewers-v1`. The routing, the tier and th
   READ-ONLY rule), or Mining's, which is the viewer's own tool (V3 A — its list is device-local and never syncs). The
   guard is a list: the hub's faces — its import closure, the store excepted — may call only the store functions
   `viewerAlmanacWiring.test.ts`'s WRITES names: two reads, the viewer's own tools (Mining, the Sats converter, the
-  live-height switch) and three writes no viewer reaches (Scenario's pin, FIRE's two); a face that gains another fails
-  it until that write is decided — locked for a viewer, or listed. FIRE's
+  live-height switch) and three writes no viewer reaches (Scenario's pin, FIRE's two); a face that names another fails
+  it until that write is decided — locked for a viewer, or listed. WAYS IN fails on the ways in it can read that would
+  hide a write from WRITES — a store module imported for anything but the hook or a type, `useStore` other than
+  `useStore(` or `useStore.getState().name`, `getState()` not followed by a name, an inline arrow selector returning or
+  indexing its state; the pre-merge independent check's three plants each slipped past WRITES, and each fails WAYS IN.
+  Both read the source as text, comments stripped, through imports written as quoted relative paths — the re-check of
+  the fix found thirteen ways past both (a selector in another shape, a name in a string, a store module reached another
+  way, code the comment stripper swallows), so a new face's store access is still the review's to read. FIRE's
   face puts the lock back (`ViewerWhatIf` false around it — its inputs save). The dock's Line, which R1 locked for a
   viewer with the card's SliderInput, is live with it. Over a plan face but the Ledger a viewer reads `VIEWER_WHAT_IF_NOTE`
   ("What-if only: what you change here isn't saved, and the plan doesn't change." — `almanacGrid.ts`,
@@ -2825,7 +2831,7 @@ BL48). Heavy: spec `pbloc-spec-trusted-viewers-v1`. The routing, the tier and th
   Download .csv — when a viewer's access ends the app wipes the owner's figures from his device, but not a file.
 - **A demotion (V6 A).** A safe snapshot wipes first (`viewer.md` § BL48) and a viewer on the Almanac goes home.
 - Tests: `almanacGrid.test.ts` (OWNER ONLY, NOTE, WHAT-IF; GATES, PILLS and FIRST over sixteen combinations, a viewer's
-  among them), `viewerWhatIf.test.tsx`, `viewerAlmanacWiring.test.ts` (WRITES among them), `ledgerColdViewer.test.ts`, `fireWiring.test.ts`
+  among them), `viewerWhatIf.test.tsx`, `viewerAlmanacWiring.test.ts` (WRITES and WAYS IN among them), `ledgerColdViewer.test.ts`, `fireWiring.test.ts`
   (DEPLOY GATE, VIEWER), `controlDockWiring.test.ts` (ONCE's VIEWER) and `e2e/viewerAlmanac.spec.ts`. § Test Suite →
   "Trusted viewers in the Almanac".
 

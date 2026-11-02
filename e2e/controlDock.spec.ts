@@ -388,12 +388,17 @@ test.describe('Sticky controls — the parents on a computer (Run 2)', () => {
       // NO-WRAP (R2, R4) — each live slider's head on one line, so the bar keeps its height.
       for (const w of [1440, 1024]) {
         await page.setViewportSize({ width: w, height: 900 });
+        // The hub's list (from 1200px) comes and goes a render after the resize, not with it: each width's layout first.
+        // A read 3 ms after the resize once caught the list at 1024, where the bar is narrower (BL48 v1.3's gate).
+        await expect(page.getByRole('navigation', { name: 'Faces' }), `NO-WRAP ${f.name} the layout at ${w}`)
+          .toHaveCount(w >= 1200 ? 1 : 0);
         for (const label of ['Inspect month', 'Price stress']) {
           const head = dock.getByText(label, { exact: true }).locator('..');
           expect((await head.boundingBox())!.height, `NO-WRAP ${f.name} ${label} at ${w}`).toBeLessThan(24);
         }
       }
       await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(page.getByRole('navigation', { name: 'Faces' }), `UP ${f.name} the layout at 1440`).toHaveCount(1);
       // UP, 4YR-UP — Path's panel opens above the bar, and the 4-yr timing comes with it.
       await dock.getByRole('button', { name: /^Path/ }).click();
       expect(await bottomOf(dock.getByRole('button', { name: f.fair, exact: true })), `UP ${f.name}`)

@@ -227,6 +227,15 @@ test.describe('trusted viewers in the Almanac — BL48', () => {
     await apply(page, bad).catch(() => undefined);
     const now = await state(page);
     expect([now.loaded, now.safe], 'SAFE a snapshot that fails: wiped, never trusted').toEqual([false, false]);
+    // The independent check's probe: settings null threw nothing, and the Almanac opened on the seed's figures. A snapshot
+    // that isn't well-formed is refused before any of it applies — wiped too.
+    await apply(page, owner.safe);
+    const again = await state(page);
+    expect([again.loaded, again.safe], 'SAFE premise: a safe viewer again').toEqual([true, true]);
+    await apply(page, JSON.stringify({ ...JSON.parse(owner.trusted), settings: null })).catch(() => undefined);
+    const after = await state(page);
+    expect([after.loaded, after.safe], 'SAFE a snapshot that isn\'t well-formed, though nothing throws: wiped, never trusted')
+      .toEqual([false, false]);
   });
 
   test('DEMOTE — a safe snapshot with the Almanac open: home, and nothing of the owner\'s left — figures, cold moves, colours', async ({ page, browser }) => {

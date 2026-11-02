@@ -149,11 +149,12 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   edits them: its Settings is `ViewerSettings` — YOU, DEVICE, CONNECTION, ABOUT — with no Customization page, no Monthly
   Mode, no colours, no tabs.) SharingPage's tier `<Toggle>` calls `updateViewerSlot(index,{tier})` +
   `publishViewerSnapshotNow()` so a mode flip reaches the viewer at once.
-- **Viewer hydrate (`viewerSync.ts` `applyViewerEvent`, after the `revoked` check):** `privacyMode==='safe'`
+- **Viewer hydrate (`viewerSync.ts` — `applyViewerSnapshot` since BL48, after the `revoked` check):** `privacyMode==='safe'`
   → `setViewerSafeSnapshot({safety, thresholds, btcPriceAtSnapshot, hasCbLoan})` + `viewerDataLoaded` +
   `viewerLastSyncAt`, **NO applyViewerSettings/records/strike** (4e; was hydrateSettings) — and since BL48 `clearViewerData()`
   FIRST, so a viewer demoted from trusted keeps nothing of the owner's (§ BL48); trusted/absent → clear the safe snapshot, then
-  the existing full hydrate. **`viewerSafeSnapshot: SafeSnapshot | null`** is a new transient store field
+  the existing full hydrate — since the independent check only with the plan in it, else wiped (§ BL48, the apply fails
+  closed). **`viewerSafeSnapshot: SafeSnapshot | null`** is a new transient store field
   (partialize-excluded, cleared in `clearViewerData`).
 - **Render (`ViewerHomeView.tsx`):** one `useViewerSafety(injectedSafeSnap?)` seam unifies both modes into a
   render shape — safe → `scaleSafetyView(viewerSafeSnapshot, liveBtcPrice)` (live via AppShell's
@@ -366,20 +367,37 @@ viewer taps reaches the plan. What the faces do for a viewer: `almanac.md` § Tr
   synced hidden tabs (a stored or restored layout can hide the Almanac's) never bounce a trusted viewer's Almanac to his
   home (`backPlace.test.ts` GUARD, and `planEdgesWiring.test.ts` GATE — the guard re-runs on `viewerMode` too; e2e
   FULL MODE, with the Almanac's tab hidden).
-- **A viewer the Almanac doesn't open for** — safe, demoted while it was open, or waiting for his first snapshot — gets
-  his home on the Almanac tab (Branch G: `!(activeTab === 'almanac' && almanacOpen)`), and an effect puts `activeTab`
-  and `previousTab` back to 'living', so Settings never offers "← Almanac".
+- **A viewer the Almanac doesn't open for** — safe, demoted while it was open, or waiting for his first snapshot — is
+  taken off it: an effect puts `activeTab` and `previousTab` back to 'living', so Settings never offers "← Almanac". A
+  loaded one gets his home on the Almanac tab (Branch G: `!(activeTab === 'almanac' && almanacOpen)`); one still waiting
+  has the waiting gate first (in production; the dev server skips the gates).
 - **A demotion (V6 A — the downgrade item).** `applyViewerSnapshot`'s safe branch runs `clearViewerData()` before it sets
   the safe block (the wipe clears that block too — the order is load-bearing). `clearViewerData` now also drops
   `venueColors` (the owner's colours — a safe snapshot never carries them; BL44 left what a viewer keeps of them to
   BL48) and `viewerColdMovedByMonth`; it keeps the layout prefs, which a viewer's pages no longer follow. Measured: a
   safe snapshot with the Almanac open sends the viewer home, and the store and what a reload reads hold the seed's
   figures, the default colours and no cold moves (e2e DEMOTE).
-- **The apply fails closed.** The trusted branch's writes sit in a `try`: one that throws part-way — a malformed
-  snapshot, `applyViewerSettings` on settings that aren't an object — runs `clearViewerData()` and rethrows (the event's
-  catch skips the event). Without it the device stayed loaded with its safe block cleared, which the tier reads as
-  trusted: the Almanac opened for a safe viewer, on the seed's figures (the independent review's probe). Pinned by
-  `clearViewerData.test.ts` (CLOSED, on the real store) and e2e SAFE.
+- **The apply fails closed.** A trusted snapshot that can't apply leaves the device wiped — never loaded with its safe
+  block cleared, which the tier reads as trusted: the Almanac opened for a safe viewer, on the seed's figures (the
+  independent review's probe). Twice. Before any of it applies, a payload that isn't an object is refused, whatever its
+  mode, and a trusted one must carry the plan (`trustedSnapshotOk`): `settings` an object with the four figures (income,
+  expenses, the line, its rate) finite numbers, the start date a string and `hasCbLoan` a boolean; `records` an object
+  with `entries` a list; `privacyMode` 'trusted' or none. What an older owner's snapshot may lack — the deletions, the
+  Strike block, the collateral and cold figures, the deposit date — still falls back as before, but must be the right
+  kind when it's there. A refused one runs `clearViewerData()` and throws: the pre-merge independent check found eight
+  shapes (`settings: null` among them, and a bare `42`) that threw nothing and got through. And the trusted branch's
+  writes still sit in a `try`: whatever throws part-way wipes and rethrows. Either way the event's catch skips the
+  event — without moving the event clock, as after a failed decrypt, so an older snapshot can still apply after a
+  refused one. A revocation is checked first: it wipes and returns, never refused. **What the check doesn't promise**
+  (the re-check of the fix): a snapshot that carries the plan but lacks a figure beyond it — another setting, the Strike
+  block, a collateral figure — lands trusted with that figure at what the device holds, the seed's after a promotion
+  (every owner build since the per-viewer addresses sends the Strike block and both collateral figures; one older than a
+  later field lacks it, as before — the policy's six settings, the goal, the colours and the cold anchor, the cold
+  total, the deposit date); `snapshotVersion` isn't checked (a newer owner's additions are ignored, as before), nor the
+  other settings' kinds (they apply as sent), nor the months themselves — not even that each is an object (a month that
+  isn't would crash the Ledger). And an owner figure that isn't a finite number (a restored backup's `"5200"`, a NaN)
+  refuses every trusted snapshot he sends: his viewers wait, under a hint about their key that doesn't fit. Each is the
+  queue's. Pinned by `clearViewerData.test.ts` (SHAPE and CLOSED, on the real store) and e2e SAFE.
 - **The apply, exported.** `applyViewerEvent` decrypts, orders, then calls `applyViewerSnapshot(snap)` — the one apply,
   exported so the e2e can hand a viewer page the REAL payload an owner page builds (the dev server skips the viewer
   gates). A no-op off `viewerMode`: an owner device never takes a viewer snapshot over its own plan.
@@ -394,9 +412,10 @@ viewer taps reaches the plan. What the faces do for a viewer: `almanac.md` § Tr
   device's own quote, as on the viewer home since V2.
 - Tests: `src/components/Layout/__tests__/viewerAccess.test.ts` (TIER, OPENS, ONE READ, HOME, PAGES, PUT BACK, BAR),
   `src/components/ui/__tests__/viewerWhatIf.test.tsx` (LOCK, WHAT-IF, ONLY THERE, ONE READ),
-  `src/components/Almanac/__tests__/viewerAlmanacWiring.test.ts` (WRITES, COPIES, PIN, NO WORD, PREVIEW),
+  `src/components/Almanac/__tests__/viewerAlmanacWiring.test.ts` (WRITES, WAYS IN, COPIES, PIN, NO WORD, PREVIEW),
   `src/lib/__tests__/ledgerColdViewer.test.ts` (ONE RULE, ROUND TRIP, CHECKED, FACE), `viewerSync.test.ts` (DEMOTE — the
-  safe test flipped on purpose: it pinned the bug — COLD ×2, OWNER), `viewerSnapshot.test.ts` (COLD; the trusted
-  top-level key set), `clearViewerData.test.ts` (WIPE, CLOSED), `backPlace.test.ts` (GUARD), `characterization.test.ts` (110 persisted keys) and
+  safe test flipped on purpose: it pinned the bug — COLD ×2, OWNER; its trusted fixtures carry the plan since the shape
+  check), `viewerSnapshot.test.ts` (COLD; the trusted top-level key set), `clearViewerData.test.ts` (WIPE, CLOSED,
+  SHAPE), `backPlace.test.ts` (GUARD), `characterization.test.ts` (110 persisted keys) and
   `e2e/viewerAlmanac.spec.ts` — the first viewer e2e (PARITY, PARITY LIST, WAY IN, SAFE, DEMOTE, FULL MODE, WHAT-IF,
   MINING, PREVIEW).

@@ -6,8 +6,8 @@ import { useStore } from '../../../store/useStore';
 
 /**
  * ⚠ BL48 — trusted viewers in the Almanac (spec `pbloc-spec-trusted-viewers-v1`): what a viewer's faces leave out —
- * the copies off the app (V5 A) and Scenario's Pin, which saves (V4 B) — and everything the hub's faces can write, read
- * off the source, as the repo's wiring tests do; e2e/viewerAlmanac.spec.ts pins them on screen. With it, the owner's
+ * the copies off the app (V5 A) and Scenario's Pin, which saves (V4 B) — and everything the hub's faces can write and how
+ * they reach the store, read off the source, as the repo's wiring tests do; e2e/viewerAlmanac.spec.ts pins them on screen. With it, the owner's
  * ask: the family word his first viewer's examples used is gone everywhere — the app names a viewer "viewer" (the word is
  * spelt out below only by its letters, so this file passes its own sweep). Each assertion carries the tag its planted
  * bug turns red.
@@ -34,10 +34,13 @@ describe('⭐ what a viewer\'s faces leave out', () => {
   });
 });
 
+/** An import or re-export from a relative path, or a dynamic import — the walk's one pattern. */
+const IMPORT = /(?:import|export)\s[^;]*?from\s+['"](\.[^'"]+)['"]|import\(\s*['"](\.[^'"]+)['"]\s*\)/g;
+
 /** The hub's import closure: AlmanacView.tsx and every module it imports, the store excepted — reached through `useStore`
- *  alone — with their comments removed. */
-function hubClosure(): { path: string; code: string }[] {
-  const seen = new Map<string, string>();
+ *  alone (WAYS IN) — with their comments removed, and each module's imports from the store. */
+function hubClosure(): { path: string; code: string; storeImports: string[] }[] {
+  const seen = new Map<string, { code: string; storeImports: string[] }>();
   const stack = ['src/components/Almanac/AlmanacView.tsx'];
   const resolve = (from: string, spec: string): string | null => {
     const base = normalize(join(dirname(from), spec)).split('\\').join('/');
@@ -50,13 +53,16 @@ function hubClosure(): { path: string; code: string }[] {
     const f = stack.pop()!;
     if (seen.has(f)) continue;
     const code = read(f);
-    seen.set(f, strip(code));
-    for (const m of code.matchAll(/(?:import|export)\s[^;]*?from\s+['"](\.[^'"]+)['"]|import\(\s*['"](\.[^'"]+)['"]\s*\)/g)) {
+    const bare = strip(code);
+    const storeImports = [...bare.matchAll(IMPORT)].filter((m) => resolve(f, m[1] ?? m[2])?.startsWith('src/store/'))
+      .map((m) => m[0].replace(/\s+/g, ' '));
+    seen.set(f, { code: bare, storeImports });
+    for (const m of code.matchAll(IMPORT)) {
       const r = resolve(f, m[1] ?? m[2]);
       if (r && !r.includes('/__tests__/') && !r.startsWith('src/store/')) stack.push(r);
     }
   }
-  return [...seen].map(([path, code]) => ({ path, code }));
+  return [...seen].map(([path, v]) => ({ path, ...v }));
 }
 
 /** What the hub's faces may call on the store (V4 B — a viewer's what-ifs save nothing): two reads; the viewer's own
@@ -85,6 +91,40 @@ describe('⭐ what the hub\'s faces can write (V4 B)', () => {
     const called = fns.filter((n) => closure.some(({ code }) => new RegExp(`\\b${n}\\b`).test(code))).sort();
     expect(called, 'WRITES').toEqual(HUB_STORE_CALLS);
     expect(closure.filter(({ code }) => /\buseStore\.setState\b/.test(code)).map((c) => c.path), 'WRITES no raw write').toEqual([]);
+  });
+});
+
+/** The ways into the store a face may take — each keeps the store function it reaches named in the text, where WRITES
+ *  reads it: the hook's module for the hook alone (a store module for types); `useStore` called (a selector) or
+ *  `useStore.getState().name`; a selector that picks by name. The independent check's plants — a store module's own writer
+ *  imported, `setState` pulled off the hook, a function picked by a computed name — each left WRITES green; each rule must
+ *  see its sample. The rules read text: a write behind a name they can't see (a value carried through a function) is still
+ *  the review's to find. */
+const HOOK_IMPORT = /^import \{ useStore \} from ['"](\.\.\/)+store\/useStore['"]$/;
+const storeImportOk = (stmt: string): boolean => /^import type\s/.test(stmt) || HOOK_IMPORT.test(stmt);
+const WAYS: { rule: string; bad: RegExp; sample: string }[] = [
+  { rule: 'the hook alone', bad: /\buseStore\b(?!\s*\(|\.getState\(\)\.[A-Za-z_$])/,
+    sample: 'const { setState: put } = useStore; put({ income: 1 });' },
+  { rule: 'each by its name', bad: /\bgetState\(\)(?!\.[A-Za-z_$])/, sample: "useStore.getState()['set' + 'Income'](1);" },
+  { rule: 'no state handed back',
+    bad: /\buseStore\(\s*\)|\buseStore\(\s*(?:useShallow\(\s*)?\(?\s*([A-Za-z_$][\w$]*)\s*(?::[^)]*)?\)?\s*=>\s*\1\s*(?:\[|\))/,
+    sample: "const pick = useStore((s) => s['set' + 'Income']);" },
+];
+const IMPORT_STATEMENT = /(?:import|export)\s[^;]*?from\s+['"][^'"]+['"];?/g;
+
+describe('⭐ how the hub\'s faces reach the store (the independent check)', () => {
+  it('⭐ WAYS IN — through the hook alone, each store function by its name, where WRITES reads it: no store module but the hook\'s (types aside), `useStore` only called or `useStore.getState().name`, no selector handing back the state or picking by a computed key', () => {
+    const closure = hubClosure();
+    const imports = closure.flatMap(({ path, storeImports }) => storeImports.map((stmt) => ({ path, stmt })));
+    const bodies = closure.map(({ path, code }) => ({ path, body: code.replace(IMPORT_STATEMENT, '') }));
+    const all = bodies.map((b) => b.body).join('\n');
+    expect([imports.filter(({ stmt }) => HOOK_IMPORT.test(stmt)).length > 10, (all.match(/\buseStore\(/g) ?? []).length > 50,
+      /\buseStore\.getState\(\)\.[A-Za-z_$]/.test(all)], 'WAYS IN premise: the hook imported, called and read by name').toEqual([true, true, true]);
+    expect([storeImportOk("import { rerollMonth } from '../../store/dailyRouting'"), storeImportOk("import { useStore } from '../../store/useStore'"),
+      ...WAYS.map((w) => w.bad.test(w.sample))], 'WAYS IN premise: each rule sees its plant').toEqual([false, true, true, true, true]);
+    expect(imports.filter(({ stmt }) => !storeImportOk(stmt)).map(({ path, stmt }) => `${path}: ${stmt}`), 'WAYS IN no store module but the hook\'s')
+      .toEqual([]);
+    for (const w of WAYS) expect(bodies.filter(({ body }) => w.bad.test(body)).map((b) => b.path), `WAYS IN ${w.rule}`).toEqual([]);
   });
 });
 
