@@ -707,7 +707,10 @@ src/
                                     # Run 2, D9 — viewerStrikeDepositISO = snap.strikeLastDepositISO ?? null, so a
                                     # pre-Run-2 snapshot reads no hold) from snap via ONE useStore.setState — NEVER
                                     # setCbCollateralBtc/emitBalanceReading (they'd inject a reading into the viewer's OWN dayLog);
-                                    # the viewer's dayLog stays []. useViewerSync (hook) mounts it on foreground; gated on viewerMode
+                                    # the viewer's dayLog stays []. BL48: the decrypted apply is applyViewerSnapshot —
+                                    # exported (the e2e's seam), a no-op off viewerMode; its SAFE branch runs
+                                    # clearViewerData first; the trusted one also raw-sets viewerColdMovedByMonth
+                                    # (coldMovesFromSnapshot). useViewerSync (hook) mounts it on foreground; gated on viewerMode
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → initialSettingsPullDone → publish-if-dirty: records, plan, prefs, revocations); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run. Phase 4e RETIRED genesis (pickPlanFields + the synthesize block) and the settings push. 5b: a channel refused for its size (`refusedForSize`) doesn't raise Reconnect. 5c: nor does a publish HELD because this device hasn't loaded the plan (`heldWithoutPlan`) — the log says "held until the plan loads here, not a signer problem". 5e (F1): it marks the session's first pull for the loading screen — `firstPullStarts` first in the `try`, `firstPullLands` right after `fetchAndSync` returns (before any publish) and in the `finally` — and nothing else changed.
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery. DEFAULT_RELAYS = the SINGLE
                                     # source for the default relay list (store nostrRelays default + Network "Restore
@@ -1145,7 +1148,8 @@ EMPTY; the owner re-adds viewers fresh.
   empty-roster event (§6) that a peer folds to empty (ROSTER peer).
 - **Component slot-0 adapters (⚠ SUPERSEDED by M3 for SharingPage — the roster UI shipped):** `SharingPage`'s
   slot-0 grant card + `GenerateViewerKeyBlock` are gone (→ `ViewerRoster`, see the M3 section); `DevPanel`
-  (`viewers[0]?.pubkeyHex`) + `ViewerPreview` (tier/label from `viewers[0]`) stay slot-0 reads. `clearViewerData`
+  (`viewers[0]?.pubkeyHex`) + `ViewerPreview` (its tier from `viewers[0]`; its label too until BL48, when the banner
+  stopped naming a viewer) stay slot-0 reads. `clearViewerData`
   resets `viewers: []`/`nextViewerIndex: 0`.
 - **Migration v21** (`migrateState`): strip the 5 old keys from the `...rest` destructure; seed `viewers: []` +
   `nextViewerIndex: 0` unconditionally; `version: 20 → 21`. Tests: `viewerRoster.test.ts` (migration drop/empty,
@@ -1252,7 +1256,7 @@ a v17-migrant holder until the one-time wrap.
   has the synced `viewerPubkey`). Set/removed in Settings → NOSTR IDENTITY → VIEWER ACCESS (npub `nip19.decode`
   validated; optional nickname input above the npub; **Revoke** publishes a real-time tombstone then clears all
   three — see Revocation below). The
-  VIEWER ACCESS row shows `viewerLabel` primary with the npub as ghost subtext — "Dad's iPhone (npub1abc…)" — or
+  VIEWER ACCESS row shows `viewerLabel` primary with the npub as ghost subtext — "Viewer's iPhone (npub1abc…)" — or
   the npub alone when no nickname. (`viewerLabel` is the OWNER's private label — NOT the viewer's passkey name,
   which is authenticator-held and never transmitted.) The setters call `syncSettingsToNostr()`. **Saving a viewer
   npub fires `publishViewerSnapshotNow()` immediately**
@@ -1298,9 +1302,11 @@ a v17-migrant holder until the one-time wrap.
   revoked viewer correctly got "invalid MAC" — encryption held — but the OLD numbers still showed). Two parts:
   (1) **`clearViewerData()`** (store action) resets every viewer-hydrated field to its seed (financial
   `SETTINGS_FIELDS` + `monthlyLog` + `deletedMonths` + `strike*` + owner-config nulls, and — the plan of record's Run 2 —
-  `viewerStrikeDepositISO` → null, so the owner's Strike deposit date leaves with the rest); pure local `set`, **no
+  `viewerStrikeDepositISO` → null, so the owner's Strike deposit date leaves with the rest — and, since BL48,
+  `viewerColdMovedByMonth` → null and `venueColors` → undefined, the owner's cold moves and colours with them); pure local `set`, **no
   emit** (no plan event, no publish). Called from **VIEWER paths only** (audited): `resetViewer` (before `setViewerMode(false)`),
-  `applyViewerEvent` decrypt-failure, `fetchViewerSnapshot` zero-events, onboarding viewer-provision (before
+  `applyViewerEvent` decrypt-failure, `fetchViewerSnapshot` zero-events, a SAFE snapshot's apply (BL48 — first, so a
+  demotion leaves nothing), onboarding viewer-provision (before
   `setViewerMode(true)`) — NEVER the owner's Remove or any owner edit (it would wipe the owner's real data; it has
   **no internal `viewerMode` guard** by design, because the onboarding call precedes `setViewerMode(true)`).
   (2) **`viewerDataLoaded`** (transient, non-persisted, in the partialize exclusion) is set true ONLY after a VALID

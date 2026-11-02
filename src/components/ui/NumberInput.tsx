@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore } from '../../store/useStore';
+import { useViewerLocked } from './viewerWhatIf';
 import { awaySaves, fmtNumberField, keystrokeWrite, leaveCommits, numberCommit, SAVE_DATED, type NumberSave } from './numberInputModel';
 import styles from './NumberInput.module.css';
 
@@ -26,8 +26,9 @@ interface Props {
 }
 
 export function NumberInput({ value, onChange, save, min, max, step = 1, prefix, suffix, decimals, label, subtext, readOnly, valueColor, ariaLabel }: Props) {
-  const viewerMode = useStore((s) => s.viewerMode);   // read-only viewer → every NumberInput is non-editable
-  const ro = readOnly || viewerMode;
+  // A viewer's NumberInput is read-only — except in the Almanac's what-ifs (BL48, viewerWhatIf.ts).
+  const viewerLocked = useViewerLocked();
+  const ro = readOnly || viewerLocked;
   const focused = useRef(false);
   // F-2d-1 — the text the app's going away last saved, until the owner types again: its two signals, should they come
   // together, save once.

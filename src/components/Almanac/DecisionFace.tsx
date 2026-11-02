@@ -324,7 +324,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     strikeDepositISO: strikeDepositOf(st),   // Strike's 60-day hold's one fact — the journal's, or a viewer's copy (D9)
     strikeMinFromIncome: st.blocMinPaymentSource === 'income',   // D-R2-7 — the owner's minimum, as every run reads it
     goalNetBtc: planGoalOf(st.planGoalNetBtc),   // BL14 — the owner's saved goal, as THIS MONTH reads it (one plan)
-    viewerMode: st.viewerMode,   // the dock's Line is locked for a viewer, as the card's SliderInput is (R1)
+    viewerMode: st.viewerMode,   // BL48 (V5 A) — no copy, download or print of the schedule for a viewer
   })));
 
   const [overlay, setOverlay] = useState<Overlay>({});
@@ -688,12 +688,13 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
           <span className={styles.cardLabel}>Credit line (what-if)</span>
           <span className={styles.scrubValue}>{fmtUSD(runLine)}</span>
         </div>
-        {/* Locked for a viewer, as the card's SliderInput is (R1). Month and Stress only inspect, so they stay live. */}
+        {/* A what-if, as the card's SliderInput is: live for a viewer too inside the Almanac (BL48, V4 B — R1 locked it for
+            one, with the card's). Nothing it moves is saved. */}
         <input
           type="range" className={styles.scrub}
           min={STRIKE_LINE_MIN_USD} max={STRIKE_LINE_MAX_USD} step={LINE_STEP_USD} value={runLine}
           onChange={(e) => set('creditLine', Number(e.target.value))}
-          aria-label="Credit line (what-if)" disabled={s.viewerMode}
+          aria-label="Credit line (what-if)"
         />
       </>
     ),
@@ -841,13 +842,17 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
             </tbody>
           </table>
         </div>
-        <div className={styles.presetRow}>
-          <button type="button" className={styles.ghostBtn} onClick={() => { void copySchedule(); }}>
-            {copyState === 'ok' ? 'Copied ✓' : copyState === 'err' ? 'Copy failed' : 'Copy'}
-          </button>
-          <button type="button" className={styles.ghostBtn} onClick={downloadSchedule}>Download .txt</button>
-          <button type="button" className={styles.ghostBtn} onClick={printSchedule}>Print</button>
-        </div>
+        {/* BL48 (V5 A) — no copy, download or print for a viewer: when his access ends the app wipes the owner's figures
+            from his device, but not a file he saved or printed. */}
+        {!s.viewerMode && (
+          <div className={styles.presetRow}>
+            <button type="button" className={styles.ghostBtn} onClick={() => { void copySchedule(); }}>
+              {copyState === 'ok' ? 'Copied ✓' : copyState === 'err' ? 'Copy failed' : 'Copy'}
+            </button>
+            <button type="button" className={styles.ghostBtn} onClick={downloadSchedule}>Download .txt</button>
+            <button type="button" className={styles.ghostBtn} onClick={printSchedule}>Print</button>
+          </div>
+        )}
       </section>
 
       {/* 5 · THE OUTCOME strip — the displayed run's horizon. */}

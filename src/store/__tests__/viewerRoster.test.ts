@@ -8,7 +8,7 @@ describe('migrateState v21 — roster replaces the single-viewer scalars', () =>
   it('a v20 blob WITH the old scalars → they are dropped, roster empty', () => {
     const out: any = migrateState({
       monthlyLog: [],
-      viewerNpub: 'npub1old', viewerPubkey: 'a'.repeat(64), viewerLabel: 'Dad',
+      viewerNpub: 'npub1old', viewerPubkey: 'a'.repeat(64), viewerLabel: 'Viewer',
       viewerPrivacyTrusted: true, viewerKeyVersion: 3,
     });
     expect(out.viewers).toEqual([]);

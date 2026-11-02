@@ -13,7 +13,8 @@ export function BrandingDropdown() {
   const setActiveTab   = useStore((s) => s.setActiveTab);
   const setPreviousTab = useStore((s) => s.setPreviousTab);
   // R2c-2 ladder rung 1 (full-mode) — the ⚙ Settings entry lives in a collapsed portal, so the backup-alert
-  // dot rides the always-visible branding trigger. Full mode is owner-only; a viewer's keyProvenance is null →
+  // dot rides the always-visible branding trigger. Full mode is owner-only (BL48 — a viewer's Settings and Almanac are
+  // always simple mode's pages, AppShell's Branches H and I); a viewer's keyProvenance is null →
   // gate satisfied → no dot. Clears reactively when the ceremony flips backupVerifiedAt.
   const keyProvenance    = useStore((s) => s.keyProvenance);
   const backupVerifiedAt = useStore((s) => s.backupVerifiedAt);

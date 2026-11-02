@@ -19,7 +19,6 @@ const noop = () => {};
  */
 export function ViewerPreview() {
   const trusted = useStore((s) => s.viewers[0]?.tier === 'trusted');   // M1: slot 0
-  const label   = useStore((s) => s.viewers[0]?.label ?? null);
   const setViewerPreview = useStore((s) => s.setViewerPreview);
   const inputs    = useStore(useShallow(selectSafetyViewInputs));   // stable ref while values unchanged
   const btcPrice  = useStore((s) => s.btcPrice);
@@ -44,7 +43,8 @@ export function ViewerPreview() {
       <div className={styles.previewBar}>
         <div className={styles.previewBarTop}>
           <span className={styles.previewLabel}>
-            PREVIEW · what {label || 'your viewer'} sees — {effectiveTrusted ? 'Trusted mode' : 'Safe mode'}
+            {/* BL48 — names no viewer: it read the first roster slot's label, the owner's own nickname for one viewer. */}
+            PREVIEW · what your viewer sees — {effectiveTrusted ? 'Trusted mode' : 'Safe mode'}
           </span>
           <button className={styles.exitBtn} onClick={() => setViewerPreview(false)}>✕ Exit preview</button>
         </div>

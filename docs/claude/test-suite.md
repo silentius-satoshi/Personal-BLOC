@@ -2364,6 +2364,65 @@ goes red.)
     exports alone, unwired): the unit tests red at GRID, BACK, TITLE, BADGE, WIDTH, LIST and KEEP — FIRST passes on the
     module; the e2e red at all eleven of `almanacList.spec.ts`, while `almanacGrid.spec.ts`'s nine pass — the grid as
     before.
+- **Trusted viewers in the Almanac (BL48, 2026-11-01) — a trusted viewer opens the hub from his home's bar; a safe
+  viewer never** (spec `pbloc-spec-trusted-viewers-v1` v1.1; Heavy, the reviewer's prototype applied byte for byte; the
+  suite 3,270 → 3,298 (+6 skipped), 225 → 229 files; e2e 155 → 164 (+2 skipped). 36 planted bugs — 36 through the unit
+  tests, 28 through the e2e — each an exact-once edit, red at its tagged tests, the files restored and md5-checked:
+  `Claude outputs/trusted-viewers/mutations-viewers.json`):
+  - `src/components/Layout/__tests__/viewerAccess.test.ts` (7, new; the tier pure, AppShell's wiring read off the
+    source): ⭐ TIER (by the last snapshot applied — trusted without a safe block, safe with one, none for the owner or
+    before the first; all eight states) · OPENS (the owner and a trusted viewer, never a safe or a waiting one;
+    non-vacuous) · ONE READ (AppShell asks `viewerAccess` once each) · HOME (a viewer's home takes the Almanac tab
+    unless it opens; the way in on the home and the under-layer, trusted only) · PAGES (a viewer's Settings and Almanac
+    are simple mode's pages, before the full-mode shell) · PUT BACK (the effect takes `activeTab` and `previousTab` off
+    the Almanac) · BAR (Home · Almanac · Settings, the middle one only when handed its way in).
+  - `src/components/ui/__tests__/viewerWhatIf.test.tsx` (4, new; rendered to static markup over a mocked store — a server
+    render reads zustand's initial state): ⭐ LOCK (a viewer's field, slider and switch lock outside the Almanac; the
+    owner's never) · WHAT-IF (inside the hub's provider live, inside FIRE's locked again) · ONLY THERE (the provider in
+    the hub and FIRE's face, nowhere else) · ONE READ (the three inputs ask `useViewerLocked`, no `viewerMode` of their
+    own).
+  - `src/lib/__tests__/ledgerColdViewer.test.ts` (4, new): ⭐ ONE RULE (`coldMovedOf` — the journal on the owner's
+    device, the owner's copy on a viewer's, never his own journal) · ROUND TRIP (the owner's months through the
+    snapshot's JSON and the check read the same) · CHECKED (a whole month ≥ 1 and a finite number, or dropped; nothing
+    valid → null) · FACE (the Ledger reads the rule; no Copy CSV or Download for a viewer).
+  - `src/components/Almanac/__tests__/viewerAlmanacWiring.test.ts` (5, new): ⭐ WRITES (the hub's import closure, the
+    store excepted, calls only the listed store functions — two reads, the viewer's own tools, three writes no viewer
+    reaches; checked against the real store's functions; a new face write fails it until it is decided) · COPIES (no
+    copy, download or print of the schedule for a viewer, V5 A) · PIN (Scenario's Pin row and drift line the owner's
+    only; the viewer's framing) · NO WORD (the family word the first viewer's examples used — in no file git would
+    commit, `00-MASTER-SPEC-INDEX.md` included; the file builds it from its letters, so it passes its own sweep) ·
+    PREVIEW (the banner reads no roster label).
+  - `almanacGrid.test.ts` 16 → 19: ⭐ OWNER ONLY (FIRE leaves a viewer's hub before any gate) · NOTE (over every plan
+    face a viewer gets but the Ledger; never the owner) · WHAT-IF (the faces inside `ViewerWhatIf` true) — new; moved:
+    GATES, PILLS and ORDER (a fourth gate, a viewer's device — sixteen combinations), ONE RULE (the hub reads four), GRID
+    and KEEP (the face inside the provider), FIRST's title. `viewerSync.test.ts` 11 → 14: ⭐ DEMOTE flipped on purpose —
+    it pinned the bug (a safe snapshot cleared nothing, D13); now the wipe first, then the safe block (by
+    `invocationCallOrder`); new ⭐ COLD ×2 (the trusted apply raw-sets the checked copy; an older snapshot's none → null)
+    and ⭐ OWNER (`applyViewerSnapshot` is a no-op off `viewerMode`). `viewerSnapshot.test.ts` 16 → 17: the trusted
+    shape gains `coldMovedByMonth`; new ⭐ COLD (the Ledger's own rule over the owner's journal; the safe payload never
+    carries it). `clearViewerData.test.ts` 2 → 3: its test tagged ⭐ WIPE — it now resets `viewerColdMovedByMonth` and
+    `venueColors` (V6 A), the layout prefs kept; new ⭐ CLOSED (on the real store: a trusted snapshot that throws
+    part-way wipes the device — never loaded without its safe block, which the tier reads as trusted).
+    `characterization.test.ts`: 110 persisted keys with `viewerColdMovedByMonth`, its seed null. `fireWiring.test.ts`:
+    the tile owner-only; VIEWER pins FIRE's provider. `controlDockWiring.test.ts` ONCE: the dock's Line a what-if, no
+    longer locked for a viewer (R1 → V4 B). `backPlace.test.ts`: ORDER (AppShell's branch strings) and GUARD (the
+    hidden-tab guard the owner's full mode's alone — never a viewer's); `planEdgesWiring.test.ts` GATE: the guard's
+    effect re-runs on `viewerMode` too. Seven files' test data renamed to "Viewer" (labels only).
+  - `e2e/viewerAlmanac.spec.ts` (9, new — the first viewer e2e: an owner's context builds the real trusted and safe
+    payloads, the viewer's page applies them through the relay path's own `applyViewerSnapshot`; round synthetic
+    figures, live prices aborted, the history stubbed, a fixed day): PARITY (a phone, the loan and a logged month:
+    twelve faces — the owner's thirteen less FIRE — field for field and line for line but BL48's own lines; the
+    Ledger's "→ Cold" the owner's) · PARITY LIST (a computer's list, no loan and no log: the same, face for face; FIRE's
+    entry the owner's alone) · WAY IN · SAFE (and a trusted-shaped snapshot that can't apply: wiped, never trusted) ·
+    DEMOTE (a safe snapshot with a plan face open: home; the store and the saved store without the owner's months, loan,
+    colours or cold moves) · FULL MODE (the owner's full mode with the Almanac's tab hidden: the viewer's pages his own,
+    the Almanac open) · WHAT-IF (five plan faces' sliders, Decision's dock Line and Scenario's lever move the face; the
+    saved store byte-identical; "Reset to live") · MINING · PREVIEW. Each test checks the way in before its tap.
+  - Red first (the reviewer's, on `c3a2877`'s app code with the new and changed tests): the unit tests 31 red of 192
+    across the 19 new and changed files — three files fail to load (two new modules, and `clearViewerData.test.ts`,
+    whose CLOSED imports the tier); WRITES green on the base (it holds today; V4i shows it bites); the e2e red at all
+    nine — at their setup on the base (`applyViewerSnapshot` is new), and with the base's apply exported alone each at
+    its own step.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

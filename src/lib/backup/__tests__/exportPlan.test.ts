@@ -8,7 +8,7 @@ import { buildPlanBackup } from '../exportPlan';
 describe('buildPlanBackup — plan-only scope', () => {
   it('excludes the sharing/transport config (viewers roster + nextViewerIndex + nostrRelays)', () => {
     useStore.setState({
-      viewers: [{ index: 0, pubkeyHex: 'abc123', npub: 'npub1test', label: 'Dad', tier: 'trusted', keyVersion: 1 }],
+      viewers: [{ index: 0, pubkeyHex: 'abc123', npub: 'npub1test', label: 'Viewer', tier: 'trusted', keyVersion: 1 }],
       nextViewerIndex: 1, nostrRelays: ['wss://r.example'],
     } as never);
 

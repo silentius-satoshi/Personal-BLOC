@@ -110,17 +110,19 @@ trusted viewer (D9). No off switch. Absent from the log = C1. Every reader goes 
 `clampPlanPolicy` (`lib/planPolicy`). Settings' "Your plan" is the only place the owner edits them — see § The plan of
 record (Run 1).
 
-### The plan of record (Run 2) — three device-local keys (`uiSlice`, `viewerSlice`)
+### The plan of record (Run 2) — three device-local keys (`uiSlice`, `viewerSlice`), and BL48's fourth
 ```typescript
 planNoteDismissed:      boolean;   // default false — the one-time note (D8), dismissed on THIS device
 setPlanNoteDismissed:   (v: boolean) => void;   // plain set — no emit, no dirty channel
 planBreakerCache:       { state: RearmableBreakerState; lastMonthEndISO: string } | null;   // default null — the breaker as last folded from month-end prices on THIS device (§4.3, invariant 10): THIS MONTH reads it offline; public price data only
 setPlanBreakerCache:    (v: … | null) => void;   // plain set — usePlanMonth's ONE write, a fresh fold, in an effect
 viewerStrikeDepositISO: string | null;   // default null — a TRUSTED viewer's copy of the owner's latest Strike deposit date (D9; the snapshot's strikeLastDepositISO, raw-set by viewerSync); null on an owner device; reset by clearViewerData
+viewerColdMovedByMonth: Record<number, number> | null;   // BL48 (V2 A) — default null — a TRUSTED viewer's copy of the owner's month-by-month cold moves (the snapshot's coldMovedByMonth, raw-set by viewerSync through coldMovesFromSnapshot); the Ledger reads it through coldMovedOf; null on an owner device and with no snapshot field; reset by clearViewerData
 ```
-All three persist via `partializeState`'s `...rest` and are NEVER synced: not in `SETTINGS_FIELDS`, `PREFS_FIELDS`,
+All four persist via `partializeState`'s `...rest` and are NEVER synced: not in `SETTINGS_FIELDS`, `PREFS_FIELDS`,
 `VIEWER_SETTINGS_FIELDS` or the plan backup, and no settings or prefs apply writes them — the one outside writer is
-viewerSync's trusted apply, which raw-sets `viewerStrikeDepositISO` from the snapshot. No store version bump — the
+viewerSync's trusted apply, which raw-sets `viewerStrikeDepositISO` (and, since BL48, `viewerColdMovedByMonth` — the same
+pattern, a fourth device-local key in `viewerSlice`) from the snapshot. No store version bump — the
 persist merge fills the defaults, and a demo or e2e blob without them shows the note. The cache is read only through
 planRun's `planBreakerCacheOf` (the engine's own `validOpeningBreaker`, dated `yyyy-mm-dd`): a damaged cache reads as
 none, and the next fresh fold rewrites it. See § The plan of record (Run 2).
@@ -142,8 +144,8 @@ raw. Both seed resets clear it (`clearViewerData`,
 `migrateState` defaults it `?? null`, and the persist merge fills it on a blob without the key. A backup from before build
 2 leaves the goal as it is (`applyPlanBackup` writes only the keys a file carries — the six's precedent); one from this
 build is refused by an older build. **The counts** (since BL15 — § BL15 below): 47 settings keys (`SETTINGS_FIELDS` =
-`buildSettingsPayload`'s), 42 plan-event fields + the 5 prefs, 108 persisted blob keys (109 with build 4's `fireInputs`; 110
-once a device chooses venue colours), 42 trusted settings keys (47 − the 5 strips).
+`buildSettingsPayload`'s), 42 plan-event fields + the 5 prefs, 108 persisted blob keys (109 with build 4's `fireInputs`, 110 with
+BL48's `viewerColdMovedByMonth`; 111 once a device chooses venue colours), 42 trusted settings keys (47 − the 5 strips).
 - **Its one editor** is Settings → Your plan (`YourPlanSection`'s `GoalField`, owner-only under `!viewerMode`): "Your
   goal — net coins", saved when the field is left or Enter is pressed, never per keystroke (`parseGoalInput`: empty
   clears; an amount above zero sets — a point or a comma for the decimal, since an iPhone's decimal keypad in a
@@ -205,8 +207,8 @@ the persist merge fills `null` on an older blob.
   seed resets (`clearViewerData`, `resetPlanToSeeds`) list neither it nor `inflationRate`, so both leave it. "Reset local
   data & re-sync" (`resetAndResync`) deletes the blob: the pull brings the plan back, never `fireInputs` or
   `inflationRate`, so both return to their defaults.
-- **The count:** 109 persisted blob keys (the characterization lists `'fireInputs'` after `'expenses'`); the settings,
-  plan-event, prefs and trusted counts are unchanged.
+- **The count:** 109 persisted blob keys with it — 110 since BL48's `viewerColdMovedByMonth` (the characterization lists
+  `'fireInputs'` after `'expenses'`); the settings, plan-event, prefs and trusted counts are unchanged.
 - Pinned by `src/store/__tests__/fireInputsStore.test.ts` (PERSISTED, LEAK, LISTS, SETTER, RESTORE, SEEDS, WIPE) and
   `src/lib/__tests__/fireInputs.test.ts` (DEFAULTS, READ RULE). The face: `docs/claude/almanac.md` § FIRE face.
 
@@ -239,7 +241,9 @@ no colours, no tabs.
   only if THE rule passes it (`resolveVenueColors` — every refused colour falls back at once, until none is), and only a
   cleaned `'#rrggbb'` reaches CSS. The rule and the tokens: `.claude/rules/ui.md` (the venue colours), `docs/claude/ui.md`
   § Design Tokens.
-- **What touches it.** Neither seed reset clears it (`clearViewerData`, `resetPlanToSeeds` — layout prefs, like the tabs);
+- **What touches it.** `resetPlanToSeeds` doesn't clear it (a layout pref, like the tabs); `clearViewerData` — a viewer's
+  wipe — does since BL48 (V6 A: a demoted or revoked viewer keeps none of the owner's colours; a safe snapshot never
+  carries them);
   `wipeLocalPlanData` and "Reset local data & re-sync" remove it with the blob, and the next prefs pull brings the colours
   back. No store version bump: the persist merge leaves it `undefined` on a blob without it. A backup from before BL15
   leaves the colours as they are; one made after colours were chosen is refused by an older build ("…an unexpected field
@@ -247,8 +251,8 @@ no colours, no tabs.
 - **The limit** (one setting, last write wins, as the tabs): while a device still runs an older build, its settings change
   leaves the relays without the colours; a device that never had them starts without them until a device that has them
   changes a setting, and a pick there replaces the whole palette.
-- **The counts:** 47 settings keys, the 5 prefs, 42 trusted settings keys; 109 persisted blob keys, 110 once a device
-  chooses colours.
+- **The counts:** 47 settings keys, the 5 prefs, 42 trusted settings keys; 110 persisted blob keys (BL48's
+  `viewerColdMovedByMonth` among them), 111 once a device chooses colours.
 - Pinned by `src/store/__tests__/venueColorsStore.test.ts` (the real store, publish and receive — SET, REFUSED, RULE,
   DEFAULT, RESET, UNCHANGED, HIDDEN, NEVER, ROUND TRIP, OLD WRITE, FRESH AFTER OLD, JUNK, NULL, LATER, LWW, BACKUP, VIEWERS,
   NO BUMP) and `src/lib/__tests__/venueColors.test.ts`.

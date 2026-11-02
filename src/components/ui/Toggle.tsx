@@ -1,4 +1,4 @@
-import { useStore } from '../../store/useStore';
+import { useViewerLocked } from './viewerWhatIf';
 import styles from './Toggle.module.css';
 
 interface Props {
@@ -9,8 +9,9 @@ interface Props {
 }
 
 export function Toggle({ value, onChange, label, disabled }: Props) {
-  const viewerMode = useStore((s) => s.viewerMode);   // read-only viewer → every Toggle is disabled
-  const dis = disabled || viewerMode;
+  // A viewer's Toggle is disabled — except in the Almanac's what-ifs (BL48, viewerWhatIf.ts).
+  const viewerLocked = useViewerLocked();
+  const dis = disabled || viewerLocked;
   return (
     <label className={`${styles.root} ${dis ? styles.rootDisabled : ''}`}>
       <input

@@ -113,6 +113,10 @@ export interface StoreState {
   /** Run 2 (D9) — a TRUSTED viewer's copy of the owner's latest Strike deposit date (the viewer has no journal), so its
    *  month 1 reads the same 60-day hold. Raw-set by the trusted apply; null on an owner device; reset by clearViewerData. */
   viewerStrikeDepositISO: string | null;
+  /** BL48 (V2 A) — a TRUSTED viewer's copy of the owner's month-by-month cold moves (the viewer has no journal), so the
+   *  Ledger's "→ Cold" column reads his (`coldMovedOf`). Raw-set by the trusted apply; null on an owner device, and with
+   *  no snapshot field; reset by clearViewerData. */
+  viewerColdMovedByMonth: Record<number, number> | null;
   monthBucketReconcileDone: boolean;   // one-shot calendar-bucket reconcile ran; persisted, DEVICE-LOCAL, NEVER synced (mirrors devMode)
   setSimpleMode:         (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
@@ -344,7 +348,7 @@ export interface StoreState {
   // NEVER synced. The unwrapped bytes live ONLY in viewerSync's in-memory holder — never in serializable state.
   viewerKeyWrapped:    string | null;     // AES-GCM ciphertext (base64) of the viewer nsec
   viewerKeyWrapMeta:   WrapMeta | null;   // { iv, scheme, credentialId?, salt }
-  // Viewer V3 — the viewer's own display name ("Good morning, Dad"). DEVICE-LOCAL PERSISTED, NEVER synced
+  // Viewer V3 — the viewer's own display name ("Good morning, Sam"). DEVICE-LOCAL PERSISTED, NEVER synced
   // (the almanacLiveEnabled pattern: rides partializeState's ...rest, absent from SETTINGS_FIELDS /
   // buildSettingsPayload / both snapshot branches). null = nameless greeting. Cleared on sign-out.
   viewerDisplayName:   string | null;

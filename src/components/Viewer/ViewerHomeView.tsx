@@ -34,6 +34,7 @@ import styles from './ViewerHomeView.module.css';
  */
 export interface ViewerHomeViewProps {
   onOpenSettings: () => void;
+  onOpenAlmanac?: () => void;              // BL48 — a TRUSTED viewer's way into the Almanac (AppShell passes it only then): the bottom bar's middle button. Absent → Home · Settings, as before
   previewSafeSnap?: SafeSnapshot | null;   // owner "Preview as viewer": inject the snap (safe) or null (force trusted live-derive); undefined = viewer device (store-driven)
   preview?: boolean;                       // owner preview → hide settings-nav affordances + bottom nav; pill age reads 'live preview'
   ownerNav?: ReactNode;                    // owner IA — the 5-icon header cluster (Dashboard active). Present ⇒ owner-dashboard mount: replaces the lone ⚙, suppresses the bottom nav, pill reads 'live'. viewer/preview never pass it → unchanged.
@@ -128,7 +129,7 @@ export function useNetCoinsToday(safety: ViewerSafetyResult): number | null {
     : null;
 }
 
-export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, ownerNav, notice }: ViewerHomeViewProps) {
+export function ViewerHomeView({ onOpenSettings, onOpenAlmanac, previewSafeSnap, preview, ownerNav, notice }: ViewerHomeViewProps) {
   const s = useViewerSafety(previewSafeSnap);
   const lastSync = useStore((st) => st.viewerLastSyncAt);
   const displayName = useStore((st) => st.viewerDisplayName);   // V3 — device-local, never synced
@@ -268,6 +269,11 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
           <button className={`${styles.navBtn} ${styles.navActive}`} aria-current="page">
             Home
           </button>
+          {onOpenAlmanac && (
+            <button className={styles.navBtn} onClick={onOpenAlmanac}>
+              Almanac
+            </button>
+          )}
           <button className={styles.navBtn} onClick={onOpenSettings}>
             Settings
           </button>

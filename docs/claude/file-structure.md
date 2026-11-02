@@ -853,7 +853,10 @@ src/
                                 # ledgerFaceAvailable (the face's gate — at least one logged month) · buildLedgerCsv (the
                                 # monthly log as a spreadsheet-ready CSV — Copy / Download) · the computed "→ Cold" column
                                 # (coldMovedByMonth, hasColdColumn, coldTotals, coldFootnote, fmtColdBtc, COLD_EPS — from
-                                # the dayLog at render, never stored). See almanac.md § M-L1. Tested in
+                                # the dayLog at render, never stored). BL48 (V2 A): coldMovedOf — the column's months on
+                                # this device (the journal's, or a trusted viewer's copy from the snapshot) — and
+                                # coldMovesFromSnapshot (the copy, checked on the way in; ledgerColdViewer.test.ts).
+                                # See almanac.md § M-L1. Tested in
                                 # src/lib/__tests__/ledgerCsv.test.ts and ledgerCold.test.ts
                                 # + src/lib/__tests__/ledgerCsvHardening.test.ts (HJ-23, HJ-24 — Hardening 1: CB bal / CB LTV under their own headers; RFC 4180 quote doubling)
 
@@ -968,6 +971,12 @@ src/
                                 # branch order; almanacExit(previousTab) — the Almanac's way out, its "←" and its swipe
                                 # from the grid — never 'almanac' ('living' instead). Tests: __tests__/backPlace.test.ts,
                                 # e2e/backPlace.spec.ts.
+      viewerAccess.ts           # BL48 — trusted viewers in the Almanac (pure; spec pbloc-spec-trusted-viewers-v1):
+                                # viewerTier({ viewerMode, viewerDataLoaded, viewerSafeSnapshot }) → 'trusted' | 'safe' |
+                                # null (by the last snapshot applied; none before one, none for the owner) and
+                                # almanacOpensFor (the owner and a trusted viewer). AppShell reads both once: the viewer's
+                                # home bar's "Almanac", Branches G/H/I and the effect that takes a viewer off the Almanac
+                                # tab. viewer.md § BL48. Tests: __tests__/viewerAccess.test.ts, e2e/viewerAlmanac.spec.ts.
       DemoBanner.tsx            # C0/C2 — slim STICKY (position:sticky;top:0, C2 — not fixed) sandbox strip (+ .module.css).
                                 # Mounted by ONE AppShell line `{import.meta.env.VITE_DEMO === '1' && <DemoBanner/>}` (first
                                 # child of the top-level fragment → sticky keeps it in flow, PUSHING content down instead of
@@ -978,7 +987,9 @@ src/
     Almanac/                    # (the faces are documented in § Almanac / CycleClock; listed here: Run 2's files)
       almanacGrid.ts            # BL45 — the grid's ONE catalogue (pure, no store, no env): FACE_TILES (key, name, group,
                                 # gate) in the grid's order, FACE_GROUPS ("Your plan", "Bitcoin"), faceShown, gridGroups,
-                                # and the Face union. The hub passes its three gates in (§ The Almanac grid). BL46's A:
+                                # and the Face union. The hub passes its four gates in (§ The Almanac grid; BL48 adds
+                                # `viewer` — FIRE's tile is `ownerOnly` — and VIEWER_WHAT_IF_NOTE / viewerWhatIfNoteShown,
+                                # the note a viewer reads over a plan face). BL46's A:
                                 # ALMANAC_LIST ('(min-width: 1200px)' — from there the hub draws the same groups as a
                                 # list beside the open face) and firstListFace (the face the list opens on: the last open
                                 # this session while shown, else Decision). § The Almanac on a computer; pinned by
@@ -1495,6 +1506,11 @@ src/
                                 # and out re-dated a dated figure. Pinned by numberInputModel.test.ts (SITES: every
                                 # field's mode; AWAY) + e2e/numberField.spec.ts, numberFieldAway.spec.ts
       Toggle.tsx
+      viewerWhatIf.ts           # BL48 (V4 B) — ViewerWhatIf (a context, default false) and useViewerLocked(): a viewer's
+                                # SliderInput, NumberInput and Toggle lock (disabled / read-only) except inside the
+                                # Almanac's what-ifs — AlmanacView provides true around the open face; FireFace provides
+                                # false (its inputs save). The three inputs read viewerMode through it alone.
+                                # __tests__/viewerWhatIf.test.tsx.
       PassphraseInput.tsx       # R2c-7a-2-polish — THE masked-entry widget (+ .module.css). A controlled input +
                                 # focus-guarded Show/Hide toggle, adopted at ALL 18 RENDERED masked fields:
                                 # NostrAuthGate (remediation encrypt · saved-key PIN unlock · ncryptsec unlock · PIN · Confirm PIN),

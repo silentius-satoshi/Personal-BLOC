@@ -40,7 +40,7 @@ const backup = (settings: Record<string, unknown>): PlanBackup => ({
 const seedGated = () => useStore.setState({
   keyProvenance: 'generated', backupVerifiedAt: null,
   income: 4000, expenses: 3500,
-  viewers: [{ index: 0, pubkeyHex: 'aa', npub: 'npub1x', label: 'Dad', tier: 'safe', keyVersion: 1 }],
+  viewers: [{ index: 0, pubkeyHex: 'aa', npub: 'npub1x', label: 'Viewer', tier: 'safe', keyVersion: 1 }],
   nextViewerIndex: 1,
   nostrRelays: ['wss://my-custom-relay'],
   cbCollateralBtc: 9.9, strikeCollateralBtc: 8.8,

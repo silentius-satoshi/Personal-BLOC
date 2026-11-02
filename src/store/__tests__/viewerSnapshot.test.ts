@@ -3,12 +3,13 @@ import { useStore, type ViewerSlot } from '../useStore';
 import { buildSettingsPayload, buildViewerSnapshotPayload } from '../payloads';
 import { deriveCbCollateral, deriveStrikeCollateral } from '../../simulation/logUtils';
 import { previewSafeSnapFromPayload } from '../../simulation/safetyView';
+import { coldMovedByMonth } from '../../lib/ledgerCsv';
 
 const LEVELS = ['safe', 'watch', 'act'];
 
 // A roster slot (Multi-viewer M1). M2: the SNAPSHOT tier is an explicit param to buildViewerSnapshotPayload —
 // the slot is present only so the trusted-strip tests can prove the roster is stripped from the settings block.
-const trustedSlot: ViewerSlot = { index: 0, pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Dad's iPhone", tier: 'trusted', keyVersion: 1 };
+const trustedSlot: ViewerSlot = { index: 0, pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Viewer's iPhone", tier: 'trusted', keyVersion: 1 };
 
 describe('viewer snapshot builders', () => {
   beforeEach(() => {
@@ -17,13 +18,13 @@ describe('viewer snapshot builders', () => {
   });
 
   it("buildSettingsPayload INCLUDES the owner's viewer roster (the plan backup carries it; the roster itself syncs as plan events)", () => {
-    useStore.getState().addViewerSlot({ pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Dad's iPhone", tier: 'safe', keyVersion: 1 });
+    useStore.getState().addViewerSlot({ pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Viewer's iPhone", tier: 'safe', keyVersion: 1 });
     const payload = buildSettingsPayload(useStore.getState());
     expect('viewers' in payload).toBe(true);
     expect('nextViewerIndex' in payload).toBe(true);
     const roster = payload.viewers as ViewerSlot[];
     expect(roster.length).toBe(1);
-    expect(roster[0]).toMatchObject({ index: 0, pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Dad's iPhone", tier: 'safe', keyVersion: 1 });
+    expect(roster[0]).toMatchObject({ index: 0, pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Viewer's iPhone", tier: 'safe', keyVersion: 1 });
     expect(payload.nextViewerIndex).toBe(1);
     // sanity: it also carries real synced settings
     expect('income' in payload).toBe(true);
@@ -135,13 +136,14 @@ describe('viewer snapshot builders', () => {
     useStore.setState({ keyProvenance: null } as never);
   });
 
-  it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3) + strikeCollateralBtc (C-P4) + coldStorageBtc + strikeLastDepositISO (Run 2)', () => {
+  it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3) + strikeCollateralBtc (C-P4) + coldStorageBtc + strikeLastDepositISO (Run 2) + coldMovedByMonth (BL48)', () => {
     const snap = buildViewerSnapshotPayload(useStore.getState(), 'trusted');
     // coldStorageBtc is a conscious EXPOSE — the pre-derived LIVE cold total (anchor + journal). The viewer's dayLog
     // is [], so without it a viewer-side derive returns the bare anchor. Same pattern as strikeCollateralBtc (C-P4).
     expect(Object.keys(snap).sort()).toEqual(
-      ['asOf', 'cbCollateralBtc', 'coldStorageBtc', 'privacyMode', 'records', 'settings', 'snapshotVersion', 'strike', 'strikeCollateralBtc',
+      ['asOf', 'cbCollateralBtc', 'coldMovedByMonth', 'coldStorageBtc', 'privacyMode', 'records', 'settings', 'snapshotVersion', 'strike', 'strikeCollateralBtc',
         'strikeLastDepositISO'],   // Run 2 (D9) — the latest logged Strike deposit date: the viewer reads the 60-day hold from it
+      // BL48 (V2 A) — coldMovedByMonth: the owner's net ₿ into cold per strategy month (the Ledger's "→ Cold"), pre-derived
     );
     expect(snap.records).toHaveProperty('entries');
     expect(snap.records).toHaveProperty('deletions');
@@ -170,6 +172,23 @@ describe('viewer snapshot builders', () => {
     const snap = buildViewerSnapshotPayload(s, 'trusted');
     expect(snap.strikeCollateralBtc).toBe(deriveStrikeCollateral(s.dayLog, s.strikeCollateralBtc));   // single source — cannot drift
     expect(snap.strikeCollateralBtc).toBeCloseTo(0.83);   // the reading's strikeCollateral, not the 0.11 cache
+  });
+
+  it('⭐ COLD — BL48 (V2 A): the C-trusted snapshot carries the owner\'s cold moves as the Ledger reads them (one rule); the safe one never', () => {
+    useStore.setState({
+      advisorStartDate: '2026-10-01',
+      dayLog: [
+        { id: 'c1', date: '2026-10-08', ts: 1, kind: 'deposit', amount: 0.1, target: 'cold' },
+        { id: 'c2', date: '2026-11-03', ts: 2, kind: 'withdraw', amount: 0.04, target: 'cold' },
+        { id: 's1', date: '2026-10-09', ts: 3, kind: 'deposit', amount: 0.2, target: 'strike' },   // not a cold move
+      ],
+    } as never);
+    const s = useStore.getState();
+    const snap = buildViewerSnapshotPayload(s, 'trusted');
+    expect(snap.coldMovedByMonth, 'COLD the one rule').toEqual(coldMovedByMonth(s.dayLog, s.advisorStartDate));
+    expect(snap.coldMovedByMonth, 'COLD the months').toEqual({ 1: 0.1, 2: -0.04 });
+    expect('coldMovedByMonth' in buildViewerSnapshotPayload(s, 'safe'), 'COLD never safe').toBe(false);
+    useStore.setState({ dayLog: [] } as never);
   });
 
   it("P3: the C-trusted snapshot's records carry entries + deletions but NOT the raw dayLog journal", () => {
@@ -206,7 +225,7 @@ describe('viewer snapshot builders', () => {
   });
 
   it('V3: viewerDisplayName is device-local — absent from BOTH payload builders (settings + snapshot)', () => {
-    useStore.getState().setViewerDisplayName('Dad');
+    useStore.getState().setViewerDisplayName('Viewer');
     // owner settings payload
     expect('viewerDisplayName' in buildSettingsPayload(useStore.getState())).toBe(false);
     // C-safe snapshot (no settings block at all)

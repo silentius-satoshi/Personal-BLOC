@@ -60,6 +60,7 @@ import { ViewerPreview }     from '../Viewer/ViewerPreview';
 import { HeaderNavCluster }  from './HeaderNavCluster';
 import { DemoBanner }        from './DemoBanner';
 import { backPlace, almanacExit } from './backPlace';
+import { almanacOpensFor, viewerTier } from './viewerAccess';
 import { EdgeBackGesture }   from '../ui/EdgeBackGesture';
 import { CbDefenseTool }    from '../Tools/CbDefenseTool';
 import AlmanacView, { type AlmanacFace } from '../Almanac/AlmanacView';
@@ -220,6 +221,11 @@ export function AppShell() {
   const viewerUnlocked   = useStore((s) => s.viewerUnlocked);     // in-memory holder populated?
   const viewerSecretKey  = useStore((s) => s.viewerSecretKey);    // v17 migrant plaintext (pre-wrap)
   const viewerDataLoaded = useStore((s) => s.viewerDataLoaded);   // true only after a VALID snapshot decrypt
+  const viewerSafeSnapshot = useStore((s) => s.viewerSafeSnapshot);   // set by a safe snapshot, cleared by a trusted one
+  // BL48 — the Almanac is the owner's and a trusted viewer's (viewerAccess.ts): a viewer gets in by his home's
+  // "Almanac" button, a safe viewer — or one whose snapshot hasn't come — never.
+  const viewerTrusted = viewerTier({ viewerMode, viewerDataLoaded, viewerSafeSnapshot }) === 'trusted';
+  const almanacOpen   = almanacOpensFor({ viewerMode, viewerDataLoaded, viewerSafeSnapshot });
   const planLoading      = usePlanLoading();   // 5e (F1) — "Loading your plan…": the session's first pull, on a device without its plan
 
   // 5e (F1) — the signed-in owner's app. Once it has been on screen, a first pull that starts later (an unlock path that
@@ -286,20 +292,30 @@ export function AppShell() {
   };
 
   useEffect(() => {
-    if (simpleMode || activeTab === 'settings') return;
+    if (simpleMode || viewerMode || activeTab === 'settings') return;
     // A tab the bar doesn't show can't stay open: one the owner hid, or — with the Coinbase loan switched off — the CB
     // Loan tab and the Emergency Console's (the plan of record's Run 4: the console's gate is the loan, so without one
     // its tab would open on an empty page). Full mode's rule — only full mode has a tab bar (BL47). In simple mode
     // every tab but Settings and the Almanac opens the journal, so nothing there is redirected: with the five journal
     // tabs hidden and no loan, a redirect opened simple mode on the Almanac with no way out — no nav, its "←" going
     // nowhere — and the header's "←" would have named a journal it couldn't reach (Claude Code's F1, measured on
-    // 3618327).
+    // 3618327). Never a viewer's (BL48): his pages are simple mode's whatever the owner's synced layout, and the owner's
+    // hidden tabs would bounce a trusted viewer's Almanac to his home.
     const shut = (k: string): boolean => hiddenTabs.includes(k) || (!hasCbLoan && (k === 'coinbase' || k === 'liqsim'));
     if (shut(activeTab)) {
       const first = ALL_TABS_META.find((t) => !shut(t.key));
       if (first) setActiveTab(first.key);
     }
-  }, [hiddenTabs, activeTab, hasCbLoan, simpleMode]);
+  }, [hiddenTabs, activeTab, hasCbLoan, simpleMode, viewerMode]);
+
+  // BL48 — a viewer the Almanac doesn't open for (safe, demoted while it was open, or waiting for its first snapshot)
+  // is taken off it, and off a way back that names it: Settings' "← Almanac" would open his home. The viewer's branch
+  // (G) draws the home in the same render; this puts the tabs where it is.
+  useEffect(() => {
+    if (almanacOpen) return;
+    if (activeTab === 'almanac') setActiveTab('living');
+    if (previousTab === 'almanac') setPreviousTab('living');
+  }, [almanacOpen, activeTab, previousTab, setActiveTab, setPreviousTab]);
 
   const goSettings = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); };
   // The face the Almanac opens on (Run 3): the Decision face from the plan's link — the Outlook's place — and the grid
@@ -366,9 +382,12 @@ export function AppShell() {
       <SimpleModeView onOpenSettings={goSettings} onOpenAlmanac={goAlmanac} onOpenPlanPaths={goPlanPaths} simpleView={simpleView} setSimpleView={setSimpleView} />
     );
 
-  // The surface an edge-back reveals: owner → the journal (Branch J); viewer → the read-only home (Branch G).
+  // The surface an edge-back reveals: owner → the journal (Branch J); viewer → the read-only home (Branch G), its bar
+  // as Branch G draws it (BL48 — a trusted viewer's "Almanac" button), so the swipe ends on the page it showed.
   const renderSimpleUnder = () =>
-    viewerMode ? <ViewerHomeView onOpenSettings={goSettings} /> : renderOwnerJournal();
+    viewerMode
+      ? <ViewerHomeView onOpenSettings={goSettings} onOpenAlmanac={viewerTrusted ? goAlmanac : undefined} />
+      : renderOwnerJournal();
 
   return (
     <>
@@ -403,15 +422,20 @@ export function AppShell() {
         // place of the red flash while the session's first pull brings the plan and then the journal; it goes when the pull
         // lands, offers "Open the app" after 15 s, and holds no write — 5c refuses them until the plan loads.
         <PlanLoadingGate slow={planLoading.slow} />
-      ) : viewerMode && viewerDataLoaded && activeTab !== 'settings' && activeTab !== 'almanac' ? (
+      ) : viewerMode && viewerDataLoaded && activeTab !== 'settings' && !(activeTab === 'almanac' && almanacOpen) ? (
         // Viewer Experience Revamp V1 — the dedicated read-only viewer home REPLACES Daily/Monthly for
-        // the viewer. Settings/Almanac fall through to their simple-mode branches below.
+        // the viewer. Settings and — for a trusted viewer — the Almanac fall through to simple mode's pages below,
+        // whatever the owner's layout (BL48): a viewer never sees the full-mode shell. A trusted viewer's home bar
+        // carries "Almanac"; a safe viewer has none, and on the Almanac tab he gets this home.
         <ViewerHomeView
           onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
+          onOpenAlmanac={viewerTrusted ? goAlmanac : undefined}
         />
-      ) : simpleMode && activeTab === 'settings' ? (
+      ) : (simpleMode || viewerMode) && activeTab === 'settings' ? (
         // Branch H — edge-swipe-back chains one level (subpage → list) then exits Settings. renderUnder reveals
         // the journal parallax ONLY from the list; from a subpage it goes plain app-bg (nav depth = parallax depth).
+        // A viewer's Settings is this page in either layout (BL48) — the owner's synced `simpleMode` no longer opens
+        // the full-mode shell on a viewer's device.
         <EdgeBackGesture
           onBack={settingsEdgeBack}
           renderUnder={() => (settingsBackRef.current ? null : renderSimpleUnder())}
@@ -429,10 +453,11 @@ export function AppShell() {
             <SettingsMain hideHeader registerBack={(fn) => { settingsBackRef.current = fn; }} />
           </div>
         </EdgeBackGesture>
-      ) : simpleMode && activeTab === 'almanac' ? (
+      ) : (simpleMode || viewerMode) && activeTab === 'almanac' && almanacOpen ? (
         // Branch I — same edge-swipe-back wrapper, and the same one-level chain as Branch H: from a face it reveals plain
         // app-bg (it goes to the grid), from the grid the journal parallax. On a face the title is the link to the
-        // grid.
+        // grid. For the owner, and for a trusted viewer in either layout (BL48) — from the grid his swipe reveals his
+        // home.
         <EdgeBackGesture onBack={almanacEdgeBack} renderUnder={() => (almanacBackRef.current ? null : renderSimpleUnder())}>
           <div className={styles.simpleModeSettings}>
             <div className={styles.simpleModeSettingsHeader}>

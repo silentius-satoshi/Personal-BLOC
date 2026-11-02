@@ -4,7 +4,7 @@
 
 ## Viewer Experience Revamp (V1 — the dedicated viewer home; store stays v19, NO bump)
 
-The first phase of giving a read-only viewer (e.g. the owner's father) a calm, abstracted experience
+The first phase of giving a read-only viewer a calm, abstracted experience
 instead of the owner's dense Daily/Monthly surface. **V1 is the home page only** — three radial
 status gauges + greeting + one overall pill, **C-safe DISPLAY only** (renders ratios/levels the
 viewer already receives — NO absolute figures stripped from the snapshot yet; the C-safe/C-trusted
@@ -89,7 +89,9 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
   && activeTab !== 'almanac'` → `<ViewerHomeView onOpenSettings={…}/>`, inserted AFTER the
   `PrivateAppNotice` owner gate and BEFORE the `simpleMode` branches. So the viewer home REPLACES
   Daily/Monthly for the viewer; Settings/Almanac still fall through to their existing simple-mode
-  branches (a provisioned viewer has `simpleMode===true`). Owner (`viewerMode===false`) skips it.
+  branches (a provisioned viewer has `simpleMode===true`). Owner (`viewerMode===false`) skips it. (BL48: the branch
+  now takes the Almanac tab unless the Almanac opens for the viewer, and Settings and the Almanac are simple mode's
+  pages for any viewer, whatever the owner's layout — § BL48.)
 - **Store `viewerLastSyncAt: number | null`** (transient — NOT persisted, in the partialize
   exclusion alongside `viewerDataLoaded`; setter `setViewerLastSyncAt`) — set in `viewerSync.ts`
   `applyViewerEvent` on a valid hydrate (the freshness clock for the home pill). No persisted field →
@@ -142,13 +144,15 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   **plan backup** (`exportPlan.ts`). (BL14, G2-A: the plan's goal, `planGoalNetBtc`, rides the trusted settings like the
   plan's six, the strip list unchanged; the safe branch never carries it — § BL14 below.) (BL15: the venue colours,
   `venueColors`, ride the trusted settings too — a conscious expose: a trusted viewer wears the owner's colours, through its
-  own sink; undefined until the owner chooses, so they travel only then; the safe branch never carries them. A viewer never
+  own sink; undefined until the owner chooses, so they travel only then; the safe branch never carries them, and since BL48 a
+  demoted or revoked viewer drops them with the figures. A viewer never
   edits them: its Settings is `ViewerSettings` — YOU, DEVICE, CONNECTION, ABOUT — with no Customization page, no Monthly
   Mode, no colours, no tabs.) SharingPage's tier `<Toggle>` calls `updateViewerSlot(index,{tier})` +
   `publishViewerSnapshotNow()` so a mode flip reaches the viewer at once.
 - **Viewer hydrate (`viewerSync.ts` `applyViewerEvent`, after the `revoked` check):** `privacyMode==='safe'`
   → `setViewerSafeSnapshot({safety, thresholds, btcPriceAtSnapshot, hasCbLoan})` + `viewerDataLoaded` +
-  `viewerLastSyncAt`, **NO applyViewerSettings/records/strike** (4e; was hydrateSettings); trusted/absent → clear the safe snapshot, then
+  `viewerLastSyncAt`, **NO applyViewerSettings/records/strike** (4e; was hydrateSettings) — and since BL48 `clearViewerData()`
+  FIRST, so a viewer demoted from trusted keeps nothing of the owner's (§ BL48); trusted/absent → clear the safe snapshot, then
   the existing full hydrate. **`viewerSafeSnapshot: SafeSnapshot | null`** is a new transient store field
   (partialize-excluded, cleared in `clearViewerData`).
 - **Render (`ViewerHomeView.tsx`):** one `useViewerSafety(injectedSafeSnap?)` seam unifies both modes into a
@@ -253,7 +257,7 @@ Three small viewer-side phases. Builds on Viewer V2.
 Promotes the owner's top-right header buttons into the **primary navigation** and adds a live owner Dashboard.
 **⚠ AppShell's render-ladder auth/unlock/viewerMode gates (branches A–G) are UNTOUCHED** — all changes live in
 the owner view-switching branch J (`simpleMode && activeTab !== 'settings'`) and the view components. The actual
-viewer (father's device, `viewerMode`) is caught by branch G before J, so viewerMode is untouched by construction.
+viewer (a viewer's device, `viewerMode`) is caught by branch G before J, so viewerMode is untouched by construction.
 
 - **`HeaderNavCluster` (`components/Layout/`, NEW) — the SINGLE 5-icon cluster = owner primary nav**, byte-identical
   on every simple-mode surface: **Dashboard · Journal · Full mode · Almanac · Settings**. The four app icons are
@@ -340,3 +344,59 @@ and the faces' words: `almanac.md` § BL14.
 
 ---
 
+## BL48 — trusted viewers in the Almanac (BL40's second piece; one viewer-side key, store stays v21, NO bump)
+
+Spec `pbloc-spec-trusted-viewers-v1`; the owner's calls V1–V7 (BL48). A TRUSTED viewer opens the Almanac and reads every
+face he gets on the owner's figures; a safe viewer never gets in; a demotion leaves nothing of the owner's; nothing a
+viewer taps reaches the plan. What the faces do for a viewer: `almanac.md` § Trusted viewers in the Almanac.
+
+- **The tier — `Layout/viewerAccess.ts` (PURE).** `viewerTier({ viewerMode, viewerDataLoaded, viewerSafeSnapshot })`:
+  'trusted' or 'safe' by the shape of the snapshot last applied (a safe one sets `viewerSafeSnapshot`, a trusted — or a
+  pre-V2 — one clears it), null for the owner and for a viewer before his first snapshot. `almanacOpensFor` — the owner
+  and a trusted viewer. AppShell reads both once (`viewerTrusted`, `almanacOpen`).
+- **The way in (V7 A).** `ViewerHomeView`'s `onOpenAlmanac`, passed by the viewer's branch only for a trusted viewer —
+  the bottom bar reads Home · Almanac · Settings; without it Home · Settings, as before (a safe viewer's). The edge-back
+  under-layer (`renderSimpleUnder`) passes the same, so the backdrop is the home the swipe reveals. The owner's Dashboard
+  mount has its own nav and no bar.
+- **The pages.** For any viewer, Settings and the Almanac are simple mode's pages — Branches H and I read
+  `(simpleMode || viewerMode)` — so the owner's synced `simpleMode` (the trusted settings carry it) no longer opens the
+  full-mode shell (its tab bar, Tools menu, mode switch, brand menu) on a viewer's device; the mode switch and tab drag
+  there wrote the viewer's copy of two synced prefs. Branch I adds `almanacOpen`. And AppShell's hidden-tab guard is
+  the owner's full mode's alone — `if (simpleMode || viewerMode || activeTab === 'settings') return;` — so the owner's
+  synced hidden tabs (a stored or restored layout can hide the Almanac's) never bounce a trusted viewer's Almanac to his
+  home (`backPlace.test.ts` GUARD, and `planEdgesWiring.test.ts` GATE — the guard re-runs on `viewerMode` too; e2e
+  FULL MODE, with the Almanac's tab hidden).
+- **A viewer the Almanac doesn't open for** — safe, demoted while it was open, or waiting for his first snapshot — gets
+  his home on the Almanac tab (Branch G: `!(activeTab === 'almanac' && almanacOpen)`), and an effect puts `activeTab`
+  and `previousTab` back to 'living', so Settings never offers "← Almanac".
+- **A demotion (V6 A — the downgrade item).** `applyViewerSnapshot`'s safe branch runs `clearViewerData()` before it sets
+  the safe block (the wipe clears that block too — the order is load-bearing). `clearViewerData` now also drops
+  `venueColors` (the owner's colours — a safe snapshot never carries them; BL44 left what a viewer keeps of them to
+  BL48) and `viewerColdMovedByMonth`; it keeps the layout prefs, which a viewer's pages no longer follow. Measured: a
+  safe snapshot with the Almanac open sends the viewer home, and the store and what a reload reads hold the seed's
+  figures, the default colours and no cold moves (e2e DEMOTE).
+- **The apply fails closed.** The trusted branch's writes sit in a `try`: one that throws part-way — a malformed
+  snapshot, `applyViewerSettings` on settings that aren't an object — runs `clearViewerData()` and rethrows (the event's
+  catch skips the event). Without it the device stayed loaded with its safe block cleared, which the tier reads as
+  trusted: the Almanac opened for a safe viewer, on the seed's figures (the independent review's probe). Pinned by
+  `clearViewerData.test.ts` (CLOSED, on the real store) and e2e SAFE.
+- **The apply, exported.** `applyViewerEvent` decrypts, orders, then calls `applyViewerSnapshot(snap)` — the one apply,
+  exported so the e2e can hand a viewer page the REAL payload an owner page builds (the dev server skips the viewer
+  gates). A no-op off `viewerMode`: an owner device never takes a viewer snapshot over its own plan.
+- **The cold moves (V2 A).** The trusted snapshot's `coldMovedByMonth` → `viewerColdMovedByMonth` (persisted, device-
+  local, null on an owner device), read by the Ledger through `coldMovedOf` — `almanac.md` § Trusted viewers.
+- **"Preview as viewer"** names no viewer: its banner reads "PREVIEW · what your viewer sees — Trusted mode" (it read
+  the first roster slot's label, the owner's own nickname for one viewer). The name fields' examples say "viewer" (the
+  owner's ask, BL48).
+- **Not in it:** the FIRE face for a viewer (V1 — C2 later: the owner's FIRE assumptions synced across his devices and to
+  trusted viewers, with the borrow lane); the Ledger's Mining column (F1, the owner's call A: `showMiningInLog` is
+  device-local and a viewer's stays off — the owner's is off too; `almanac.md` § Trusted viewers). The price stays each
+  device's own quote, as on the viewer home since V2.
+- Tests: `src/components/Layout/__tests__/viewerAccess.test.ts` (TIER, OPENS, ONE READ, HOME, PAGES, PUT BACK, BAR),
+  `src/components/ui/__tests__/viewerWhatIf.test.tsx` (LOCK, WHAT-IF, ONLY THERE, ONE READ),
+  `src/components/Almanac/__tests__/viewerAlmanacWiring.test.ts` (WRITES, COPIES, PIN, NO WORD, PREVIEW),
+  `src/lib/__tests__/ledgerColdViewer.test.ts` (ONE RULE, ROUND TRIP, CHECKED, FACE), `viewerSync.test.ts` (DEMOTE — the
+  safe test flipped on purpose: it pinned the bug — COLD ×2, OWNER), `viewerSnapshot.test.ts` (COLD; the trusted
+  top-level key set), `clearViewerData.test.ts` (WIPE, CLOSED), `backPlace.test.ts` (GUARD), `characterization.test.ts` (110 persisted keys) and
+  `e2e/viewerAlmanac.spec.ts` — the first viewer e2e (PARITY, PARITY LIST, WAY IN, SAFE, DEMOTE, FULL MODE, WHAT-IF,
+  MINING, PREVIEW).

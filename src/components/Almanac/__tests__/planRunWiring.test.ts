@@ -419,8 +419,8 @@ describe('⭐ NOTE · CACHE · HOLD · WHATIF · CRASH', () => {
     expect(readers, 'CACHE validated — the only reader').toEqual(['components/Almanac/usePlanMonth.ts']);
   });
   it('⭐ HOLD — D9: every hold reader a viewer can reach reads the ONE fact through the ONE rule', () => {
-    // A viewer never sees THIS MONTH or Daily (AppShell routes it to its own home), but it opens the Almanac: the Decision
-    // face and the Emergency Console must hold exactly when the owner's do.
+    // A viewer never sees THIS MONTH or Daily (AppShell routes it to its own home), but a trusted one opens the Almanac
+    // (BL48 — his home bar's "Almanac"): the Decision face and the Emergency Console must hold exactly when the owner's do.
     expect(PLAYBOOK, 'HOLD the fact').toMatch(
       /return st\.viewerMode \? st\.viewerStrikeDepositISO : latestStrikeDepositISO\(st\.dayLog\);/);
     expect(PLAYBOOK, 'HOLD one rule').toMatch(

@@ -246,7 +246,8 @@ persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
 - **Spec v3 — "Strike col" is RECORDED + optional; "→ Cold" is COMPUTED.** An unrecorded `btcHeld` renders "—" (never
   0) and exports an empty CSV cell. `coldMovedByMonth(dayLog, advisorStartDate)` (ledgerCsv.ts) = net `target:'cold'`
   deposits − withdrawals per month; `hasColdColumn` shows the column only when a month that HAS a row moved a non-zero
-  amount (a viewer's `[]` dayLog → hidden). The column is a FLOW (summed in the totals row). Never stored on the entry.
+  amount (a viewer reads the owner's months from his snapshot — `coldMovedOf`, BL48). The column is a FLOW (summed in the
+  totals row). Never stored on the entry.
   **(ledger-cold-total-onboarding-date-spec-v2)** ONE tolerance, `COLD_EPS` (half a satoshi, `5e-9`), is shared by the
   column gate, the totals and the footnote. It exists because a deposit and withdrawals netting to zero leave ~7e-18,
   which `!== 0` passed. `coldTotals(entries, coldByMonth)` → `{ logged, unlogged }`, and ⚠ **the total stays
@@ -322,8 +323,8 @@ store-shape change.
   pair iff `hasCbLoan`; `value = overlay[k] ?? current[k]`; ghost Reset → `{}`); a WHAT-IF grid
   (`diffScenarios(current, applyOverlay(current, overlay))` → Credit used / Strike LTV / CB LTV rows, each side
   `LEVEL_COLOR`-tinted per its level + a signed pp delta chip; secondary crash-LTV + CB-liq-frac pairs; verdict
-  from `worsenedCount`). Empty overlay → identity grid (zero deltas), correct. Viewer devices: NumberInputs
-  self-disable in `viewerMode`; a local pin is harmless — no special gating. No tests (no render harness; the
+  from `worsenedCount`). Empty overlay → identity grid (zero deltas), correct. Viewer devices (BL48): the levers are
+  live inside the Almanac's what-ifs and never saved; no Pin row (a pin saves) — § Trusted viewers in the Almanac. No tests (no render harness; the
   engine is pinned by 3a's `scenarioDiff.test.ts`).
 
 ### Cycling face (NINTH Almanac face; store unchanged, NO bump)
@@ -2308,8 +2309,9 @@ stuck to the window's bottom edge (`ControlDock` + `controlDockView`, see their 
   the person just opened, so an Escape meant for the page (an ⓘ tip, a chart drag) must never fold it. Escape folds the
   open tab and gives that tab focus (the panel's content unmounts with the fold); a typed value's Escape stays the
   field's. A Chromium browser focuses a clicked tab; in Safari a keyboard user Tabs into the dock.
-- **Viewers (R1).** The dock's Line is `disabled={s.viewerMode}`, as the Credit-line card's SliderInput disables itself;
-  Month and Stress stay live for a viewer, as they were.
+- **Viewers (R1; BL48).** R1 locked the dock's Line for a viewer, as the Credit-line card's SliderInput locked itself;
+  since BL48 both are what-ifs a viewer tries inside the Almanac, never saved — the Line has no lock of its own. Month
+  and Stress stay live, as they were.
 - **The face's end.** `.faceDocked.faceDocked` (doubled — the composed `.face`'s `padding` shorthand would tie a single
   class): bottom padding 0 under 1024 px, where the dock sits flush on the edge, and 12 px from 1024, so the floating
   bar never moves when the page runs out.
@@ -2513,12 +2515,11 @@ device-local key (`docs/claude/store.md` § FIRE's own inputs).
 - **The words** — dates from one fixed month table (`fireMonthYear`, never ICU; pinned equal to `futuresView`'s
   `monthYear`, which the view can't import — NO SIM reads the sources' import lines); dollars nominal ÷ the row's
   `inflationStep`; no sentence says "safe", "you can retire", "guaranteed", "should" or "need to".
-- **Viewers.** In simple mode a viewer never reaches the Almanac. ⚠ By reading (not run), a TRUSTED viewer can, when the
-  owner's synced `simpleMode` is false: AppShell's viewer branch lets Settings and the Almanac fall through, the
-  full-mode shell's tab bar and Tools menu have no viewer check, and `planRunWiring.test.ts` already records that a viewer
-  opens the Almanac. Older than build 4, and every face is reachable the same way; logged for the owner's viewer item. A
-  viewer demoted from trusted to safe keeps its prefs and the old trusted figures. What build 4 did (D-1): the face's
-  own buttons are `disabled={s.viewerMode}`; its number fields are already read-only for a viewer.
+- **Viewers.** No viewer gets this face (BL48 — `ownerOnly`): it reads this device's own assumptions (D3 A), so a
+  viewer's would show other figures, until they sync (BL48's C2, with the borrow lane). Before BL48 a trusted viewer
+  reached it through the owner's full-mode layout. The face keeps its own lock all the same — its buttons
+  `disabled={s.viewerMode}` (D-1), and the whole face inside `ViewerWhatIf` (false), so the Almanac's what-ifs never
+  unlock its inputs, which save.
 - **The lists it joined.** `stressAnchor.test.ts` (all five faces), `coldWiring.test.ts` FACES, `milestones.test.ts`
   FACES (`MS_VIEWS_FIRE`, `MS_TABLE`), `supportPolicyView.test.ts`'s view-module walls (`fireFaceView.ts`; the pattern
   widened to `cycleReplays`, `pricePaths` and `'react'`), `numberInputModel.test.ts` SITES (eleven `'leave'`), build 3's
@@ -2644,10 +2645,11 @@ The hub opens on its faces as a grid — the owner's ask, "a grid of apps … si
   (Since BL46's A a window 1200px wide or more shows the faces as a list beside the open face instead — § The Almanac
   on a computer.)
 - **ONE catalogue.** `almanacGrid.ts` — `FACE_TILES` (key, name, group, gate), `FACE_GROUPS`, `faceShown`, `gridGroups`,
-  and the `Face` union (`AlmanacView` re-exports it as `AlmanacFace`) — is pure: the hub reads its three gates once
-  (`hasCbLoan`, `ledgerFaceAvailable(monthlyLog)`, `FIRE_ON_THIS_DEPLOY`) and passes them in, so every combination is a
-  unit test. The grid offers exactly the faces the pill row did — `almanacGrid.test.ts` PILLS keeps the pill row's rule
-  as its reference, in all eight combinations — so no viewer reaches a face it couldn't before. `visibleFaces` and the
+  and the `Face` union (`AlmanacView` re-exports it as `AlmanacFace`) — is pure: the hub reads its four gates once
+  (`hasCbLoan`, `ledgerFaceAvailable(monthlyLog)`, `FIRE_ON_THIS_DEPLOY` and, since BL48, `viewer` — a viewer's device)
+  and passes them in, so every combination is a unit test. The owner's grid offers exactly the faces the pill row did —
+  `almanacGrid.test.ts` PILLS keeps the pill row's rule as its reference, in all sixteen combinations; a viewer's, those
+  less FIRE (BL48). `visibleFaces` and the
   `.subnav*` styles are gone.
 - **Open and back.** `face` is `Face | null`: null is the grid, the default whenever the hub mounts (the Halving Clock
   was). A tile opens its face in place of the grid — only the open face mounts, none on the grid. "← Almanac" above the
@@ -2669,8 +2671,8 @@ The hub opens on its faces as a grid — the owner's ask, "a grid of apps … si
   name). New because the pills' glyphs couldn't serve: ₿ (Cycle Clock, Power Law) and ⚖ (Scenario, Ownership) were
   shared, and ⛏ and 🚨 showed as colour emoji on an iPhone. The Decision face's own links keep their glyphs ("♻ Cycling",
   "⚖ Ownership", "◈ Strategy").
-- **Viewers.** Unchanged: the grid reads the same gates, so it offers a viewer exactly what the pills did (a trusted
-  viewer reaches the Almanac in full mode; the viewer work is BL40's second piece).
+- **Viewers.** The grid reads the same gates, so it offered a viewer exactly what the pills did; since BL48 a trusted
+  viewer's grid is the owner's less FIRE, and a safe viewer has none (§ Trusted viewers in the Almanac).
 - **This file's earlier sections** describe the pills: a face "appended LAST" in `visibleFaces`, a fallback to
   `'halving'`, the sub-nav. Since BL45 a face's tile is its entry in `FACE_TILES`, the fallback goes to the grid, and the
   sub-nav is the grid.
@@ -2773,11 +2775,59 @@ click between faces, no grid page, no step back. Screens only (Standard): spec `
 - **The plan faces' control bar** floats over the face, not the window, by construction: `ControlDock` is `position:
   sticky` inside the face — 928px wide at 1200, inside the pane (measured). Its own breakpoint (`WIDE`, 1024px) is
   unchanged.
-- **Viewers.** Unchanged: the list reads the same gates as the grid.
+- **Viewers.** The list reads the same gates as the grid — a trusted viewer's less FIRE (BL48).
 - Tests: `almanacGrid.test.ts` WIDTH, FIRST, LIST and KEEP (new) and GRID, BACK, TITLE and BADGE (moved);
   `e2e/almanacList.spec.ts` (new: LIST, ONE CLICK, GATED, SWIPE, STAY, AGAIN, EDGE, FULL, BADGE, FIT);
   `e2e/almanacGrid.spec.ts` FULL moved from 1280 to 1199px, the widest window the grid serves. `openAlmanacFace` reaches
   a face by the list as well — it is the same "Faces" nav. § Test Suite → "The Almanac on a computer".
+
+### Trusted viewers in the Almanac (BL48 — BL40's second piece; one viewer-side key, NO bump)
+
+A TRUSTED viewer opens the Almanac and reads every face he gets on the owner's figures; a safe viewer never gets in
+(the owner's ask: "the trusted viewer to be able to have access to the almanac hub and faces as well"; his calls V1–V7,
+BL48). Heavy: spec `pbloc-spec-trusted-viewers-v1`. The routing, the tier and the home bar: `viewer.md` § BL48.
+- **What a trusted viewer gets — the owner's faces, less FIRE.** Every face reads the trusted snapshot to the owner's
+  figures (BL9's third kill criterion), measured text for text and field for field on two seeded plans — a phone's grid
+  with the loan and a logged month, a computer's list with neither (e2e PARITY, PARITY LIST). FIRE is
+  the owner's only (`FACE_TILES`' `ownerOnly`, `faceShown`'s first check — no deploy or loan brings it back): it reads
+  this device's own assumptions, `fireInputs` and `inflationRate` (D3 A), so a viewer's would show other figures —
+  until they sync across the owner's devices and to trusted viewers (BL48's C2, with FIRE's borrow lane). The hub's
+  gates are the owner's (the trusted settings carry `hasCbLoan`, the snapshot his months), so a viewer's grid is the
+  owner's less FIRE.
+- **The Ledger's "→ Cold" (V2 A).** It comes from the journal, which a viewer never gets: the owner's month-by-month
+  cold moves ride the trusted snapshot (`coldMovedByMonth`, worked out by `payloads.ts` with the Ledger's own
+  `coldMovedByMonth`), the viewer raw-sets them as `viewerColdMovedByMonth` (through `coldMovesFromSnapshot` — a month
+  ≥ 1 and a finite number, or dropped), and the face reads ONE rule, `coldMovedOf` (`lib/ledgerCsv.ts`) — the journal's
+  on the owner's device, the copy on a viewer's, as `strikeDepositOf` reads the hold. An older owner's snapshot carries
+  none → no column, as before.
+- **The Ledger's Mining column stays the owner's** (F1, the owner's call A, from Claude Code's plan review). It draws
+  only with `showMiningInLog` on — a device-local switch (Settings → Customize, hidden for a viewer) that no snapshot
+  carries — so a viewer's Ledger never shows it, though the months' `miningSats` arrive. The owner's switch is off, so
+  the two Ledgers match. If it goes on: draw the column on a viewer's device when the months carry `miningSats` — its
+  own item.
+- **What-ifs, never saved (V4 B).** Inside the hub a viewer tries any what-if on a plan face: the open face renders
+  inside `ViewerWhatIf` (true), which lifts the shared inputs' viewer lock (`useViewerLocked` in SliderInput,
+  NumberInput and Toggle) — every control on a face there is a session overlay that writes nothing (each face's
+  READ-ONLY rule), or Mining's, which is the viewer's own tool (V3 A — its list is device-local and never syncs). The
+  guard is a list: the hub's faces — its import closure, the store excepted — may call only the store functions
+  `viewerAlmanacWiring.test.ts`'s WRITES names: two reads, the viewer's own tools (Mining, the Sats converter, the
+  live-height switch) and three writes no viewer reaches (Scenario's pin, FIRE's two); a face that gains another fails
+  it until that write is decided — locked for a viewer, or listed. FIRE's
+  face puts the lock back (`ViewerWhatIf` false around it — its inputs save). The dock's Line, which R1 locked for a
+  viewer with the card's SliderInput, is live with it. Over a plan face but the Ledger a viewer reads `VIEWER_WHAT_IF_NOTE`
+  ("What-if only: what you change here isn't saved, and the plan doesn't change." — `almanacGrid.ts`,
+  `viewerWhatIfNoteShown`). Measured: the first two sliders on five plan faces, Decision's dock Line and Scenario's
+  first lever moved as a viewer, the faces moved with them, and the device's stored state unchanged byte for byte (e2e
+  WHAT-IF).
+- **What a viewer's faces leave out.** The two controls that save: Scenario's Pin row and its drift line (a pin is a
+  device-local copy of the position — its framing reads "Test a what-if against the plan." for a viewer); FIRE's inputs.
+  The copies off the app (V5 A): the Decision schedule's Copy, Download .txt and Print, the Ledger's Copy CSV and
+  Download .csv — when a viewer's access ends the app wipes the owner's figures from his device, but not a file.
+- **A demotion (V6 A).** A safe snapshot wipes first (`viewer.md` § BL48) and a viewer on the Almanac goes home.
+- Tests: `almanacGrid.test.ts` (OWNER ONLY, NOTE, WHAT-IF; GATES, PILLS and FIRST over sixteen combinations, a viewer's
+  among them), `viewerWhatIf.test.tsx`, `viewerAlmanacWiring.test.ts` (WRITES among them), `ledgerColdViewer.test.ts`, `fireWiring.test.ts`
+  (DEPLOY GATE, VIEWER), `controlDockWiring.test.ts` (ONCE's VIEWER) and `e2e/viewerAlmanac.spec.ts`. § Test Suite →
+  "Trusted viewers in the Almanac".
 
 ### Almanac face navigation — TAP-ONLY (the face swipe pager was REMOVED)
 

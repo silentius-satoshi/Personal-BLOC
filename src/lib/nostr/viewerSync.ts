@@ -19,6 +19,7 @@ import { NSecSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
 import { viewerDTag, type ViewerSnapshot } from './publish';
 import type { MonthlyLogEntry } from '../../simulation/types';
+import { coldMovesFromSnapshot } from '../ledgerCsv';
 import { signerOpTimeout } from './timeout';
 import { withTimeout } from './timeout';
 import { nostrLog } from './log';
@@ -137,30 +138,51 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
     // Decryption is asynchronous. A newer event may have hydrated while this one was in flight;
     // never let the older result regress the viewer or clear the newer snapshot on an error.
     if (event.created_at <= lastAppliedViewerEventAt) return;
-    if (snap.revoked) {
-      // Owner revoked this viewer — wipe hydrated data (viewerDataLoaded → false → ViewerWaitingGate). No hydrate.
-      nostrLog('info', 'viewer access revoked by owner');
-      lastAppliedViewerEventAt = event.created_at;
-      s.clearViewerData();
-      return;
-    }
-    // Viewer V2 — C-SAFE mode: store only the ratio/config/at-snapshot-price block (ViewerHomeView scales it to
-    // the live price). Do NOT applyViewerSettings/records/strike — none exist in a safe payload (no absolutes).
-    if (snap.privacyMode === 'safe') {
-      s.setViewerSafeSnapshot({
-        safety:             snap.safety!,
-        thresholds:         snap.thresholds!,
-        btcPriceAtSnapshot: snap.btcPriceAtSnapshot!,
-        hasCbLoan:          snap.hasCbLoan ?? false,
-      });
-      s.setViewerDataLoaded(true);
-      s.setViewerLastSyncAt(Date.now());
-      lastAppliedViewerEventAt = event.created_at;
-      nostrLog('info', 'viewer safe snapshot hydrated');
-      return;
-    }
-    // C-TRUSTED (or a pre-V2 snapshot with no privacyMode) — the full hydrate. Clear any prior safe snapshot first
-    // so a trusted→ nothing-stale mix can't linger (ViewerHomeView reads viewerSafeSnapshot to pick its mode).
+    applyViewerSnapshot(snap);
+    lastAppliedViewerEventAt = event.created_at;
+  } catch { nostrLog('warn', 'viewer payload parse failed (skipped)'); }
+}
+
+/**
+ * Apply one DECRYPTED owner snapshot to this viewer's store — the relay path's one apply (applyViewerEvent calls it
+ * after the decrypt and the ordering check). Exported for the e2e (BL48): the dev server skips the viewer gates
+ * (e2e/helpers.ts), so a viewer page there is handed the REAL payload an owner page builds, through this same apply.
+ * A no-op off viewerMode — an owner device never takes a viewer snapshot over its own plan.
+ */
+export function applyViewerSnapshot(snap: ViewerSnapshot): void {
+  const s = useStore.getState();
+  if (!s.viewerMode) return;
+  if (snap.revoked) {
+    // Owner revoked this viewer — wipe hydrated data (viewerDataLoaded → false → ViewerWaitingGate). No hydrate.
+    nostrLog('info', 'viewer access revoked by owner');
+    s.clearViewerData();
+    return;
+  }
+  // Viewer V2 — C-SAFE mode: store only the ratio/config/at-snapshot-price block (ViewerHomeView scales it to
+  // the live price). Do NOT applyViewerSettings/records/strike — none exist in a safe payload (no absolutes).
+  // BL48 (V6 A) — WIPE FIRST: a viewer demoted from trusted kept every trusted figure the last trusted snapshot
+  // wrote (the downgrade item — and, while the Almanac was open, it went on showing them). clearViewerData resets
+  // them to the seed before the safe block lands — it also clears the safe block, so the order is load-bearing.
+  if (snap.privacyMode === 'safe') {
+    s.clearViewerData();
+    s.setViewerSafeSnapshot({
+      safety:             snap.safety!,
+      thresholds:         snap.thresholds!,
+      btcPriceAtSnapshot: snap.btcPriceAtSnapshot!,
+      hasCbLoan:          snap.hasCbLoan ?? false,
+    });
+    s.setViewerDataLoaded(true);
+    s.setViewerLastSyncAt(Date.now());
+    nostrLog('info', 'viewer safe snapshot hydrated');
+    return;
+  }
+  // C-TRUSTED (or a pre-V2 snapshot with no privacyMode) — the full hydrate. Clear any prior safe snapshot first
+  // so a trusted→ nothing-stale mix can't linger (ViewerHomeView reads viewerSafeSnapshot to pick its mode).
+  // BL48 — FAIL CLOSED: a trusted snapshot that can't apply (a malformed one throws part-way — `applyViewerSettings` on a
+  // non-object) leaves nothing: never a loaded device with its safe block cleared, which the tier reads as trusted
+  // (Layout/viewerAccess.ts) — the Almanac opened for a safe viewer on the seed's figures. The throw goes on to the
+  // event's catch, which skips the event.
+  try {
     s.setViewerSafeSnapshot(null);
     const settings = snap.settings ?? {};
     s.applyViewerSettings(settings);
@@ -185,12 +207,17 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
       coldStorageBtc:      snap.coldStorageBtc      ?? useStore.getState().coldStorageBtc,
       // Run 2 (D9) — the owner's latest Strike deposit date (the hold's one fact). A pre-Run-2 owner snapshot has none.
       viewerStrikeDepositISO: snap.strikeLastDepositISO ?? null,
+      // BL48 (V2 A) — the owner's month-by-month cold moves (the Ledger's "→ Cold"), checked on the way in; an older
+      // owner's snapshot has none → null → no column, as before.
+      viewerColdMovedByMonth: coldMovesFromSnapshot(snap.coldMovedByMonth),
     });
-    s.setViewerDataLoaded(true);   // a VALID decrypt populated the store — the viewer render may now show
-    s.setViewerLastSyncAt(Date.now());   // freshness clock for the viewer home pill (Viewer Revamp V1)
-    lastAppliedViewerEventAt = event.created_at;
-    nostrLog('info', 'viewer snapshot hydrated');
-  } catch { nostrLog('warn', 'viewer payload parse failed (skipped)'); }
+  } catch (e) {
+    s.clearViewerData();
+    throw e;
+  }
+  s.setViewerDataLoaded(true);   // a VALID decrypt populated the store — the viewer render may now show
+  s.setViewerLastSyncAt(Date.now());   // freshness clock for the viewer home pill (Viewer Revamp V1)
+  nostrLog('info', 'viewer snapshot hydrated');
 }
 
 // Batch pull — latest snapshot by created_at. Called on foreground.

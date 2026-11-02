@@ -30,7 +30,7 @@ vi.mock('../../../store/useStore', () => ({
   },
 }));
 
-import { fetchViewerSnapshot, setUnwrappedViewerKey, getViewerPubkeyHex, openViewerSync, closeViewerSync } from '../viewerSync';
+import { fetchViewerSnapshot, setUnwrappedViewerKey, getViewerPubkeyHex, openViewerSync, closeViewerSync, applyViewerSnapshot } from '../viewerSync';
 import { viewerDTag } from '../publish';
 
 function resetStore(overrides: Partial<Record<string, any>> = {}) {
@@ -133,7 +133,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
   });
 
   // ── Viewer V2 — mode-aware hydrate ──────────────────────────────────────────────────────────────
-  it('C-safe snapshot stores the safe block and does NOT applyViewerSettings/records/strike', async () => {
+  it('⭐ DEMOTE — a C-safe snapshot wipes first (BL48), then stores the safe block — and does NOT applyViewerSettings/records/strike', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
       snapshotVersion: 2, privacyMode: 'safe', asOf: 1, hasCbLoan: true,
       btcPriceAtSnapshot: 100_000,
@@ -149,7 +149,45 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     expect(mockState.applyViewerSettings).not.toHaveBeenCalled();   // no absolutes to hydrate in safe mode
     expect(mockState.setMonthlyLog).not.toHaveBeenCalled();
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
-    expect(mockState.clearViewerData).not.toHaveBeenCalled();
+    // ⭐ DEMOTE (BL48, V6 A — the downgrade item): a viewer demoted from trusted kept every trusted figure, since this
+    // branch cleared nothing. Now it wipes them first — before the safe block, which the wipe would clear too.
+    // mutations: no clearViewerData here → red; the clear after setViewerSafeSnapshot → red (the order)
+    expect(mockState.clearViewerData, 'DEMOTE the wipe').toHaveBeenCalledTimes(1);
+    expect(mockState.clearViewerData.mock.invocationCallOrder[0], 'DEMOTE wipe first')
+      .toBeLessThan(mockState.setViewerSafeSnapshot.mock.invocationCallOrder[0]);
+    expect(mockState.setViewerSafeSnapshot.mock.invocationCallOrder[0], 'DEMOTE the safe block, then loaded')
+      .toBeLessThan(mockState.setViewerDataLoaded.mock.invocationCallOrder[0]);
+  });
+
+  it('⭐ COLD — BL48 (V2 A): a trusted snapshot raw-sets the owner\'s month-by-month cold moves, checked on the way in', async () => {
+    decryptImpl.fn.mockResolvedValue(JSON.stringify({
+      settings: {}, records: { entries: [], deletions: {} }, strike: null,
+      coldMovedByMonth: { 1: 0.1, 2: -0.05, x: 3, 0: 1, 3: 'junk', 4: null },
+    }));
+
+    await fetchViewerSnapshot();
+
+    expect(mockState.viewerColdMovedByMonth, 'COLD raw-set, junk dropped').toEqual({ 1: 0.1, 2: -0.05 });
+    expect(mockState.dayLog, 'COLD no journal event on the viewer').toEqual([]);
+  });
+
+  it('⭐ COLD — an older owner\'s snapshot carries none: null (no column), never a stale copy', async () => {
+    resetStore({ viewerColdMovedByMonth: { 1: 9 } });
+    decryptImpl.fn.mockResolvedValue(JSON.stringify({ settings: {}, records: { entries: [], deletions: {} }, strike: null }));
+
+    await fetchViewerSnapshot();
+
+    expect(mockState.viewerColdMovedByMonth, 'COLD older snapshot').toBeNull();
+  });
+
+  it('⭐ OWNER — the exported apply is a no-op off viewerMode: an owner device never takes a viewer snapshot over its plan', () => {
+    resetStore({ viewerMode: false });
+    applyViewerSnapshot({ privacyMode: 'safe', safety: {} as never, thresholds: {} as never, btcPriceAtSnapshot: 1 });
+    applyViewerSnapshot({ privacyMode: 'trusted', settings: { income: 1 } });
+    applyViewerSnapshot({ revoked: true });
+    for (const k of ['clearViewerData', 'setViewerSafeSnapshot', 'applyViewerSettings', 'setMonthlyLog', 'setViewerDataLoaded']) {
+      expect(mockState[k], `OWNER ${k}`).not.toHaveBeenCalled();
+    }
   });
 
   it('S4 — trusted entries land VERBATIM: btcHeld is the owner\'s recorded value, never recomputed off the baseline', async () => {

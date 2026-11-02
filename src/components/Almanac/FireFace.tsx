@@ -30,6 +30,7 @@ import {
 import { NumberInput } from '../ui/NumberInput';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
+import { ViewerWhatIf } from '../ui/viewerWhatIf';
 import styles from './FireFace.module.css';
 
 /**
@@ -42,7 +43,8 @@ import styles from './FireFace.module.css';
  *    and hands plain arrays to the view and to fireReplays, the replays' one belief crossing.
  * 🔴 It writes ONLY its own device-local inputs (`fireInputs`, D3 A) and the shared inflation (Living's input too) — and
  *    reads its inputs once a change, through `fireInputsOf` memoised on the stored object, so the lens reset never fires on
- *    a render. Its own buttons are inert for a viewer (D-1); its number fields already are.
+ *    a render. Its own buttons are inert for a viewer (D-1); its number fields already are — and stay so inside the
+ *    Almanac's what-ifs, which lift a viewer's lock on every other face (BL48): this face provides the lock back.
  * ⚠ D1 A′: no simulation here — the four Paths, the replays and the break-even only. The borrow lane is its own item after
  *    Batch 1 (BL42); until it ships, the hub keeps this face off the public deploy and the sandbox.
  */
@@ -96,7 +98,14 @@ function FireTip({ active, payload }: { active?: boolean; payload?: { payload: F
   );
 }
 
+/** BL48 — this face's inputs SAVE (`fireInputs`, `inflationRate` — D3 A), so inside the Almanac's what-ifs, which lift a
+ *  viewer's lock on every other face (`ViewerWhatIf`), the lock holds here: no viewer gets this face until its
+ *  assumptions sync (BL48 V1), and this keeps it so if one did. */
 export default function FireFace() {
+  return <ViewerWhatIf.Provider value={false}><FireFaceBody /></ViewerWhatIf.Provider>;
+}
+
+function FireFaceBody() {
   const s = useStore(useShallow((st) => ({
     btcPrice: st.btcPrice,
     btcPriceMode: st.btcPriceMode,   // 'live' polls; 'manual' is the owner typing — see useStressLens

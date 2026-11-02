@@ -235,6 +235,7 @@ export interface ViewerSnapshot {
   strikeCollateralBtc?: number;   // C-P4 (BUG2 mirror) — the derived reading-anchored Strike-collateral scalar; the viewer raw-sets it (never gets the dayLog journal)
   coldStorageBtc?: number;        // the derived LIVE cold total (anchor + cold journal moves); the viewer raw-sets it — its dayLog is []
   strikeLastDepositISO?: string | null;   // Run 2 (D9) — the latest logged Strike deposit's date; the viewer reads the 60-day hold from it
+  coldMovedByMonth?: Record<string, number>;   // BL48 (V2 A) — the owner's net ₿ into cold per strategy month (JSON's string keys); the viewer raw-sets it as viewerColdMovedByMonth — its dayLog is []
 }
 
 export async function publishViewerSnapshot(

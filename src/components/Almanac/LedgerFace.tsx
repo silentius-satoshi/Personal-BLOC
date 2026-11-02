@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store/useStore';
-import { buildLedgerCsv, coldMovedByMonth, hasColdColumn, coldTotals, coldFootnote, fmtColdBtc, COLD_EPS } from '../../lib/ledgerCsv';
+import { buildLedgerCsv, coldMovedOf, hasColdColumn, coldTotals, coldFootnote, fmtColdBtc, COLD_EPS } from '../../lib/ledgerCsv';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbBarLevel } from '../../simulation/cbMetrics';
 import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
@@ -19,6 +19,8 @@ import styles from './LedgerFace.module.css';
  * "Strike col" is RECORDED (optional) — an unrecorded month shows "—", never 0. "→ Cold" is COMPUTED from the dayLog
  * (coldMovedByMonth), shown only when a logged month moved something into or out of cold. Its total stays row-scoped
  * (it foots); cold movement in months with NO row is disclosed in a ‡ footnote (coldTotals / coldFootnote).
+ * BL48 — a trusted viewer reads the owner's table: his months from the snapshot, "→ Cold" from the owner's cold moves
+ * (`coldMovedOf`); no Copy or Download for a viewer (V5 A).
  */
 
 // Strike LTV zone thresholds (Strike-only — NOT applied to CB). green < 10%, amber 10–13%, red > 13%.
@@ -53,6 +55,8 @@ export default function LedgerFace() {
   const monthlyLog = useStore((s) => s.monthlyLog);
   const dayLog = useStore((s) => s.dayLog);
   const advisorStartDate = useStore((s) => s.advisorStartDate);
+  const viewerMode = useStore((s) => s.viewerMode);
+  const viewerColdMovedByMonth = useStore((s) => s.viewerColdMovedByMonth);
   const hasCbLoan = useStore((s) => s.hasCbLoan);
   const showMining = useStore((s) => s.showMiningInLog);
   const cbLtvTriggerPct = useStore((s) => s.cbLtvTriggerPct);
@@ -62,8 +66,12 @@ export default function LedgerFace() {
   const [copyState, setCopyState] = useState<'idle' | 'ok' | 'err'>('idle');
 
   const rows = useMemo(() => [...monthlyLog].sort((a, b) => a.month - b.month), [monthlyLog]);
-  // → Cold — net BTC into cold per month, computed from the dayLog (never stored; see coldMovedByMonth).
-  const coldByMonth = useMemo(() => coldMovedByMonth(dayLog, advisorStartDate), [dayLog, advisorStartDate]);
+  // → Cold — net BTC into cold per month, computed from the dayLog (never stored; see coldMovedByMonth) — or, on a
+  // trusted viewer's device, the owner's, from his snapshot (BL48 — `coldMovedOf`, the one rule).
+  const coldByMonth = useMemo(
+    () => coldMovedOf({ viewerMode, viewerColdMovedByMonth, dayLog, advisorStartDate }),
+    [viewerMode, viewerColdMovedByMonth, dayLog, advisorStartDate],
+  );
   const showCold = hasColdColumn(rows, coldByMonth);
   const csv = useMemo(
     () => buildLedgerCsv(monthlyLog, { hasCbLoan, showMining, coldByMonth }),
@@ -120,10 +128,14 @@ export default function LedgerFace() {
         <div className={styles.framing}>Your logged months, top to bottom.</div>
       </div>
 
-      <div className={styles.actions}>
-        <button type="button" className={styles.actionBtn} onClick={copyCsv}>{copyLabel}</button>
-        <button type="button" className={styles.actionBtn} onClick={downloadCsv}>Download .csv</button>
-      </div>
+      {/* BL48 (V5 A) — no copy or download for a viewer: when his access ends the app wipes the owner's figures from his
+          device, but not a file he saved. */}
+      {!viewerMode && (
+        <div className={styles.actions}>
+          <button type="button" className={styles.actionBtn} onClick={copyCsv}>{copyLabel}</button>
+          <button type="button" className={styles.actionBtn} onClick={downloadCsv}>Download .csv</button>
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className={styles.empty}>No months logged yet.</div>

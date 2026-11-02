@@ -20,7 +20,8 @@ import UnifiedFace from './UnifiedFace';
 import DecisionFace from './DecisionFace';
 import FireFace from './FireFace';
 import FaceIcon from './FaceIcon';
-import { ALMANAC_LIST, faceShown, firstListFace, gridGroups, type Face } from './almanacGrid';
+import { ALMANAC_LIST, faceShown, firstListFace, gridGroups, VIEWER_WHAT_IF_NOTE, viewerWhatIfNoteShown, type Face } from './almanacGrid';
+import { ViewerWhatIf } from '../ui/viewerWhatIf';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import { fireFaceOnDeploy } from '../../lib/fireDeploy';
 import styles from './AlmanacView.module.css';
@@ -94,14 +95,17 @@ let lastOpenFace: Face | null = null;
 
 interface AlmanacViewProps {
   /** Read at mount only (the hub mounts each time it is opened): a face to open on, from outside the hub — the plan's
-   *  "other price paths" link. Absent → the grid. A gated face falls back to the grid by the effect below. */
+   *  "other price paths" link. Absent → the grid, or on a computer the list with its first face open (BL46's A). A gated
+   *  face falls back to the grid by the effect below. */
   initialFace?: AlmanacFace;
   /** The edge swipe's one level (AppShell Branch I, as Settings' `registerBack`): a face opened inside the hub reports its
-   *  way back to the grid; the grid — and a face the link opened — report null, so the swipe leaves the Almanac. */
+   *  way back to the grid; the grid — and a face the link opened — report null, so the swipe leaves the Almanac. So does
+   *  a computer's list, which has no grid page to step back to (BL46's A). */
   registerBack?: (fn: (() => void) | null) => void;
   /** The header's title (AppShell Branch I — simple mode): handed the way to the grid while a face is open — any face,
-   *  the link's too — and null on the grid, so the header's "Almanac" is the link to the grid. Absent — full mode,
-   *  which has no header — the hub draws its own eyebrow, whose "Almanac" is that link on a face. */
+   *  the link's too — and null on the grid, so the header's "Almanac" is the link to the grid; null beside a computer's
+   *  list too, where the title is plain (BL46's A). Absent — full mode, which has no header — the hub draws its own
+   *  eyebrow, whose "Almanac" is that link on a face (the list names itself instead). */
   registerTitleLink?: (fn: (() => void) | null) => void;
 }
 
@@ -124,25 +128,29 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
   const hasCbLoan = useStore((s) => s.hasCbLoan);
   const monthlyLog = useStore((s) => s.monthlyLog);
   const ledgerAvailable = ledgerFaceAvailable(monthlyLog);
+  // BL48 — a trusted viewer's hub (a safe viewer never opens it — AppShell): the owner's-only faces leave it, and a plan
+  // face's what-ifs are his to try, never saved.
+  const viewerMode = useStore((s) => s.viewerMode);
 
   // A gated face whose gate closes while it is open — the loan switched off, the log emptied, or the FIRE face off this
   // deploy (build 4b — BL42; an `initialFace` of 'fire' lands here too) — goes back to the grid, where its tile is gone.
   useEffect(() => {
-    if (face !== null && !faceShown(face, { hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY })) setFace(null);
-  }, [face, hasCbLoan, ledgerAvailable]);
+    if (face !== null && !faceShown(face, { hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode })) setFace(null);
+  }, [face, hasCbLoan, ledgerAvailable, viewerMode]);
 
   // Every way into a face from inside the hub — a tile, a face's own link to another — ends the link's "from outside".
   const openFace = (f: Face) => { setFace(f); setFromOutside(false); };
   const toGrid = useCallback(() => { setLastFace(face); setFace(null); setFromOutside(false); }, [face]);
 
-  // The edge swipe's one level, reported to the host as Settings reports its page (null on the grid and for a face the
-  // link opened — the swipe leaves the Almanac then).
+  // The edge swipe's one level, reported to the host as Settings reports its page (null on the grid, for a face the link
+  // opened, and beside a computer's list — the swipe leaves the Almanac then).
   useEffect(() => {
     registerBack?.(face !== null && !fromOutside && !listMode ? toGrid : null);
     return () => registerBack?.(null);
   }, [face, fromOutside, toGrid, registerBack, listMode]);
 
-  // The header's "Almanac" (simple mode): the way to the grid from any face — the link's too — and none on the grid.
+  // The header's "Almanac" (simple mode): the way to the grid from any face — the link's too — and none on the grid or
+  // beside a computer's list (no grid page there).
   useEffect(() => {
     registerTitleLink?.(face !== null && !listMode ? toGrid : null);
     return () => registerTitleLink?.(null);
@@ -158,7 +166,7 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
     }
   };
 
-  const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY });
+  const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode });
   // In the list a face is always open (BL46's A): with none asked for, the face last open in this session while it shows,
   // else Decision — drawn at once, and kept as the open face, so narrowing the window keeps it too.
   const listFace: Face | null = listMode && face === null ? firstListFace(lastOpenFace, groups) : null;
@@ -272,8 +280,13 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
           </div>
         ) : (
           // Only the open face mounts — none on the grid, no neighbour panes — so a heavy face (Power Law/Mining hooks)
-          // mounts exactly when its tile is tapped.
-          <div className={listMode ? styles.pane : styles.contents}>{renderFace(shown)}</div>
+          // mounts exactly when its tile is tapped. BL48 (V4 B): the faces are a what-if place — inside, a viewer's
+          // shared inputs unlock (`ViewerWhatIf`; FIRE's face locks its own again) — and a viewer reads so over a plan
+          // face.
+          <div className={listMode ? styles.pane : styles.contents}>
+            {viewerWhatIfNoteShown(shown, viewerMode) && <p className={styles.viewerNote} role="note">{VIEWER_WHAT_IF_NOTE}</p>}
+            <ViewerWhatIf.Provider value={true}>{renderFace(shown)}</ViewerWhatIf.Provider>
+          </div>
         )}
       </div>
 

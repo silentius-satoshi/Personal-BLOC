@@ -85,9 +85,11 @@ describe('⭐ the wiring (read off AppShell)', () => {
   });
 
   it('⭐ ORDER — the branches the rule mirrors are AppShell\'s: the viewer\'s home, then the Almanac, then the journal', () => {
-    const home = SHELL.indexOf("viewerMode && viewerDataLoaded && activeTab !== 'settings' && activeTab !== 'almanac' ? (");
-    const settings = SHELL.indexOf("simpleMode && activeTab === 'settings' ? (");
-    const almanac = SHELL.indexOf("simpleMode && activeTab === 'almanac' ? (");
+    // BL48 — the viewer's home takes the Almanac tab unless the Almanac opens for him; Settings and the Almanac are simple
+    // mode's pages for any viewer, whatever the owner's layout (viewerAccess.test.ts pins the rest).
+    const home = SHELL.indexOf("viewerMode && viewerDataLoaded && activeTab !== 'settings' && !(activeTab === 'almanac' && almanacOpen) ? (");
+    const settings = SHELL.indexOf("(simpleMode || viewerMode) && activeTab === 'settings' ? (");
+    const almanac = SHELL.indexOf("(simpleMode || viewerMode) && activeTab === 'almanac' && almanacOpen ? (");
     const journal = SHELL.indexOf("simpleMode && activeTab !== 'settings' ? (");
     expect([home, settings, almanac, journal].every((i) => i > 0), 'ORDER every branch found').toBe(true);
     expect(home < settings && settings < almanac && almanac < journal, 'ORDER home, Settings, the Almanac, the journal').toBe(true);
@@ -95,10 +97,11 @@ describe('⭐ the wiring (read off AppShell)', () => {
     expect(SHELL, 'ORDER the journal by its view').toMatch(/const renderOwnerJournal = \(\) =>\s*simpleView === 'dashboard' \? \(/);
   });
 
-  it('⭐ GUARD — the hidden-tab guard is full mode\'s: simple mode redirects no tab, so every name holds', () => {
+  it('⭐ GUARD — the hidden-tab guard is the owner\'s full mode\'s: simple mode and a viewer redirect no tab, so every name holds', () => {
     // With the five journal tabs hidden and no loan, a redirect in simple mode opened the Almanac with no way out, and
     // "← Journal" named a journal it couldn't reach (Claude Code's F1). Full mode keeps the guard; a switch of mode re-runs it.
-    expect(SHELL, 'GUARD full mode only').toMatch(/useEffect\(\(\) => \{\s*if \(simpleMode \|\| activeTab === 'settings'\) return;/);
-    expect(SHELL, 'GUARD re-runs on a switch of mode').toContain('}, [hiddenTabs, activeTab, hasCbLoan, simpleMode]);');
+    // BL48: never a viewer's — the owner's synced hidden tabs bounced a trusted viewer's Almanac to his home.
+    expect(SHELL, 'GUARD full mode only, never a viewer').toMatch(/useEffect\(\(\) => \{\s*if \(simpleMode \|\| viewerMode \|\| activeTab === 'settings'\) return;/);
+    expect(SHELL, 'GUARD re-runs on a switch of mode').toContain('}, [hiddenTabs, activeTab, hasCbLoan, simpleMode, viewerMode]);');
   });
 });

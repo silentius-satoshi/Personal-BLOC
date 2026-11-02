@@ -8,7 +8,7 @@ type ViewerSlice = Pick<StoreState,
   | 'viewers' | 'nextViewerIndex' | 'pendingViewerRevocations' | 'viewerMode' | 'viewerWriterPubkey' | 'viewerSecretKey' | 'viewerDisplayName'
   | 'viewerKeyWrapped' | 'viewerKeyWrapMeta' | 'viewerUnlocked' | 'viewerDataLoaded' | 'viewerLastSyncAt'
   | 'viewerSafeSnapshot' | 'viewerPreview' | 'storeUnlocked' | 'addViewerSlot' | 'updateViewerSlot' | 'removeViewerSlot'
-  | 'viewerStrikeDepositISO'
+  | 'viewerStrikeDepositISO' | 'viewerColdMovedByMonth'
   | 'setViewerMode' | 'setViewerWriterPubkey' | 'setViewerSecretKey' | 'setViewerDisplayName' | 'setViewerKeyWrapped'
   | 'setViewerKeyWrapMeta' | 'setViewerUnlocked' | 'setViewerDataLoaded' | 'setViewerLastSyncAt' | 'setViewerSafeSnapshot'
   | 'queueViewerRevocation' | 'clearViewerRevocation'
@@ -30,6 +30,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
   viewerLastSyncAt:    null,
   viewerSafeSnapshot:  null,
   viewerStrikeDepositISO: null,   // Run 2 (D9) — raw-set by the trusted apply; never on an owner device
+  viewerColdMovedByMonth: null,   // BL48 (V2 A) — raw-set by the trusted apply; never on an owner device
   viewerPreview:       false,
   storeUnlocked:       false,
   // Multi-viewer roster (M1) — a whole-array plan field (4c: op-events are the documented D2 multi-writer upgrade
@@ -69,8 +70,11 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
   setViewerPreview: (v) => set({ viewerPreview: v }),  // transient (not persisted) — owner preview toggle
   setStoreUnlocked:      (v) => set({ storeUnlocked: v }),       // transient (not persisted)
   // Data-remanence fix: reset every viewer-hydrated financial/records/strike field to its seed so decrypted data
-  // never outlives the authorizing key. Layout prefs (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit/venueColors) intentionally
-  // LEFT (not sensitive; clearing simpleMode would yank the viewer's UI). VIEWER paths ONLY — no emit.
+  // never outlives the authorizing key. Layout prefs (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit) intentionally LEFT
+  // (not sensitive; since BL48 a viewer's pages don't follow them). The owner's venue colours leave with the figures
+  // (BL48, V6 A): a safe snapshot never carries them, so a demoted or revoked viewer looks like any safe viewer. Since
+  // BL48 a safe snapshot runs this too, before its safe block (viewerSync — a demotion leaves nothing of the owner's).
+  // VIEWER paths ONLY — no emit.
   clearViewerData: () => set({
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),
@@ -94,6 +98,8 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     viewerLastSyncAt: null,
     viewerSafeSnapshot: null,   // Viewer V2 — drop the C-safe snapshot too (data-remanence)
     viewerStrikeDepositISO: null,   // Run 2 (D9) — the owner's Strike deposit date leaves with the rest
+    viewerColdMovedByMonth: null,   // BL48 (V2 A) — the owner's cold moves leave with the rest
+    venueColors: undefined,         // BL48 (V6 A) — the owner's colours too: the default palette again
     initialSettingsPullDone: false,   // re-arm the seed-clobber guard after resetting to seed defaults
     // 5c — the plan and the journal are seeds again, in place: this store holds no owner plan (an owner who comes back on
     // this device waits for it), and holds no journal from before the bucketing fix (nothing to re-bucket).

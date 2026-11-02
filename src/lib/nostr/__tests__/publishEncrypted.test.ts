@@ -34,7 +34,7 @@ describe('publishEncrypted', () => {
     const { signer, signed } = makeSigner();
     const relays = ['wss://relay.damus.io', 'wss://nos.lol'];
     // non-ASCII text so byte length actually diverges from String.length (the point of this test)
-    const data = { label: 'Dad’s iPhone ééé 👍', n: 42 };
+    const data = { label: 'Viewer’s iPhone ééé 👍', n: 42 };
 
     await publishEncrypted(signer, 'owner-hex', 'test:dtag:v1', data, relays);
 

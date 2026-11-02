@@ -19,7 +19,8 @@ export interface BackState {
 
 /**
  * The name of the page `setActiveTab(to)` opens in simple mode, in AppShell's own order: 'almanac' is Branch I, for
- * anyone; any other tab is, for a viewer, the read-only home (Branch G — "Home", as its bottom bar says); for the
+ * the owner and a trusted viewer (BL48 — a viewer the Almanac doesn't open for never keeps it as a way back: AppShell
+ * resets it); any other tab is, for a viewer, the read-only home (Branch G — "Home", as its bottom bar says); for the
  * owner previewing as a viewer, the preview (Branch J — "Preview", as its banner says); else the owner's journal
  * (Branch J) — the Dashboard, or the Journal on its Daily or Monthly tab (THIS MONTH): the nav's two icons.
  */

@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ALMANAC_LIST, FACE_TILES, FACE_GROUPS, faceShown, firstListFace, gridGroups, type Face, type FaceGates } from '../almanacGrid';
+import {
+  ALMANAC_LIST, FACE_TILES, FACE_GROUPS, VIEWER_WHAT_IF_NOTE, faceShown, firstListFace, gridGroups, viewerWhatIfNoteShown,
+  type Face, type FaceGates,
+} from '../almanacGrid';
 
 /**
  * ⚠ The Almanac's grid (BL40, BL45 — the owner's pick B), and on a computer its list (BL46's A). The rule is pure, so every
@@ -15,10 +18,11 @@ const read = (p: string): string => readFileSync(join(ROOT, p), 'utf8');
 const strip = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 const ALL: Face[] = ['halving', 'cycle', 'mining', 'powerlaw', 'sats', 'defense', 'ledger', 'scenario', 'cycling', 'ownership', 'unified', 'decision', 'fire'];
-/** All eight gate combinations. */
+/** All sixteen gate combinations — the owner's eight and a viewer's (BL48). */
 const COMBOS: FaceGates[] = [false, true].flatMap((hasCbLoan) => [false, true].flatMap((ledgerAvailable) =>
-  [false, true].map((fireOnDeploy) => ({ hasCbLoan, ledgerAvailable, fireOnDeploy }))));
-const label = (g: FaceGates): string => `loan ${g.hasCbLoan} · ledger ${g.ledgerAvailable} · fire ${g.fireOnDeploy}`;
+  [false, true].flatMap((fireOnDeploy) => [false, true].map((viewer) => ({ hasCbLoan, ledgerAvailable, fireOnDeploy, viewer })))));
+const label = (g: FaceGates): string =>
+  `loan ${g.hasCbLoan} · ledger ${g.ledgerAvailable} · fire ${g.fireOnDeploy} · viewer ${g.viewer}`;
 
 /**
  * The pill row's rule as it stood at `0cc0ecd` (AlmanacView's `visibleFaces`), kept here as the reference: the grid
@@ -52,7 +56,7 @@ describe('⭐ the catalogue', () => {
   });
 
   it('⭐ ORDER — your plan\'s faces, then bitcoin\'s, as the owner picked them (B)', () => {
-    const all = gridGroups({ hasCbLoan: true, ledgerAvailable: true, fireOnDeploy: true });
+    const all = gridGroups({ hasCbLoan: true, ledgerAvailable: true, fireOnDeploy: true, viewer: false });
     expect(all.map((g) => g.label), 'ORDER the groups').toEqual(['Your plan', 'Bitcoin']);
     expect(all[0].tiles.map((t) => t.name), 'ORDER your plan').toEqual(
       ['Decision', 'Strategy', 'Ownership', 'Cycling', 'Ledger', 'Scenario', 'Emergency', 'FIRE']);
@@ -61,11 +65,12 @@ describe('⭐ the catalogue', () => {
 });
 
 describe('⭐ the gates', () => {
-  it('⭐ GATES — the loan, the Ledger\'s data and the deploy rule, each on its own faces, in all eight combinations', () => {
+  it('⭐ GATES — the loan, the Ledger\'s data, the deploy rule and a viewer\'s device, each on its own faces, in all sixteen combinations', () => {
     for (const g of COMBOS) {
       const want: Record<Face, boolean> = {
         decision: true, ownership: true, scenario: true, halving: true, cycle: true, powerlaw: true, mining: true, sats: true,
-        unified: g.hasCbLoan, cycling: g.hasCbLoan, defense: g.hasCbLoan, ledger: g.ledgerAvailable, fire: g.fireOnDeploy,
+        unified: g.hasCbLoan, cycling: g.hasCbLoan, defense: g.hasCbLoan, ledger: g.ledgerAvailable,
+        fire: g.fireOnDeploy && !g.viewer,   // BL48 (V1) — the owner's only: a viewer has no FIRE face on any deploy
       };
       for (const f of ALL) expect(faceShown(f, g), `GATES ${f} · ${label(g)}`).toBe(want[f]);
       const shown = gridGroups(g).flatMap((grp) => grp.tiles.map((t) => t.key));
@@ -73,10 +78,11 @@ describe('⭐ the gates', () => {
     }
   });
 
-  it('⭐ PILLS — the grid offers exactly the faces the pill row did, in every combination (BL45)', () => {
+  it('⭐ PILLS — the owner\'s grid offers exactly the faces the pill row did, in every combination (BL45); a viewer\'s, those less FIRE (BL48)', () => {
     for (const g of COMBOS) {
       const grid = gridGroups(g).flatMap((grp) => grp.tiles.map((t) => t.key));
-      expect([...grid].sort(), `PILLS ${label(g)}`).toEqual(pillRow(g).sort());
+      const want = g.viewer ? pillRow(g).filter((f) => f !== 'fire') : pillRow(g);
+      expect([...grid].sort(), `PILLS ${label(g)}`).toEqual(want.sort());
       expect(new Set(grid).size, `PILLS no tile twice · ${label(g)}`).toBe(grid.length);
     }
   });
@@ -95,16 +101,17 @@ describe('⭐ the hub', () => {
     expect(HUB, 'GRID the default').toMatch(/const \[face, setFace\] = useState<Face \| null>\(initialFace \?\? null\);/);
     expect(HUB, 'GRID the link, from outside').toMatch(/const \[fromOutside, setFromOutside\] = useState\(initialFace !== undefined\);/);
     expect(HUB, 'GRID no face mounts on the grid').toMatch(
-      /\) : \(\s*<div className=\{listMode \? styles\.pane : styles\.contents\}>\{renderFace\(shown\)\}<\/div>\s*\)\}/);
+      /\) : \(\s*<div className=\{listMode \? styles\.pane : styles\.contents\}>\s*\{viewerWhatIfNoteShown\(shown, viewerMode\) && <p className=\{styles\.viewerNote\} role="note">\{VIEWER_WHAT_IF_NOTE\}<\/p>\}\s*<ViewerWhatIf\.Provider value=\{true\}>\{renderFace\(shown\)\}<\/ViewerWhatIf\.Provider>\s*<\/div>\s*\)\}/);
     expect(HUB, 'GRID the grid or a face').toMatch(
       /\{shown === null \? \(\s*<div className=\{styles\.container\}>\s*(?:\{\}\s*)?<nav className=\{styles\.grid\} aria-label="Faces">/);
     expect(HUB, 'GRID the face on screen: the face open, or the list\'s').toContain('const shown: Face | null = face ?? listFace;');
   });
 
-  it('⭐ ONE RULE — the hub reads its three gates once and asks almanacGrid; no gate of its own', () => {
-    expect(HUB, 'ONE RULE the grid').toContain('const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY });');
+  it('⭐ ONE RULE — the hub reads its four gates once and asks almanacGrid; no gate of its own', () => {
+    expect(HUB, 'ONE RULE the grid').toContain(
+      'const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode });');
     expect(HUB, 'ONE RULE the fallback').toMatch(
-      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable\]\);/);
+      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable, viewerMode\]\);/);
     expect(HUB, 'ONE RULE no pill list').not.toMatch(/visibleFaces|subnav/);
     expect(HUB, 'ONE RULE no gate spread of its own').not.toMatch(/hasCbLoan \?|ledgerAvailable \?|FIRE_ON_THIS_DEPLOY \?/);
     expect(HUB, 'ONE RULE no face falls back to a face').not.toMatch(/setFace\('halving'\)/);
@@ -181,7 +188,7 @@ describe('⭐ a computer (BL46\'s A — the owner\'s pick): the list', () => {
     expect(HUB, 'WIDTH the hub follows the rule').toContain('const listMode = useMediaQuery(ALMANAC_LIST);');
   });
 
-  it('⭐ FIRST — the list opens on the face last open while it shows, else Decision — in all eight combinations', () => {
+  it('⭐ FIRST — the list opens on the face last open while it shows, else Decision — in all sixteen combinations', () => {
     let kept = 0;
     let fell = 0;
     for (const g of COMBOS) {
@@ -212,7 +219,8 @@ describe('⭐ a computer (BL46\'s A — the owner\'s pick): the list', () => {
 
   it('⭐ KEEP — one tree for both sides of 1200 px, so the open face never remounts; the list\'s face kept as the open one; the session\'s last face in memory only', () => {
     expect(HUB, 'KEEP the layout\'s wrapper').toContain('<div className={listMode ? styles.listLayout : styles.contents}>');
-    expect(HUB, 'KEEP the face\'s wrapper').toContain('<div className={listMode ? styles.pane : styles.contents}>{renderFace(shown)}</div>');
+    expect(HUB, 'KEEP the face\'s wrapper').toMatch(
+      /<div className=\{listMode \? styles\.pane : styles\.contents\}>\s*\{viewerWhatIfNoteShown[^\n]*\n\s*<ViewerWhatIf\.Provider value=\{true\}>\{renderFace\(shown\)\}<\/ViewerWhatIf\.Provider>\s*<\/div>/);
     expect(CSS, 'KEEP no box on the grid\'s side').toMatch(/\n\.contents \{\s*display: contents;\s*\}/);
     expect(HUB, 'KEEP the list\'s face').toContain(
       'const listFace: Face | null = listMode && face === null ? firstListFace(lastOpenFace, groups) : null;');
@@ -220,5 +228,34 @@ describe('⭐ a computer (BL46\'s A — the owner\'s pick): the list', () => {
     expect(HUB, 'KEEP the session\'s last face').toMatch(/useEffect\(\(\) => \{ if \(shown !== null\) lastOpenFace = shown; \}, \[shown\]\);/);
     expect(HUB, 'KEEP in memory only').toMatch(/^let lastOpenFace: Face \| null = null;$/m);
     expect(HUB, 'KEEP nothing persisted').not.toMatch(/localStorage|sessionStorage|setAlmanacFace|lastOpenFace\s*=\s*useStore/);
+  });
+});
+
+describe('⭐ a trusted viewer\'s hub (BL48)', () => {
+  const HUB = strip(read('src/components/Almanac/AlmanacView.tsx'));
+  const FIRE = strip(read('src/components/Almanac/FireFace.tsx'));
+
+  it('⭐ OWNER ONLY — FIRE alone leaves a viewer\'s hub, before any gate: no deploy or loan brings it back', () => {
+    expect(FACE_TILES.filter((t) => t.ownerOnly).map((t) => t.key), 'OWNER ONLY FIRE alone').toEqual(['fire']);
+    for (const g of COMBOS.filter((c) => c.viewer)) {
+      expect(faceShown('fire', g), `OWNER ONLY no FIRE for a viewer · ${label(g)}`).toBe(false);
+      for (const f of ALL.filter((x) => x !== 'fire')) {
+        expect(faceShown(f, g), `OWNER ONLY ${f}: as the owner's · ${label(g)}`).toBe(faceShown(f, { ...g, viewer: false }));
+      }
+    }
+  });
+
+  it('⭐ NOTE — a viewer reads "nothing saved" over every plan face he gets but the Ledger; never the owner, never a Bitcoin face', () => {
+    expect(VIEWER_WHAT_IF_NOTE, 'NOTE the words').toBe("What-if only: what you change here isn't saved, and the plan doesn't change.");
+    const shown = ALL.filter((f) => viewerWhatIfNoteShown(f, true));
+    expect(shown.sort(), 'NOTE a viewer\'s plan faces').toEqual(['cycling', 'decision', 'defense', 'ownership', 'scenario', 'unified']);
+    expect(ALL.filter((f) => viewerWhatIfNoteShown(f, false)), 'NOTE never the owner').toEqual([]);
+  });
+
+  it('⭐ WHAT-IF — the hub is a what-if place: its faces sit inside ViewerWhatIf (true); FIRE, whose inputs save, puts the lock back', () => {
+    expect(HUB.match(/<ViewerWhatIf\.Provider/g), 'WHAT-IF one place in the hub').toHaveLength(1);
+    expect(HUB, 'WHAT-IF around the face').toContain('<ViewerWhatIf.Provider value={true}>{renderFace(shown)}</ViewerWhatIf.Provider>');
+    expect(FIRE, 'WHAT-IF FIRE locks its own').toMatch(
+      /export default function FireFace\(\) \{\s*return <ViewerWhatIf\.Provider value=\{false\}><FireFaceBody \/><\/ViewerWhatIf\.Provider>;\s*\}/);
   });
 });

@@ -5,6 +5,7 @@ import { supportToday } from '../simulation/powerLaw';
 import { planCbLimitOf } from '../lib/planPolicy';
 import { todayLocalISO } from '../utils/format';
 import { deriveCbCollateral, deriveStrikeCollateral, deriveColdStorage, latestStrikeDepositISO } from '../simulation/logUtils';
+import { coldMovedByMonth } from '../lib/ledgerCsv';
 
 // THE settings payload — single source built from current state, consumed by the trusted viewer snapshot (below) and
 // the plan backup (exportPlan) so the two can never drift. Phase 4e: no longer a relay payload of its own (settings:v1
@@ -118,5 +119,9 @@ export function buildViewerSnapshotPayload(s: StoreState, tier: 'safe' | 'truste
     // Run 2 (D9) — Strike's 60-day hold reads ONE fact, the latest logged Strike deposit's date; the viewer has no journal,
     // so it arrives pre-derived (the viewer raw-sets it and reads the hold through the same rule). SAFE must NOT carry it.
     strikeLastDepositISO: latestStrikeDepositISO(s.dayLog),
+    // BL48 (V2 A) — the Ledger's "→ Cold" column reads the journal, which a viewer never gets: the owner's net ₿ into cold
+    // per strategy month arrives pre-derived, as the cold total does (the viewer raw-sets it; `coldMovedOf` reads it).
+    // SAFE must NOT carry it — a month's cold move is an amount.
+    coldMovedByMonth: coldMovedByMonth(s.dayLog, s.advisorStartDate),
   };
 }

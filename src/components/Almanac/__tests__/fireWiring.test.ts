@@ -58,14 +58,16 @@ describe('⭐ the hub', () => {
 
   it('⭐ DEPLOY GATE — its tile last in your plan, on the deploy rule, never the loan; the env read once, where the grid is built; unreachable where hidden (BL42, BL45)', () => {
     const fire = FACE_TILES.filter((t) => t.key === 'fire');
-    expect(fire, 'DEPLOY GATE one FIRE tile, on the rule').toEqual([{ key: 'fire', name: 'FIRE', group: 'plan', gate: 'fireDeploy' }]);
+    expect(fire, 'DEPLOY GATE one FIRE tile, on the rule — the owner\'s only (BL48 V1)').toEqual(
+      [{ key: 'fire', name: 'FIRE', group: 'plan', gate: 'fireDeploy', ownerOnly: true }]);
     const plan = FACE_TILES.filter((t) => t.group === 'plan');
     expect(plan[plan.length - 1].key, 'DEPLOY GATE last in your plan').toBe('fire');
-    // The rule reads the deploy flag alone: off the deploy it never shows, with or without the loan; on it, always.
+    // For the owner the rule reads the deploy flag alone: off the deploy it never shows, with or without the loan; on it,
+    // always. A viewer has none on any deploy (BL48 — almanacGrid.test.ts's OWNER ONLY).
     for (const hasCbLoan of [false, true]) {
       for (const ledgerAvailable of [false, true]) {
-        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, fireOnDeploy: false }), 'DEPLOY GATE never the loan').toBe(false);
-        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, fireOnDeploy: true }), 'DEPLOY GATE never the loan').toBe(true);
+        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, fireOnDeploy: false, viewer: false }), 'DEPLOY GATE never the loan').toBe(false);
+        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, fireOnDeploy: true, viewer: false }), 'DEPLOY GATE never the loan').toBe(true);
       }
     }
     expect(strip(GRID), 'DEPLOY GATE the rule\'s case').toMatch(/case 'fireDeploy': return gates\.fireOnDeploy;/);
@@ -83,8 +85,8 @@ describe('⭐ the hub', () => {
     expect(calls, 'DEPLOY GATE the rule\'s one call, in the hub').toEqual(['src/components/Almanac/AlmanacView.tsx']);
     for (const f of SOURCES) expect(strip(read(f)), `DEPLOY GATE ${f} reads no env`).not.toContain('import.meta');
     expect(hub, 'DEPLOY GATE unreachable where hidden: the fallback').toMatch(
-      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable\]\);/);
-    expect(hub, 'DEPLOY GATE the grid, on the same rule').toContain('gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY })');
+      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable, viewerMode\]\);/);
+    expect(hub, 'DEPLOY GATE the grid, on the same rule').toContain('gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode })');
     expect(count(hub, 'FIRE_ON_THIS_DEPLOY'), 'DEPLOY GATE one constant: declared, the grid, the fallback').toBe(3);
   });
 
@@ -201,9 +203,11 @@ describe('⭐ the face\'s reads', () => {
     for (const d of ['pricePath', 'monthIdx']) expect(reset, `RESET MIRROR ${d}`).toContain(d);
   });
 
-  it('⭐ VIEWER — the face\'s own buttons are inert for a viewer (D-1); its number fields are already read-only', () => {
+  it('⭐ VIEWER — the face\'s own buttons are inert for a viewer (D-1); its number fields read-only, even inside the Almanac\'s what-ifs (BL48)', () => {
     expect(FACE, 'VIEWER the flag').toContain('viewerMode: st.viewerMode,');
     expect(count(FACE, 'disabled={s.viewerMode}'), 'VIEWER the stop choice and Reset').toBe(2);
+    expect(FACE, 'VIEWER the lock back around the whole face').toContain(
+      'return <ViewerWhatIf.Provider value={false}><FireFaceBody /></ViewerWhatIf.Provider>;');
   });
 
   it('⭐ SITES — eleven literal number fields, every one saved on leaving', () => {

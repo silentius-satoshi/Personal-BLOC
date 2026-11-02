@@ -8,6 +8,8 @@ import { bucketEventToMonth } from '../simulation/logUtils';
  *  - `buildLedgerCsv` — a spreadsheet-ready CSV export of `monthlyLog` (Copy / Download buttons).
  *  - `coldMovedByMonth` / `hasColdColumn` / `coldTotals` / `coldFootnote` / `fmtColdBtc` — the computed "→ Cold"
  *    column, its row-scoped total, and the disclosure line for cold movement in months with no row.
+ *  - `coldMovedOf` / `coldMovesFromSnapshot` — the column's months on this device: the owner's journal, or a trusted
+ *    viewer's copy of them from the owner's snapshot (BL48).
  * The Ledger WRITES NOTHING — this is projection + export only.
  */
 
@@ -35,12 +37,40 @@ export function coldMovedByMonth(dayLog: DayEvent[], advisorStartDate: string): 
   return out;
 }
 
+/**
+ * BL48 (V2 A) — the → Cold column's months on THIS device. The owner works them out from his journal; a trusted viewer,
+ * whose journal is empty, reads the owner's — worked out on the owner's device and sent in the trusted snapshot
+ * (`coldMovedByMonth`, payloads.ts), as the cold total and the Strike deposit date already are. ONE rule, as
+ * `strikeDepositOf` reads the hold: the Ledger face reads it for its column, its totals and its CSV. A viewer without
+ * them — a safe viewer is never sent them, and an older owner's snapshot has none — gets none: no column, as before.
+ */
+export function coldMovedOf(st: {
+  viewerMode: boolean; viewerColdMovedByMonth: Record<number, number> | null; dayLog: DayEvent[]; advisorStartDate: string;
+}): Record<number, number> {
+  return st.viewerMode ? (st.viewerColdMovedByMonth ?? {}) : coldMovedByMonth(st.dayLog, st.advisorStartDate);
+}
+
+/**
+ * The snapshot's months as a viewer stores them (viewerSync's trusted apply). JSON turns each month into a string, so a
+ * key must read back as a whole month ≥ 1 and its value as a finite number; anything else is dropped. A snapshot with
+ * no such field — or nothing valid in it — gives null: no column.
+ */
+export function coldMovesFromSnapshot(v: unknown): Record<number, number> | null {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+  const out: Record<number, number> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    const m = Number(k);
+    if (Number.isInteger(m) && m >= 1 && typeof val === 'number' && Number.isFinite(val)) out[m] = val;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** Half a satoshi. Cold nets below this are float residue (0.1 − 0.04 − 0.06 = 6.9e-18), not movement. ONE constant for
  *  every cold gate — the column, the totals and the footnote must treat a given value identically. */
 export const COLD_EPS = 5e-9;
 
 /** The → Cold column shows only when a month that HAS a ledger row moved a real amount (≥ COLD_EPS) — an owner with no
- *  cold activity (and every viewer, whose dayLog is []) sees no new column. */
+ *  cold activity (and a viewer whose snapshot carried no cold moves — `coldMovedOf`) sees no new column. */
 export function hasColdColumn(entries: MonthlyLogEntry[], coldByMonth: Record<number, number> | undefined): boolean {
   if (!coldByMonth) return false;
   return entries.some((e) => Math.abs(coldByMonth[e.month] ?? 0) >= COLD_EPS);

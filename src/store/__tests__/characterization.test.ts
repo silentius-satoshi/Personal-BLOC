@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 109 persisted data keys (+6, the plan of record; +1, BL14\'s planGoalNetBtc; +1, 5c\'s planLoaded; +3, Run 2\'s device-local planBreakerCache, planNoteDismissed, viewerStrikeDepositISO; +1, batch 1 build 4\'s device-local fireInputs; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
+  it('blob key-set is exactly the 110 persisted data keys (+6, the plan of record; +1, BL14\'s planGoalNetBtc; +1, 5c\'s planLoaded; +3, Run 2\'s device-local planBreakerCache, planNoteDismissed, viewerStrikeDepositISO; +1, batch 1 build 4\'s device-local fireInputs; +1, BL48\'s viewerColdMovedByMonth; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -82,6 +82,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       'previousTab', 'recordsDirty', 'scenario', 'scrubMonth', 'showMiningInLog',
       'showPlanCbBar', 'showPlanIncomeBar', 'showPlanStrikeBar', 'simpleMode', 'simpleView',
       'strikeCollateralBtc', 'strikeLiquidationLtvPct', 'tabOrder', 'timeHorizonYears', 'toolTabs',
+      'viewerColdMovedByMonth',   // BL48 (V2 A): a trusted viewer's copy of the owner's month-by-month cold moves
       'viewerDisplayName', 'viewerKeyWrapMeta', 'viewerKeyWrapped', 'viewerMode', 'viewerSecretKey',
       'viewerStrikeDepositISO',   // Run 2 (D9): a trusted viewer's copy of the owner's latest Strike deposit date
       'viewerWriterPubkey', 'viewers',
@@ -132,6 +133,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,   // the plan of record — C1
       policyBearBufferMonths: 12, policyCashReserveMonths: 0,
       planNoteDismissed: false, planBreakerCache: null, viewerStrikeDepositISO: null,   // Run 2 — device-local, never synced
+      viewerColdMovedByMonth: null,   // BL48 — a trusted viewer's copy of the owner's cold moves; null on any other device
       planGoalNetBtc: null,   // BL14 — no goal on a fresh store
     });
   });
@@ -240,6 +242,7 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
       cbCollateralBtc: 1.48, strikeCollateralBtc: 0,
       coldStorageBtc: 0,   // the pre-derived LIVE cold total (settings.coldStorageBtcAsOf is stripped — see payloads)
       strikeLastDepositISO: null,   // Run 2 (D9) — the hold's one fact, pre-derived (the seed has no deposit)
+      coldMovedByMonth: {},   // BL48 (V2 A) — the Ledger's "→ Cold", pre-derived (the seed's journal moves nothing)
     });
   });
 });

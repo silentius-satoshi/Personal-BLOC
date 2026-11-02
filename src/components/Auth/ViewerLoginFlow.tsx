@@ -168,7 +168,7 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
                   <input
                     className={styles.dateInput}
                     type="text"
-                    placeholder="e.g. Dad"
+                    placeholder="e.g. Viewer"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') finishWithName(displayName); }}
@@ -269,7 +269,7 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
                   <input
                     className={styles.dateInput}
                     type="text"
-                    placeholder="e.g. Dad's iPhone"
+                    placeholder="e.g. Viewer's iPhone"
                     value={viewerLabel}
                     onChange={(e) => setViewerLabel(e.target.value)}
                   />

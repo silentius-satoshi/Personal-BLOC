@@ -49,7 +49,7 @@ describe('4c emitter audit', () => {
   });
 
   it('roster add emits a whole-array viewers + nextViewerIndex pair (one ts) + increments the counter', () => {
-    useStore.getState().addViewerSlot({ pubkeyHex: 'aa', npub: 'npub1x', label: 'Dad', tier: 'safe', keyVersion: 1 } as never);
+    useStore.getState().addViewerSlot({ pubkeyHex: 'aa', npub: 'npub1x', label: 'Viewer', tier: 'safe', keyVersion: 1 } as never);
     const v = events().find((e) => e.field === 'viewers');
     const n = events().find((e) => e.field === 'nextViewerIndex');
     expect(v!.ts).toBe(n!.ts);
@@ -157,13 +157,13 @@ describe('4e — the retired guard class\'s guarantees, on the plan channel', ()
   });
 
   it('ROSTER — removing the last viewer is an explicit empty roster event (§6), and a peer folding it ends empty', () => {
-    useStore.getState().addViewerSlot({ pubkeyHex: 'aa', npub: 'npub1x', label: 'Dad', tier: 'safe', keyVersion: 1 } as never);
+    useStore.getState().addViewerSlot({ pubkeyHex: 'aa', npub: 'npub1x', label: 'Viewer', tier: 'safe', keyVersion: 1 } as never);
     useStore.getState().removeViewerSlot(0);
     const latest = foldPlanEvents(events()) as Record<string, unknown>;
     expect(latest.viewers, 'ROSTER empty is an event').toEqual([]);
     expect(useStore.getState().viewers, 'ROSTER').toEqual([]);
     // a peer still holding the roster folds the log: the empty roster lands (the retired roster guard skipped it)
-    useStore.setState({ viewers: [{ index: 0, pubkeyHex: 'aa', npub: 'npub1x', label: 'Dad', tier: 'safe', keyVersion: 1 }], nextViewerIndex: 1 } as never);
+    useStore.setState({ viewers: [{ index: 0, pubkeyHex: 'aa', npub: 'npub1x', label: 'Viewer', tier: 'safe', keyVersion: 1 }], nextViewerIndex: 1 } as never);
     useStore.getState().applyPlanFold(foldPlanEvents(events()) as never);
     expect(useStore.getState().viewers, 'ROSTER peer').toEqual([]);
   });

@@ -79,8 +79,8 @@ describe('⭐ GATE — D3: the Emergency Console runs with a Coinbase loan', () 
     // With the loan off the bar shows neither of the loan's tabs, so neither stays open — the console's gate would leave
     // an empty page (the e2e's NO LOAN reads it on screen).
     expect(SHELL, 'GATE no tab without its loan').toMatch(/const shut = \(k: string\): boolean => hiddenTabs\.includes\(k\) \|\| \(!hasCbLoan && \(k === 'coinbase' \|\| k === 'liqsim'\)\);/);
-    expect(SHELL, 'GATE no tab without its loan, on every change — the mode\'s too (BL47: full mode\'s guard)').toMatch(
-      /\}, \[hiddenTabs, activeTab, hasCbLoan, simpleMode\]\);/);
+    expect(SHELL, 'GATE no tab without its loan, on every change — the mode\'s and the viewer\'s too (BL47: full mode\'s guard; BL48: the owner\'s alone)').toMatch(
+      /\}, \[hiddenTabs, activeTab, hasCbLoan, simpleMode, viewerMode\]\);/);
     expect(SHELL, 'GATE no tab without its loan, on the open tab').toMatch(/if \(shut\(activeTab\)\) \{\s*const first = ALL_TABS_META\.find\(\(t\) => !shut\(t\.key\)\);/);
     // The Almanac's tile (the grid — BL45): named Emergency, on the loan.
     expect(FACE_TILES.find((t) => t.key === 'defense'), 'GATE the face').toEqual({ key: 'defense', name: 'Emergency', group: 'plan', gate: 'cbLoan' });

@@ -14,7 +14,9 @@ import styles from './ScenarioFace.module.css';
  * READ-ONLY by construction: the ONLY store write is `setPinnedScenario` (a device-local pin). The overlay
  * lives in local state and is NEVER persisted (the sandboxCollateralBtc precedent). Every number flows
  * through the real risk math (deriveSafetyView, via diffScenarios) so the preview can't drift from the
- * owner's SafetyDashboard. Ungated: NumberInputs self-disable in viewerMode; a local pin is harmless.
+ * owner's SafetyDashboard. BL48 (V4 B): a trusted viewer tries the levers too — inside the Almanac his NumberInputs
+ * unlock (`ViewerWhatIf`), and the overlay is never saved — but has no Pin row: a pin SAVES (a device-local copy of the
+ * owner's position), and a viewer's what-ifs save nothing.
  */
 
 type LeverKey = keyof ScenarioOverlay;
@@ -43,6 +45,7 @@ export default function ScenarioFace() {
   const currentInputs = useStore(useShallow(selectSafetyViewInputs));
   const pinnedScenario = useStore((s) => s.pinnedScenario);
   const setPinnedScenario = useStore((s) => s.setPinnedScenario);
+  const viewerMode = useStore((s) => s.viewerMode);
   const [overlay, setOverlay] = useState<ScenarioOverlay>({});
 
   const hasCbLoan = currentInputs.hasCbLoan;
@@ -73,26 +76,28 @@ export default function ScenarioFace() {
     <div className={styles.face}>
       <div className={styles.head}>
         <div className={styles.title}>Scenario</div>
-        <div className={styles.framing}>Pin a plan, then test a what-if against it.</div>
+        <div className={styles.framing}>{viewerMode ? 'Test a what-if against the plan.' : 'Pin a plan, then test a what-if against it.'}</div>
       </div>
 
-      {/* 1 · PIN row */}
-      <div className={styles.pinRow}>
-        {pinnedScenario ? (
-          <>
-            <span className={styles.pinnedLabel}>
-              Pinned {pinnedScenario.label} · {relativeAge(pinnedScenario.pinnedAt)}
-            </span>
-            <button type="button" className={styles.ghostBtn} onClick={pin}>Re-pin</button>
-            <button type="button" className={styles.ghostBtn} onClick={() => setPinnedScenario(null)}>Clear</button>
-          </>
-        ) : (
-          <button type="button" className={styles.pinBtn} onClick={pin}>Pin today's plan</button>
-        )}
-      </div>
+      {/* 1 · PIN row — the owner's only (BL48): a pin saves, a viewer's what-ifs never do. */}
+      {!viewerMode && (
+        <div className={styles.pinRow}>
+          {pinnedScenario ? (
+            <>
+              <span className={styles.pinnedLabel}>
+                Pinned {pinnedScenario.label} · {relativeAge(pinnedScenario.pinnedAt)}
+              </span>
+              <button type="button" className={styles.ghostBtn} onClick={pin}>Re-pin</button>
+              <button type="button" className={styles.ghostBtn} onClick={() => setPinnedScenario(null)}>Clear</button>
+            </>
+          ) : (
+            <button type="button" className={styles.pinBtn} onClick={pin}>Pin today's plan</button>
+          )}
+        </div>
+      )}
 
-      {/* 2 · DRIFT line (only when pinned) */}
-      {drift && (
+      {/* 2 · DRIFT line (only when pinned — never on a viewer's device: a viewer pins nothing, and clearViewerData empties a pin) */}
+      {drift && !viewerMode && (
         <div className={styles.drift}>
           Since pin: {drift.worsenedCount} of 3 worse
           <span className={styles.driftDeltas}>

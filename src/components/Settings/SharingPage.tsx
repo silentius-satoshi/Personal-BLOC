@@ -263,7 +263,7 @@ function ViewerRoster() {
         <input
           className={styles.input}
           type="text"
-          placeholder="Nickname (e.g. Dad's iPhone)"
+          placeholder="Nickname (e.g. Viewer's iPhone)"
           value={addLabel}
           onChange={(e) => setAddLabel(e.target.value)}
           disabled={busy || showPin}

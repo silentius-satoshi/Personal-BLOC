@@ -263,6 +263,16 @@
 .pane {
   min-width: 0;
 }
+/* BL48 (V4 B) — a viewer's note over a plan face: on the face's own column (its 960px, its 16px gutter), quiet. */
+.viewerNote {
+  max-width: 960px;
+  margin: 0 auto 10px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
 /* The badge in the list: its live label ("live · 59m ago · blockstream.info", about 230px) wraps inside the list's
    width rather than widen it. */
 .listBadge > button {

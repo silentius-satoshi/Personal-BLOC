@@ -74,7 +74,7 @@ describe('⭐ the Decision face', () => {
     }
   });
 
-  it('⭐ ONCE — the scrubber card is gone: the month and the stress exist once, in the dock\'s panels; the Line is locked for a viewer', () => {
+  it('⭐ ONCE — the scrubber card is gone: the month and the stress exist once, in the dock\'s panels; the Line is a what-if, live for a viewer (BL48)', () => {
     // mutation: a second month slider on the page → red
     const panels = FACE.slice(FACE.indexOf('const dockContent'), FACE.indexOf('const dockPanels'));
     expect(panels.length, 'the dock\'s panels').toBeGreaterThan(0);
@@ -82,8 +82,10 @@ describe('⭐ the Decision face', () => {
       expect(count(FACE, label), label).toBe(1);
       expect(panels, label).toContain(label);
     }
-    // VIEWER (R1) — the card's SliderInput locks its line for a viewer, so the dock's must too. mutation: no `disabled`
-    expect(panels, 'VIEWER').toContain('aria-label="Credit line (what-if)" disabled={s.viewerMode}');
+    // VIEWER (BL48, V4 B; R1 locked both) — inside the Almanac the card's SliderInput is live for a viewer, a what-if, so the
+    // dock's is too, with no lock of its own. mutation: `disabled={s.viewerMode}` back on the dock's Line → red
+    expect(panels, 'VIEWER').toMatch(/aria-label="Credit line \(what-if\)"\s*\/>/);
+    expect(panels, 'VIEWER no lock of its own').not.toContain('disabled={s.viewerMode}');
     expect(FACE, 'VIEWER').toContain('viewerMode: st.viewerMode,');
   });
 
