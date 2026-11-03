@@ -36,13 +36,25 @@ describe('coldMovedByMonth', () => {
   });
 });
 
+// BL49 (the owner's call A, 2026-11-01) — "→ Cold" always shown: whenever this device knows the cold moves. It was shown
+// only when a month that HAS a ledger row moved a non-zero amount, so an owner with no cold move had no column at all.
 describe('hasColdColumn', () => {
-  it('shows only when a month that HAS a ledger row moved a non-zero amount', () => {
-    const rows = [entry(1)];
-    expect(hasColdColumn(rows, { 1: 0.06 })).toBe(true);
-    expect(hasColdColumn(rows, { 2: 0.05 })).toBe(false);   // cold activity only in a month with no row
-    expect(hasColdColumn(rows, { 1: 0 })).toBe(false);
-    expect(hasColdColumn(rows, undefined)).toBe(false);     // a viewer (dayLog []) / a caller that omits it
+  it('⭐ ALWAYS — BL49: the column whenever this device knows the cold moves — a map it can place, an empty one too; never without one, nor for moves it can\'t place (v1.1)', () => {
+    expect(hasColdColumn({ 1: 0.06 }), 'ALWAYS a month that moved').toBe(true);
+    expect(hasColdColumn({}), 'ALWAYS the owner with no cold move: the column, at zero').toBe(true);
+    expect(hasColdColumn({ 2: 0.05 }), 'ALWAYS cold only in a month with no row').toBe(true);
+    expect(hasColdColumn({ 1: 0 }), 'ALWAYS a month that nets to zero').toBe(true);
+    expect(hasColdColumn(null), 'ALWAYS not for a viewer whose snapshot carried none').toBe(false);
+    expect(hasColdColumn(undefined), 'ALWAYS not for a caller that omits it').toBe(false);
+    // v1.1 (Claude Code's plan review): a blank start date or an unreadable date buckets to NaN; a move with no amount
+    // sums to NaN — moves the device can't place, which the viewer's copy drops.
+    expect(hasColdColumn({ NaN: 0.1 } as Record<number, number>), 'ALWAYS not for a month it can\'t place').toBe(false);
+    expect(hasColdColumn({ 2: NaN }), 'ALWAYS not for a figure it can\'t place').toBe(false);
+    expect(hasColdColumn({ NaN: 0.1, 2: 0.05 } as Record<number, number>), 'ALWAYS one month it can place: the column')
+      .toBe(true);
+    // v1.2 (Claude Code's second review): an infinite figure (a sum past ~1.8e308, a backup's 1e999) is one JSON can't
+    // carry, so no viewer's copy holds it — the owner's call: no column, on both devices alike.
+    expect(hasColdColumn({ 1: Infinity }), 'ALWAYS not for an infinite figure').toBe(false);
   });
 });
 
@@ -60,6 +72,16 @@ describe('buildLedgerCsv — → Cold column + an unrecorded Strike col', () => 
   it('no coldByMonth → the header is exactly the pre-existing one', () => {
     const csv = buildLedgerCsv([entry(1)], { hasCbLoan: false, showMining: false });
     expect(csv.split('\r\n')[0]).toBe('Mo,Date,Income→BTC,Paydown,BTC bought,Strike bal,Strike col,Strike LTV');
+  });
+
+  it('⭐ CSV KEEPS — BL49: an owner with no cold move keeps → Cold, every cell empty; a viewer without the moves, none', () => {
+    const [header, r1, r2] = buildLedgerCsv([entry(1), entry(2)], { hasCbLoan: false, showMining: false, coldByMonth: {} })
+      .split('\r\n').map((l) => l.split(','));
+    expect(header, 'CSV KEEPS the column').toEqual(
+      ['Mo', 'Date', 'Income→BTC', 'Paydown', 'BTC bought', 'Strike bal', 'Strike col', '→ Cold', 'Strike LTV']);
+    expect([r1[7], r2[7]], 'CSV KEEPS a quiet month empty, never 0').toEqual(['', '']);
+    expect(buildLedgerCsv([entry(1)], { hasCbLoan: false, showMining: false, coldByMonth: null }).split('\r\n')[0],
+      'CSV KEEPS none without the moves').toBe('Mo,Date,Income→BTC,Paydown,BTC bought,Strike bal,Strike col,Strike LTV');
   });
 
   it('an entry that never recorded btcHeld emits an EMPTY Strike col cell, never 0', () => {
@@ -113,9 +135,10 @@ describe('coldTotals / coldFootnote / COLD_EPS', () => {
     const log = [move('deposit', 0.1, 'cold', '2026-01-05'), move('withdraw', 0.04, 'cold', '2026-01-06'), move('withdraw', 0.06, 'cold', '2026-01-07')];
     const by = coldMovedByMonth(log, START);
     expect(by[1]).not.toBe(0);   // the premise: the fixture really produces float residue
-    // logged
-    expect(hasColdColumn([entry(1)], by)).toBe(false);
+    // logged — BL49: the column shows (the device knows the moves); the residue's total snaps to 0 → ₿0.00000, never -0
+    expect(hasColdColumn(by)).toBe(true);
     expect(coldTotals([entry(1)], by).logged).toBe(0);
+    expect(fmtColdBtc(coldTotals([entry(1)], by).logged)).toBe('0.00000');
     // unlogged
     expect(coldTotals([entry(2)], by).unlogged).toBe(0);
     expect(coldFootnote(by[1], false)).toBeNull();
@@ -124,7 +147,7 @@ describe('coldTotals / coldFootnote / COLD_EPS', () => {
   it('⭐ the tolerance hides no real satoshi, and neither does the display', () => {
     expect(COLD_EPS).toBe(5e-9);
     const oneSat = { 1: 1e-8 };
-    expect(hasColdColumn([entry(1)], oneSat)).toBe(true);
+    expect(hasColdColumn(oneSat)).toBe(true);
     expect(coldTotals([entry(1)], oneSat).logged).not.toBe(0);
     expect(coldFootnote(coldTotals([entry(2)], oneSat).unlogged, false)).not.toBeNull();
     expect(fmtColdBtc(3e-6)).toBe('0.00000300');

@@ -117,7 +117,7 @@ setPlanNoteDismissed:   (v: boolean) => void;   // plain set — no emit, no dir
 planBreakerCache:       { state: RearmableBreakerState; lastMonthEndISO: string } | null;   // default null — the breaker as last folded from month-end prices on THIS device (§4.3, invariant 10): THIS MONTH reads it offline; public price data only
 setPlanBreakerCache:    (v: … | null) => void;   // plain set — usePlanMonth's ONE write, a fresh fold, in an effect
 viewerStrikeDepositISO: string | null;   // default null — a TRUSTED viewer's copy of the owner's latest Strike deposit date (D9; the snapshot's strikeLastDepositISO, raw-set by viewerSync); null on an owner device; reset by clearViewerData
-viewerColdMovedByMonth: Record<number, number> | null;   // BL48 (V2 A) — default null — a TRUSTED viewer's copy of the owner's month-by-month cold moves (the snapshot's coldMovedByMonth, raw-set by viewerSync through coldMovesFromSnapshot); the Ledger reads it through coldMovedOf; null on an owner device and with no snapshot field; reset by clearViewerData
+viewerColdMovedByMonth: Record<number, number> | null;   // BL48 (V2 A) — default null — a TRUSTED viewer's copy of the owner's month-by-month cold moves (the snapshot's coldMovedByMonth, raw-set by viewerSync through coldMovesFromSnapshot); the Ledger reads it through coldMovedOf; null on an owner device and with no snapshot field (an empty map — the owner logged no cold move — stays empty: the column at zero, BL49); reset by clearViewerData
 ```
 All four persist via `partializeState`'s `...rest` and are NEVER synced: not in `SETTINGS_FIELDS`, `PREFS_FIELDS`,
 `VIEWER_SETTINGS_FIELDS` or the plan backup, and no settings or prefs apply writes them — the one outside writer is

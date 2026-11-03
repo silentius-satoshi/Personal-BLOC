@@ -245,19 +245,20 @@ persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
   `a.month - b.month` (the real monthlyLog convention; dayLog's `(ts,id)` two-key sort is unrelated).
 - **Spec v3 — "Strike col" is RECORDED + optional; "→ Cold" is COMPUTED.** An unrecorded `btcHeld` renders "—" (never
   0) and exports an empty CSV cell. `coldMovedByMonth(dayLog, advisorStartDate)` (ledgerCsv.ts) = net `target:'cold'`
-  deposits − withdrawals per month; `hasColdColumn` shows the column only when a month that HAS a row moved a non-zero
-  amount (a viewer reads the owner's months from his snapshot — `coldMovedOf`, BL48). The column is a FLOW (summed in the
-  totals row). Never stored on the entry.
+  deposits − withdrawals per month; `hasColdColumn` shows the column whenever this device knows the cold moves (BL49,
+  the owner's call A — the owner's whenever his moves can be placed in a month, none logged included; a trusted
+  viewer's whenever the owner's snapshot carried them, `coldMovedOf`, BL48). A quiet month reads "—", the total
+  ₿0.00000 (§ "→ Cold" always shown). The column is a FLOW (summed in the totals row). Never stored on the entry.
   **(ledger-cold-total-onboarding-date-spec-v2)** ONE tolerance, `COLD_EPS` (half a satoshi, `5e-9`), is shared by the
-  column gate, the totals and the footnote. It exists because a deposit and withdrawals netting to zero leave ~7e-18,
+  cells, the totals and the footnote. It exists because a deposit and withdrawals netting to zero leave ~7e-18,
   which `!== 0` passed. `coldTotals(entries, coldByMonth)` → `{ logged, unlogged }`, and ⚠ **the total stays
   ROW-SCOPED** so the column foots (a totals cell that isn't the sum of the cells above can't be checked). Cold
   movement in months with NO row (cold is journal-only, so a cold-only month never gets one) is DISCLOSED by
   `coldFootnote` as a `‡` line below the table, with a `‡` on the total. With no column the line keeps no `‡` and says
   the months have no row. Figures go through `fmtColdBtc`: 5 dp, widening to 8 dp when 5 dp would print a real move as
   zero (never "0.00000" / "-0.00000"), and an exact 0 prints "0.00000". Per-month cells use `coldCell` (residue → "—");
-  the TOTAL is always a number. The CSV is unchanged apart from dropping a residue-only column, and still has NO totals
-  row or footnote.
+  the TOTAL is always a number. The CSV keeps the column whenever the face shows it (BL49 — a quiet month an empty
+  cell, never 0; its cells stay raw decimals), and still has NO totals row or footnote.
 - **`src/components/Almanac/LedgerFace.tsx`** (+ `.module.css`) — face chrome (mono-uppercase "Ledger"
   title + framing line) → CSV actions (`.actionBtn` vocabulary mirrored from SharingPage: **Copy CSV** via
   `navigator.clipboard.writeText` in try/catch with a "Copied ✓"/"Copy failed" flash + **Download .csv** via
@@ -2799,7 +2800,8 @@ BL48). Heavy: spec `pbloc-spec-trusted-viewers-v1`. The routing, the tier and th
   `coldMovedByMonth`), the viewer raw-sets them as `viewerColdMovedByMonth` (through `coldMovesFromSnapshot` — a month
   ≥ 1 and a finite number, or dropped), and the face reads ONE rule, `coldMovedOf` (`lib/ledgerCsv.ts`) — the journal's
   on the owner's device, the copy on a viewer's, as `strikeDepositOf` reads the hold. An older owner's snapshot carries
-  none → no column, as before.
+  none → no column, as before. An owner with no cold move sends an empty map → the column at zero on both devices
+  (BL49, § "→ Cold" always shown).
 - **The Ledger's Mining column stays the owner's** (F1, the owner's call A, from Claude Code's plan review). It draws
   only with `showMiningInLog` on — a device-local switch (Settings → Customize, hidden for a viewer) that no snapshot
   carries — so a viewer's Ledger never shows it, though the months' `miningSats` arrive. The owner's switch is off, so
@@ -2834,6 +2836,53 @@ BL48). Heavy: spec `pbloc-spec-trusted-viewers-v1`. The routing, the tier and th
   among them), `viewerWhatIf.test.tsx`, `viewerAlmanacWiring.test.ts` (WRITES and WAYS IN among them), `ledgerColdViewer.test.ts`, `fireWiring.test.ts`
   (DEPLOY GATE, VIEWER), `controlDockWiring.test.ts` (ONCE's VIEWER) and `e2e/viewerAlmanac.spec.ts`. § Test Suite →
   "Trusted viewers in the Almanac".
+
+### "→ Cold" always shown (BL49 — the owner's call A; store unchanged, NO bump)
+
+The Ledger's "→ Cold" column showed only when a month with a row moved a real amount into or out of cold, so an owner
+who had logged no cold move had no column — on BL48's look on the preview it read as a fault. The owner's call (A): show
+it, at zero, for transparency.
+- **The rule.** `hasColdColumn(coldByMonth)` (`lib/ledgerCsv.ts`) — the column whenever this device knows the cold
+  moves: an empty map (none logged), or a map with a month it can place. `coldMonthOk` is the one rule for a placed
+  month — a whole month ≥ 1, a finite figure — and the viewer's copy keeps only those (`coldMovesFromSnapshot`), so the
+  gate asks of the owner's map what his viewer's copy keeps of it: the two Ledgers show the column on the same
+  snapshots, by construction (v1.1, from Claude Code's plan review). The owner's device: his journal's months
+  (`coldMovedOf`), none logged included; a trusted viewer's whenever the owner's snapshot carried `coldMovedByMonth`, an
+  empty map included (`coldMovesFromSnapshot` keeps it empty; a map with nothing placed in it is null). `coldMovedOf`
+  gives null for a viewer without a copy (it gave `{}`) — a zero the device doesn't know isn't a zero: an older owner's
+  build that sends none, no column. A safe viewer is never sent them and has no Ledger.
+- **What it reads.** A quiet month "—" (`coldCell` — none or float residue, never "0.00000"); the total ₿0.00000 (always
+  a number, `fmtColdBtc`); the CSV keeps "→ Cold" (a quiet month an empty cell, never 0 — the face's CSV, the owner's
+  only). Every figure the column showed before is unchanged: where a logged month moved, it showed, and still shows,
+  the same cells and total (BL49's first kill criterion — the cold tests hold it, unchanged but for the gate's own) —
+  all but an infinite one (below).
+- **Deliberate edges.** An owner whose only cold moves fall in months with no row had no column and the plain line
+  ("… those months have no row here."); he now has the column at "—", the total ₿0.00000‡ and the ‡ line ("… — not in
+  the total above."), the same figure. The plain form is left for moves the device can't place (below). A month whose
+  moves net to nothing reads "—" on the face and exports its raw net in the CSV — 0, or float residue (~7e-18) — as it
+  did beside a month that moved: the CSV's cells are raw (spec v2). A viewer who applied an owner's empty map before
+  BL49 stored none; his first pull after his app loads the new build applies the latest snapshot again and brings the
+  column — `lastAppliedViewerEventAt` lives in memory, 0 at each load and unlock (within one load a pull skips a
+  snapshot no newer than the last applied).
+- **Moves the device can't place (v1.1).** A blank start date or an unreadable event date buckets a move to NaN
+  (`bucketEventToMonth` clamps only a number), a move with no amount sums to NaN, and amounts past ~1.8e308 ₿ sum to
+  Infinity (a backup's `1e999` reads as Infinity until the next load); a cleared date field writes a blank start date,
+  and only a malformed backup or an absurd amount writes the others. With no month placed there is no column on
+  either device — the owner keeps the plain line, his viewer's copy is none — as before BL49, but for an infinite
+  figure: the owner's Ledger alone showed it (₿Infinity — JSON can't carry it to his viewer's), and now neither does
+  (the owner's call, v1.2). Beside a placed month the column shows on both, and a logged month whose figure is NaN or
+  infinite reads "₿NaN" or "₿Infinity" (its total too) on the owner's Ledger and "—" on his viewer's, as it did at
+  `0e63afb` beside a month that moved. A tampered backup's text amount sums as text, and the face throws where it
+  draws one — now also beside a placed month, though no longer where one alone filled a logged month; the journal
+  already throws on that move (`describeDayEvent`). The fixes are upstream: date fields that write nothing when
+  cleared, and a backup check that an amount is a finite number.
+- **A phone (the third kill criterion — measured, didn't fire).** The Ledger's table already scrolls inside its own box
+  at every phone width, with and without the loan's two columns (320–390 px: its rows 584 / 721 px wide in a 288–358 px
+  box; 667 / 804 px with "→ Cold"); the page never scrolls sideways.
+- Tests: `ledgerCold.test.ts` (ALWAYS, CSV KEEPS), `ledgerColdViewer.test.ts` (ZERO, AGREE; ONE RULE, CHECKED,
+  FACE), `viewerSnapshot.test.ts` (COLD — the owner's payload sends the empty map) and e2e COLD ZERO
+  (`viewerAlmanac.spec.ts`).
+  § Test Suite → BL49's entry ("→ Cold" always shown).
 
 ### Almanac face navigation — TAP-ONLY (the face swipe pager was REMOVED)
 

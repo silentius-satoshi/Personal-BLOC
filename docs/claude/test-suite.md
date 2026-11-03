@@ -2440,6 +2440,34 @@ goes red.)
   - The pre-merge independent check's fix (v1.3, spec §14) — red first on `c9ec715`'s app code with its new and changed
     tests: SHAPE red (CLOSED, WAYS IN and the sync tests green — CLOSED pins the catch v1.2 had, WAYS IN holds today and
     Y1–Y4 show it bites); e2e SAFE red at the `settings: null` case.
+- **"→ Cold" always shown (BL49, 2026-11-02) — the Ledger's column when none is logged or a month is placed; a quiet
+  month "—", the total ₿0.00000** (spec `pbloc-spec-cold-column-v1` v1.2; Standard, the reviewer's measured prototype,
+  v1.2 after Claude Code's two plan reviews, applied byte for byte; the suite 3,300 → 3,303 (+6 skipped), 229 files; e2e
+  164 → 165 (+2 skipped). 11 planted bugs — 11 through the unit tests, 7 through the e2e; v1.2's K11, the gate taking
+  an infinite figure, caught by ALWAYS's and AGREE's new lines — each an exact-once edit, red at its tagged tests, the
+  files restored and md5-checked: `Claude outputs/cold-column/mutations-cold.json`):
+  - `ledgerCold.test.ts` 12 → 13: ⭐ ALWAYS (was "shows only when a month that HAS a ledger row moved a non-zero
+    amount": a map — an empty one, a month with no row, a month that nets to zero — the column; null or omitted, none;
+    v1.1: a month or a figure it can't place (NaN; v1.2 an infinite one), none — one it can place beside it, the column)
+    · new ⭐ CSV KEEPS (an owner with no cold move keeps "→ Cold", a quiet month an empty cell, never 0; null — none) ·
+    moved: the one residue (the column shows; the total snaps to 0 → "0.00000", never "-0.00000") and the satoshi
+    tolerance (the gate's new signature).
+  - `ledgerColdViewer.test.ts` 4 → 6: ONE RULE (a viewer without a copy: null, no column — it was `{}`) · CHECKED (an
+    empty map stays empty; a map with nothing valid, null) · new ⭐ ZERO (an owner with no cold move: the column on his
+    device and, through the snapshot's JSON, his viewer's; an older snapshot, none) · new ⭐ AGREE (v1.1, Claude Code's
+    plan review: the owner's gate and his viewer's, through the snapshot's JSON, over eight journals — none logged, a
+    placed move, a blank start date, an unreadable date, a move with no amount, a blank start with none logged, one
+    placed and one not, v1.2 a sum past any number) · FACE (+ the face's gate, a quiet month "—", the total always a
+    number).
+  - `viewerSnapshot.test.ts` COLD: + an owner with no cold move sends an empty map, never none — his viewer's column at
+    zero (CI runs no e2e; this holds the chain on the unit side).
+  - `e2e/viewerAlmanac.spec.ts` 9 → 10: new COLD ZERO (an owner who logged no cold move: his Ledger shows "→ Cold", the
+    month "—", the total ₿0.00000; his trusted viewer's the same; an older snapshot, none).
+  - Red first (the reviewer's, on `0e63afb`'s app code with the new and changed tests): the unit tests red at ALWAYS,
+    CSV KEEPS, the one residue and the satoshi tolerance (`ledgerCold.test.ts`, 4 of 13) and at ONE RULE, CHECKED,
+    ZERO, AGREE and FACE (`ledgerColdViewer.test.ts`, 5 of 6); COLD green — the owner's payload already sends the empty
+    map (BL48), and K8 shows it bites; e2e COLD ZERO red at the owner's Ledger, the other nine green. On v1.0's code,
+    ALWAYS and AGREE red — the corner v1.1 closes.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

@@ -402,7 +402,10 @@ viewer taps reaches the plan. What the faces do for a viewer: `almanac.md` § Tr
   exported so the e2e can hand a viewer page the REAL payload an owner page builds (the dev server skips the viewer
   gates). A no-op off `viewerMode`: an owner device never takes a viewer snapshot over its own plan.
 - **The cold moves (V2 A).** The trusted snapshot's `coldMovedByMonth` → `viewerColdMovedByMonth` (persisted, device-
-  local, null on an owner device), read by the Ledger through `coldMovedOf` — `almanac.md` § Trusted viewers.
+  local, null on an owner device), read by the Ledger through `coldMovedOf` — `almanac.md` § Trusted viewers. BL49: an
+  empty map (the owner logged no cold move) stays empty — the column at zero, as on the owner's; a snapshot without the
+  field, or a map with no month it can place, none — no column, as on the owner's (`almanac.md` § "→ Cold" always
+  shown).
 - **"Preview as viewer"** names no viewer: its banner reads "PREVIEW · what your viewer sees — Trusted mode" (it read
   the first roster slot's label, the owner's own nickname for one viewer). The name fields' examples say "viewer" (the
   owner's ask, BL48).

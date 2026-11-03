@@ -261,6 +261,36 @@ test.describe('trusted viewers in the Almanac — BL48', () => {
       'DEMOTE the colours back to the default').not.toBe('#38bdf8');
   });
 
+  test('COLD ZERO — an owner who logged no cold move: his Ledger shows "→ Cold", the month "—", the total ₿0.00000; his trusted viewer\'s the same; an older snapshot, none (BL49)', async ({ page, browser }) => {
+    test.setTimeout(120_000);
+    // The Ledger's table read by its cells (textContent — CSS may draw the header in capitals): the first month's cell and
+    // the total's under "→ Cold", or null without the column.
+    const coldColumn = async (p: Page, tag: string): Promise<{ month: string; total: string } | null> => {
+      await faceNames(p, tag);
+      await readFace(p, 'Ledger');
+      const table = p.locator('table').filter({ has: p.getByRole('columnheader', { name: 'Strike LTV', exact: true }) });
+      const heads = (await table.locator('thead th').allTextContents()).map((t) => t.trim());
+      expect(heads, `${tag} the Ledger's header`).toContain('Strike LTV');
+      const at = heads.indexOf('→ Cold');
+      if (at < 0) return null;
+      const cell = async (row: ReturnType<Page['locator']>) => ((await row.locator('td').nth(at).textContent()) ?? '').trim();
+      return { month: await cell(table.locator('tbody tr').first()), total: await cell(table.locator('tfoot tr').last()) };
+    };
+    const owner = await ownerDevice(browser, ownerState(true, true, ', dayLog: []'));
+    expect(JSON.parse(owner.trusted).coldMovedByMonth, 'COLD ZERO premise: the owner sends an empty map').toEqual({});
+    await owner.page.getByLabel('Almanac').click();
+    expect(await coldColumn(owner.page, 'COLD ZERO the owner\'s'), 'COLD ZERO the owner\'s Ledger').toEqual({ month: '—', total: '₿0.00000' });
+    await viewerDevice(page, owner.trusted);
+    await openAlmanac(page, 'COLD ZERO');
+    expect(await coldColumn(page, 'COLD ZERO the viewer\'s'), 'COLD ZERO the viewer\'s Ledger, the owner\'s').toEqual({ month: '—', total: '₿0.00000' });
+    const older = JSON.parse(owner.trusted);
+    delete older.coldMovedByMonth;
+    await apply(page, JSON.stringify(older));
+    expect((await state(page)).coldMoves, 'COLD ZERO an older snapshot: none on the device').toBeNull();
+    expect(await coldColumn(page, 'COLD ZERO an older snapshot'), 'COLD ZERO an older snapshot: no column').toBeNull();
+    await owner.close();
+  });
+
   test('FULL MODE — the owner\'s full-mode layout never reaches a viewer\'s pages: Settings and the Almanac are their own pages', async ({ page, browser }) => {
     // The owner's full mode — and the Almanac's tab hidden (a stored or restored layout can carry it): his to keep.
     const owner = await ownerDevice(browser, ownerState(false, true, `, hiddenTabs: ['almanac']`));

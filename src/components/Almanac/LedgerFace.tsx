@@ -17,8 +17,9 @@ import styles from './LedgerFace.module.css';
  * the only ornament. Strike LTV is zone-colored by fixed thresholds (Strike-only); CB LTV is colored by
  * the app's SHARED CB gauge logic (cbBarLevel + LEVEL_COLOR) so it matches the SafetyDashboard exactly.
  * "Strike col" is RECORDED (optional) — an unrecorded month shows "—", never 0. "→ Cold" is COMPUTED from the dayLog
- * (coldMovedByMonth), shown only when a logged month moved something into or out of cold. Its total stays row-scoped
- * (it foots); cold movement in months with NO row is disclosed in a ‡ footnote (coldTotals / coldFootnote).
+ * (coldMovedByMonth), shown when none is logged or a month is placed (BL49): a quiet month "—", the total ₿0.00000.
+ * Its total stays row-scoped (it foots); cold movement in months with NO row is disclosed in a ‡ footnote (coldTotals /
+ * coldFootnote).
  * BL48 — a trusted viewer reads the owner's table: his months from the snapshot, "→ Cold" from the owner's cold moves
  * (`coldMovedOf`); no Copy or Download for a viewer (V5 A).
  */
@@ -72,7 +73,7 @@ export default function LedgerFace() {
     () => coldMovedOf({ viewerMode, viewerColdMovedByMonth, dayLog, advisorStartDate }),
     [viewerMode, viewerColdMovedByMonth, dayLog, advisorStartDate],
   );
-  const showCold = hasColdColumn(rows, coldByMonth);
+  const showCold = hasColdColumn(coldByMonth);   // BL49 — none logged, or a month this device can place
   const csv = useMemo(
     () => buildLedgerCsv(monthlyLog, { hasCbLoan, showMining, coldByMonth }),
     [monthlyLog, hasCbLoan, showMining, coldByMonth],
@@ -184,7 +185,7 @@ export default function LedgerFace() {
                     <td className={`${styles.td} ${styles.stock}`}>{fmtUsd0(e.strikeBal)}</td>
                     <td className={`${styles.td} ${styles.stock}`}>{btcOrDash(e.btcHeld)}</td>
                     {showCold && (
-                      <td className={`${styles.td} ${styles.flow}`}>{coldCell(coldByMonth[e.month])}</td>
+                      <td className={`${styles.td} ${styles.flow}`}>{coldCell(coldByMonth?.[e.month])}</td>
                     )}
                     <td className={styles.td}>
                       <div className={styles.ltvCell}>

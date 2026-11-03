@@ -189,6 +189,9 @@ describe('viewer snapshot builders', () => {
     expect(snap.coldMovedByMonth, 'COLD the months').toEqual({ 1: 0.1, 2: -0.04 });
     expect('coldMovedByMonth' in buildViewerSnapshotPayload(s, 'safe'), 'COLD never safe').toBe(false);
     useStore.setState({ dayLog: [] } as never);
+    // BL49 — an owner who logged no cold move sends an empty map, never none: his viewer's column at zero, as his own.
+    const none = buildViewerSnapshotPayload(useStore.getState(), 'trusted');
+    expect(none.coldMovedByMonth, 'COLD none logged: an empty map, never none (BL49)').toEqual({});
   });
 
   it("P3: the C-trusted snapshot's records carry entries + deletions but NOT the raw dayLog journal", () => {

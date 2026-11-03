@@ -7,7 +7,8 @@ import { bucketEventToMonth } from '../simulation/logUtils';
  *    empty — BL45; the sub-nav pill and the Halving Clock before).
  *  - `buildLedgerCsv` — a spreadsheet-ready CSV export of `monthlyLog` (Copy / Download buttons).
  *  - `coldMovedByMonth` / `hasColdColumn` / `coldTotals` / `coldFootnote` / `fmtColdBtc` — the computed "→ Cold"
- *    column, its row-scoped total, and the disclosure line for cold movement in months with no row.
+ *    column (shown when none is logged or this device can place a move — BL49), its row-scoped total, and the
+ *    disclosure line for cold movement in months with no row.
  *  - `coldMovedOf` / `coldMovesFromSnapshot` — the column's months on this device: the owner's journal, or a trusted
  *    viewer's copy of them from the owner's snapshot (BL48).
  * The Ledger WRITES NOTHING — this is projection + export only.
@@ -42,38 +43,57 @@ export function coldMovedByMonth(dayLog: DayEvent[], advisorStartDate: string): 
  * whose journal is empty, reads the owner's — worked out on the owner's device and sent in the trusted snapshot
  * (`coldMovedByMonth`, payloads.ts), as the cold total and the Strike deposit date already are. ONE rule, as
  * `strikeDepositOf` reads the hold: the Ledger face reads it for its column, its totals and its CSV. A viewer without
- * them — a safe viewer is never sent them, and an older owner's snapshot has none — gets none: no column, as before.
+ * them — a safe viewer is never sent them, and an older owner's snapshot has none — gets null: no column (BL49 — a zero
+ * the device doesn't know isn't a zero). An owner who logged none sends an empty map: the column, at zero.
  */
 export function coldMovedOf(st: {
   viewerMode: boolean; viewerColdMovedByMonth: Record<number, number> | null; dayLog: DayEvent[]; advisorStartDate: string;
-}): Record<number, number> {
-  return st.viewerMode ? (st.viewerColdMovedByMonth ?? {}) : coldMovedByMonth(st.dayLog, st.advisorStartDate);
+}): Record<number, number> | null {
+  return st.viewerMode ? st.viewerColdMovedByMonth : coldMovedByMonth(st.dayLog, st.advisorStartDate);
 }
 
 /**
- * The snapshot's months as a viewer stores them (viewerSync's trusted apply). JSON turns each month into a string, so a
- * key must read back as a whole month ≥ 1 and its value as a finite number; anything else is dropped. A snapshot with
- * no such field — or nothing valid in it — gives null: no column.
+ * BL49 v1.1 — a month the device can place: its key reads back as a whole month ≥ 1 (JSON turns each month into a
+ * string) and its figure is a finite number. ONE rule for the viewer's copy (`coldMovesFromSnapshot` keeps only these)
+ * and the column's gate (`hasColdColumn` asks for one), so the owner's Ledger and his viewer's show "→ Cold" on the same
+ * snapshots. A blank start date or an unreadable event date buckets to NaN (`bucketEventToMonth`), a move with no
+ * amount sums to NaN, and amounts past ~1.8e308 to Infinity, which JSON can't carry — none is placed.
+ */
+function coldMonthOk(k: string, v: unknown): v is number {
+  const m = Number(k);
+  return Number.isInteger(m) && m >= 1 && typeof v === 'number' && Number.isFinite(v);
+}
+
+/**
+ * The snapshot's months as a viewer stores them (viewerSync's trusted apply): the months `coldMonthOk` places; anything
+ * else is dropped. An empty map — the owner logged no cold move — stays empty: the column, at zero (BL49). A snapshot
+ * with no such field, or a map with nothing placed in it, gives null: no column.
  */
 export function coldMovesFromSnapshot(v: unknown): Record<number, number> | null {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
+  const sent = Object.entries(v as Record<string, unknown>);
   const out: Record<number, number> = {};
-  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-    const m = Number(k);
-    if (Number.isInteger(m) && m >= 1 && typeof val === 'number' && Number.isFinite(val)) out[m] = val;
+  for (const [k, val] of sent) {
+    if (coldMonthOk(k, val)) out[Number(k)] = val;
   }
-  return Object.keys(out).length > 0 ? out : null;
+  return sent.length === 0 || Object.keys(out).length > 0 ? out : null;
 }
 
 /** Half a satoshi. Cold nets below this are float residue (0.1 − 0.04 − 0.06 = 6.9e-18), not movement. ONE constant for
- *  every cold gate — the column, the totals and the footnote must treat a given value identically. */
+ *  every cold gate — the cells, the totals and the footnote must treat a given value identically. */
 export const COLD_EPS = 5e-9;
 
-/** The → Cold column shows only when a month that HAS a ledger row moved a real amount (≥ COLD_EPS) — an owner with no
- *  cold activity (and a viewer whose snapshot carried no cold moves — `coldMovedOf`) sees no new column. */
-export function hasColdColumn(entries: MonthlyLogEntry[], coldByMonth: Record<number, number> | undefined): boolean {
-  if (!coldByMonth) return false;
-  return entries.some((e) => Math.abs(coldByMonth[e.month] ?? 0) >= COLD_EPS);
+/** BL49 (the owner's call A) — the → Cold column shows whenever this device knows the cold moves: on the owner's, his
+ *  journal's — none logged included, an empty map; on a trusted viewer's whenever the owner's snapshot carried them, an
+ *  empty map included (`coldMovedOf`). A quiet month reads "—" and the total ₿0.00000 — never a column of zeros. Not for
+ *  a viewer whose snapshot carried none (an older owner build): a zero the device doesn't know isn't a zero. Nor (v1.1)
+ *  for moves it can't place: a map with no month `coldMonthOk` places has no column, and the viewer's copy of it is
+ *  none — as before BL49, but for an infinite figure, which the owner's Ledger alone showed (the owner's call, v1.2).
+ *  The gate asks of the owner's map what the viewer's copy keeps of it: the two Ledgers agree by construction. */
+export function hasColdColumn(coldByMonth: Record<number, number> | null | undefined): boolean {
+  if (coldByMonth == null) return false;
+  const months = Object.entries(coldByMonth);
+  return months.length === 0 || months.some(([k, v]) => coldMonthOk(k, v));
 }
 
 /**
@@ -84,7 +104,7 @@ export function hasColdColumn(entries: MonthlyLogEntry[], coldByMonth: Record<nu
  *   remainder is DISCLOSED (coldFootnote), the way a reconciling item is.
  * ⚠ INVARIANT: logged + unlogged equals the sum of every value in coldByMonth, to within COLD_EPS per half.
  */
-export function coldTotals(entries: MonthlyLogEntry[], coldByMonth: Record<number, number> | undefined):
+export function coldTotals(entries: MonthlyLogEntry[], coldByMonth: Record<number, number> | null | undefined):
   { logged: number; unlogged: number } {
   if (!coldByMonth) return { logged: 0, unlogged: 0 };
   const hasRow = new Set(entries.map((e) => e.month));
@@ -123,8 +143,9 @@ export function coldFootnote(unlogged: number, columnShown: boolean): string | n
 export interface LedgerCsvOpts {
   hasCbLoan: boolean;
   showMining: boolean;
-  /** Net BTC into cold per month (coldMovedByMonth). Omitted → no → Cold column. */
-  coldByMonth?: Record<number, number>;
+  /** Net BTC into cold per month (coldMovedOf). Omitted or null → no → Cold column; a map → as `hasColdColumn` says (an
+   *  empty one → the column, BL49). */
+  coldByMonth?: Record<number, number> | null;
 }
 
 /** RFC-4180 cell escaping: wrap in double quotes + double any embedded quote when the value contains
@@ -142,7 +163,8 @@ function num(value: number | undefined | null): string {
 /**
  * Build the Ledger CSV. Columns mirror the visible table (plus an ISO `Date` column so spreadsheets get a
  * sortable calendar date alongside the integer `Mo`):
- *   Mo, Date, Income→BTC, Paydown, BTC bought, Strike bal, Strike col, [→ Cold iff hasColdColumn], Strike LTV
+ *   Mo, Date, Income→BTC, Paydown, BTC bought, Strike bal, Strike col, [→ Cold iff hasColdColumn — none logged, or a
+ *   month placed: BL49], Strike LTV
  *   [+ CB bal, CB LTV  iff hasCbLoan] [+ Mining sats iff showMining]
  * Raw decimals (no $/₿/% ornament); `strikeLtv`/`cbLtv` stay the stored decimal (0.1483). Missing optional
  * cells → empty (an unrecorded Strike col is empty, never 0). CRLF line endings, no trailing newline, NO totals row
@@ -153,7 +175,7 @@ export function buildLedgerCsv(entries: MonthlyLogEntry[], opts: LedgerCsvOpts):
 
   // Real sort convention: single-key ascending by month (dayLog uses (ts,id); monthlyLog never does).
   const sorted = [...entries].sort((a, b) => a.month - b.month);
-  const showCold = hasColdColumn(sorted, coldByMonth);
+  const showCold = hasColdColumn(coldByMonth);
 
   const header = ['Mo', 'Date', 'Income→BTC', 'Paydown', 'BTC bought', 'Strike bal', 'Strike col'];
   if (showCold) header.push('→ Cold');

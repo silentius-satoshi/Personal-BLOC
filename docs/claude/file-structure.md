@@ -856,6 +856,10 @@ src/
                                 # the dayLog at render, never stored). BL48 (V2 A): coldMovedOf — the column's months on
                                 # this device (the journal's, or a trusted viewer's copy from the snapshot) — and
                                 # coldMovesFromSnapshot (the copy, checked on the way in; ledgerColdViewer.test.ts).
+                                # BL49: hasColdColumn — the column when none is logged (an empty map: a quiet month
+                                # "—", the total ₿0.00000) or a month is placed; a viewer without them, null, none.
+                                # coldMonthOk (v1.1) — a month it can place: ONE rule for the gate and the viewer's
+                                # copy, so the owner's Ledger and his viewer's show the column on the same snapshots.
                                 # See almanac.md § M-L1. Tested in
                                 # src/lib/__tests__/ledgerCsv.test.ts and ledgerCold.test.ts
                                 # + src/lib/__tests__/ledgerCsvHardening.test.ts (HJ-23, HJ-24 — Hardening 1: CB bal / CB LTV under their own headers; RFC 4180 quote doubling)
