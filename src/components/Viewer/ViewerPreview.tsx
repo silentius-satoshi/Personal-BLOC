@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store/useStore';
 import { buildViewerSnapshotPayload } from '../../store/payloads';
@@ -8,23 +8,43 @@ import styles from './ViewerPreview.module.css';
 
 const noop = () => {};
 
+/** BL50 — the preview's own label: the same words over its home and over the Almanac it opens. */
+export function previewLabel(trusted: boolean): string {
+  return `PREVIEW · what your viewer sees — ${trusted ? 'Trusted mode' : 'Safe mode'}`;
+}
+
+/** BL50 — over the Almanac a trusted preview opens: the label alone (the header's "← Preview" is the way back). */
+export function PreviewLabel({ trusted }: { trusted: boolean }) {
+  return (
+    <div className={styles.previewLabelBar}>
+      <span className={styles.previewLabel}>{previewLabel(trusted)}</span>
+    </div>
+  );
+}
+
+export interface ViewerPreviewProps {
+  trusted:       boolean;                         // the roster's first viewer's tier (AppShell's one read, M1: slot 0)
+  override:      boolean | null;                  // the preview's Safe/Trusted choice; null = follow `trusted`
+  setOverride:   (v: boolean | null) => void;     // BL50 — AppShell keeps it, so it outlives a visit to the Almanac
+  onOpenAlmanac: () => void;                      // BL50 — a trusted preview's bar opens the Almanac as he reads it
+}
+
 /**
  * Owner-only "Preview as viewer" — renders the REAL ViewerHomeView from the ACTUAL viewer-snapshot pipeline.
- * A preview-LOCAL Safe/Trusted override (a pure what-if lens — NEVER writes a viewer's tier) lets the owner
- * sanity-check the other mode. Safe: force the real payload down its safe branch (buildViewerSnapshotPayload(
- * state, 'safe')) → previewSafeSnapFromPayload → inject the SafeSnapshot (ViewerHomeView scales it
- * to live price). Trusted: inject null → the live-derive path (what a trusted viewer's hydrated store shows).
- * Fidelity ≡ wire payload by construction. Gated to the owner simple-mode branch in AppShell; `viewerPreview` is
- * transient (never persisted).
+ * A preview Safe/Trusted override (a pure what-if lens — NEVER writes a viewer's tier; AppShell keeps it while the
+ * preview lasts — BL50) lets the owner sanity-check the other mode. Safe: force the real payload down its safe branch
+ * (buildViewerSnapshotPayload(state, 'safe')) → previewSafeSnapFromPayload → inject the SafeSnapshot (ViewerHomeView
+ * scales it to live price). Trusted: inject null → the live-derive path (what a trusted viewer's hydrated store
+ * shows). Fidelity ≡ wire payload by construction. BL50 — his bar too: Home · Almanac · Settings in Trusted mode (its
+ * "Almanac" opens the hub as he reads it), Home · Settings in Safe mode; his ⚙ and Settings drawn but inert. Gated to
+ * the owner simple-mode branch in AppShell; `viewerPreview` is transient (never persisted).
  */
-export function ViewerPreview() {
-  const trusted = useStore((s) => s.viewers[0]?.tier === 'trusted');   // M1: slot 0
+export function ViewerPreview({ trusted, override, setOverride, onOpenAlmanac }: ViewerPreviewProps) {
   const setViewerPreview = useStore((s) => s.setViewerPreview);
   const inputs    = useStore(useShallow(selectSafetyViewInputs));   // stable ref while values unchanged
   const btcPrice  = useStore((s) => s.btcPrice);
   const hasCbLoan = useStore((s) => s.hasCbLoan);
 
-  const [override, setOverride] = useState<boolean | null>(null);   // null = follow the actual setting
   const effectiveTrusted = override ?? trusted;
 
   const previewSnap = useMemo(
@@ -44,7 +64,7 @@ export function ViewerPreview() {
         <div className={styles.previewBarTop}>
           <span className={styles.previewLabel}>
             {/* BL48 — names no viewer: it read the first roster slot's label, the owner's own nickname for one viewer. */}
-            PREVIEW · what your viewer sees — {effectiveTrusted ? 'Trusted mode' : 'Safe mode'}
+            {previewLabel(effectiveTrusted)}
           </span>
           <button className={styles.exitBtn} onClick={() => setViewerPreview(false)}>✕ Exit preview</button>
         </div>
@@ -70,7 +90,8 @@ export function ViewerPreview() {
           </span>
         </div>
       </div>
-      <ViewerHomeView previewSafeSnap={previewSnap} preview onOpenSettings={noop} />
+      <ViewerHomeView previewSafeSnap={previewSnap} preview onOpenSettings={noop}
+        onOpenAlmanac={effectiveTrusted ? onOpenAlmanac : undefined} />
     </div>
   );
 }

@@ -22,6 +22,7 @@ import FireFace from './FireFace';
 import FaceIcon from './FaceIcon';
 import { ALMANAC_LIST, faceShown, firstListFace, gridGroups, VIEWER_WHAT_IF_NOTE, viewerWhatIfNoteShown, type Face } from './almanacGrid';
 import { ViewerWhatIf } from '../ui/viewerWhatIf';
+import { useSeenAsViewer } from './seenAsViewer';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import { fireFaceOnDeploy } from '../../lib/fireDeploy';
 import styles from './AlmanacView.module.css';
@@ -90,8 +91,9 @@ const FIRE_ON_THIS_DEPLOY = fireFaceOnDeploy({
 });
 
 /** The face last open in this session (BL46's A): a computer's list reopens on it. In memory only — nothing persisted,
- *  nothing synced; a reload forgets it. */
-let lastOpenFace: Face | null = null;
+ *  nothing synced; a reload forgets it. One per lens (BL50): the owner's own hub and his trusted preview of his viewer's
+ *  each keep their own, so neither opens on a face the other left open. */
+const lastOpenFace: Record<'own' | 'seen', Face | null> = { own: null, seen: null };
 
 interface AlmanacViewProps {
   /** Read at mount only (the hub mounts each time it is opened): a face to open on, from outside the hub — the plan's
@@ -129,14 +131,14 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
   const monthlyLog = useStore((s) => s.monthlyLog);
   const ledgerAvailable = ledgerFaceAvailable(monthlyLog);
   // BL48 — a trusted viewer's hub (a safe viewer never opens it — AppShell): the owner's-only faces leave it, and a plan
-  // face's what-ifs are his to try, never saved.
-  const viewerMode = useStore((s) => s.viewerMode);
+  // face's what-ifs are his to try, never saved. BL50 — the owner's trusted preview reads it the same way.
+  const seenAsViewer = useSeenAsViewer();
 
   // A gated face whose gate closes while it is open — the loan switched off, the log emptied, or the FIRE face off this
   // deploy (build 4b — BL42; an `initialFace` of 'fire' lands here too) — goes back to the grid, where its tile is gone.
   useEffect(() => {
-    if (face !== null && !faceShown(face, { hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode })) setFace(null);
-  }, [face, hasCbLoan, ledgerAvailable, viewerMode]);
+    if (face !== null && !faceShown(face, { hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer })) setFace(null);
+  }, [face, hasCbLoan, ledgerAvailable, seenAsViewer]);
 
   // Every way into a face from inside the hub — a tile, a face's own link to another — ends the link's "from outside".
   const openFace = (f: Face) => { setFace(f); setFromOutside(false); };
@@ -166,13 +168,14 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
     }
   };
 
-  const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode });
+  const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer });
   // In the list a face is always open (BL46's A): with none asked for, the face last open in this session while it shows,
   // else Decision — drawn at once, and kept as the open face, so narrowing the window keeps it too.
-  const listFace: Face | null = listMode && face === null ? firstListFace(lastOpenFace, groups) : null;
+  const memory = seenAsViewer ? 'seen' : 'own';
+  const listFace: Face | null = listMode && face === null ? firstListFace(lastOpenFace[memory], groups) : null;
   useEffect(() => { if (listFace !== null) setFace(listFace); }, [listFace]);
   const shown: Face | null = face ?? listFace;
-  useEffect(() => { if (shown !== null) lastOpenFace = shown; }, [shown]);
+  useEffect(() => { if (shown !== null) lastOpenFace[memory] = shown; }, [shown, memory]);
 
   const badge = (
     <FreshnessBadge
@@ -284,7 +287,7 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
           // shared inputs unlock (`ViewerWhatIf`; FIRE's face locks its own again) — and a viewer reads so over a plan
           // face.
           <div className={listMode ? styles.pane : styles.contents}>
-            {viewerWhatIfNoteShown(shown, viewerMode) && <p className={styles.viewerNote} role="note">{VIEWER_WHAT_IF_NOTE}</p>}
+            {viewerWhatIfNoteShown(shown, seenAsViewer) && <p className={styles.viewerNote} role="note">{VIEWER_WHAT_IF_NOTE}</p>}
             <ViewerWhatIf.Provider value={true}>{renderFace(shown)}</ViewerWhatIf.Provider>
           </div>
         )}

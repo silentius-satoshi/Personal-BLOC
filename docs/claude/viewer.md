@@ -177,16 +177,19 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   `<ViewerPreview/>` instead of the Dashboard/Daily/Monthly fork. **Owner IA — the trigger RELOCATED** from the
   journal headers (the old 👁 button, now retired) into **Settings → Sharing (`SharingPage.tsx`, a "👁 Preview as
   viewer" button)**; it does `setViewerPreview(true); setActiveTab(previousTab);` so leaving Settings (branch H)
-  drops into branch J where `viewerPreview && !viewerMode` shows the overlay. `ViewerPreview` itself is UNCHANGED
+  drops into branch J, which shows the overlay while the owner previews (since BL50 AppShell's `previewing` —
+  `previewTier`, simple mode only; § BL50). `ViewerPreview` itself is UNCHANGED
   (its banner + Safe/Trusted toggle stay — that is its job). `ViewerPreview` renders the
   REAL `ViewerHomeView` from the ACTUAL `buildViewerSnapshotPayload` — **safe mode injects a locally-built
   `SafeSnapshot`** (`previewSafeSnapFromPayload`, mirrors viewerSync's construction incl. `hasCbLoan ?? false`)
   as `previewSafeSnap`; **trusted mode passes `null`** → the live-derive path (what a trusted viewer's hydrated
-  store shows). The renamed `preview` prop hides the settings affordances AND the bottom nav (a lone no-op Home
-  button is dead weight) and makes the pill age read the literal `'live preview'` (the owner device's
+  store shows). The renamed `preview` prop hid the settings affordances and the bottom nav until BL50 (a lone
+  no-op Home button was dead weight) — since BL50 it draws both as the viewer's device does, his Settings inert
+  (§ BL50) — and makes the pill age read the literal `'live preview'` (the owner device's
   `viewerLastSyncAt` is forever null → `relativeAge` would show an endless "syncing…"). A sticky PREVIEW top bar
-  names the mode + "✕ Exit preview" AND carries a preview-LOCAL **Safe|Trusted override** (`override: boolean |
-  null` local state, `effectiveTrusted = override ?? trusted`) — a pure what-if lens that **NEVER writes
+  names the mode + "✕ Exit preview" AND carries a **Safe|Trusted override** (`override: boolean | null` — the
+  preview's own state until BL50, AppShell's `previewOverride` since, so it outlives a visit to the Almanac;
+  `effectiveTrusted = override ?? trusted`) — a pure what-if lens that **NEVER writes
   `viewerPrivacyTrusted`**; forcing safe spreads `{ ...getState(), viewerPrivacyTrusted: false }` through
   `buildViewerSnapshotPayload` so the mode is exercised via the REAL builder (fidelity ≡ wire payload under the
   hypothetical setting), and an amber "previewing — actual: {Safe|Trusted}" caption flags drift. **Preview
@@ -275,9 +278,9 @@ viewer (a viewer's device, `viewerMode`) is caught by branch G before J, so view
   preview-Trusted uses) — **no preview banner, no Safe/Trusted toggle**; owners always see live truth. The ONE
   additive `ViewerHomeView` change (never a fork): optional `ownerNav?: ReactNode` — when present it (a) renders in
   the header actions IN PLACE of the lone ⚙ (the cluster carries Settings), (b) suppresses the bottom Home|Settings
-  nav (`{!preview && !ownerNav && …}`), (c) pill age reads `'live'` (`preview ? 'live preview' : ownerNav ? 'live'
-  : relativeAge(lastSync)` — the owner device's `viewerLastSyncAt` is null). Viewer + ViewerPreview never pass
-  `ownerNav` → byte-identical to before.
+  nav (`{!ownerNav && …}` — since BL50 the preview draws it), (c) pill age reads `'live'` (`preview ? 'live preview'
+  : ownerNav ? 'live' : relativeAge(lastSync)` — the owner device's `viewerLastSyncAt` is null). Viewer +
+  ViewerPreview never pass `ownerNav` → byte-identical to before.
 - **`simpleView` gains `'dashboard'` and it is the DEFAULT** (`'dashboard' | 'monthly' | 'daily'`, default now
   `'dashboard'`). Persisted device-local (rides `...rest`, never synced) → **migrate-default only**: the custom
   merge preserves an existing user's persisted choice; no store version bump. DailyModeView/SimpleModeView/ViewToggle
@@ -408,7 +411,7 @@ viewer taps reaches the plan. What the faces do for a viewer: `almanac.md` § Tr
   shown).
 - **"Preview as viewer"** names no viewer: its banner reads "PREVIEW · what your viewer sees — Trusted mode" (it read
   the first roster slot's label, the owner's own nickname for one viewer). The name fields' examples say "viewer" (the
-  owner's ask, BL48).
+  owner's ask, BL48). Since BL50 it draws his bar, and a trusted preview's opens his Almanac (§ BL50).
 - **Not in it:** the FIRE face for a viewer (V1 — C2 later: the owner's FIRE assumptions synced across his devices and to
   trusted viewers, with the borrow lane); the Ledger's Mining column (F1, the owner's call A: `showMiningInLog` is
   device-local and a viewer's stays off — the owner's is off too; `almanac.md` § Trusted viewers). The price stays each
@@ -422,3 +425,41 @@ viewer taps reaches the plan. What the faces do for a viewer: `almanac.md` § Tr
   SHAPE), `backPlace.test.ts` (GUARD), `characterization.test.ts` (110 persisted keys) and
   `e2e/viewerAlmanac.spec.ts` — the first viewer e2e (PARITY, PARITY LIST, WAY IN, SAFE, DEMOTE, FULL MODE, WHAT-IF,
   MINING, PREVIEW).
+
+---
+
+## BL50 — "Preview as viewer" draws his bar, and its Almanac works as he sees it (the owner's call B; store unchanged, NO bump)
+
+Spec `pbloc-spec-preview-bar-v1`; the owner's call B (BL50), from BL48's live look: the preview didn't show the bar
+"Home · Almanac · Settings". It does now, and a trusted preview's "Almanac" opens the hub as his trusted viewer reads it,
+on the owner's device and figures, nothing saved. What the hub does under it: `almanac.md` § "Preview as viewer".
+- **The bar.** `ViewerHomeView` draws the bottom nav whenever it has no `ownerNav` — the viewer's, and the owner's
+  preview of it — and the lone ⚙ the same; with `preview` both Settings buttons are `disabled`: drawn as his device
+  draws them, inert, since his settings live on his device (`.iconBtn:disabled, .navBtn:disabled` mute them).
+  `ViewerPreview` passes `onOpenAlmanac` for a trusted preview only, so the bar reads Home · Almanac · Settings in
+  Trusted mode and Home · Settings in Safe — a safe viewer has no Almanac. The owner's Dashboard mount keeps its own nav
+  and no bar.
+- **The tier — `previewTier({ viewerMode, viewerPreview, simpleMode, previewTrusted })` (`viewerAccess.ts`, pure).**
+  'trusted' or 'safe' while the owner previews; null otherwise — always on a viewer's device, and in full mode: the
+  preview is drawn in simple mode alone (Branch J), and Settings → Sharing's button sets the flag in either mode, so in
+  full mode it draws nothing and his Almanac tab stays his own. AppShell reads the roster once (`viewers[0]?.tier ===
+  'trusted'` — M1: slot 0, as the preview read it) and keeps the preview's Safe/Trusted choice (`previewOverride`), so
+  it outlives a visit to the Almanac; an effect drops it when the preview ends.
+- **The pages.** Branch J renders `renderPreview()` while `previewing`, else the journal; the edge-back under-layer
+  (`renderSimpleUnder`) the same, so a swipe out of the preview's Almanac reveals the preview and lands on it. Branch I
+  takes the owner's trusted preview — `… && almanacOpen && previewing !== 'safe'` — with the label alone above its
+  header (`PreviewLabel`: "PREVIEW · what your viewer sees — Trusted mode", sticky — a long face never scrolls the
+  preview out of sight; no Exit or toggle there — the header's "← Preview", BL47's `backPlace`, is the way back) and the
+  hub inside `PreviewAsViewer` (true), AppShell's one provider of it. A safe preview never gets in: Branch I refuses it,
+  and an effect takes it off the Almanac tab (`almanacExit(previousTab)`) and off a way back that names it
+  (`previousTab` 'almanac' → 'living': Settings opened inside the hub would say "← Almanac" and open the preview) — as
+  when the roster's tier turns safe, synced from his other device, with the Almanac open.
+- **What stays the owner's** (declared — the spec's §2.5). His corner notices (Syncing…, ⚠ Too large to sync, ⚠ Plan
+  not loaded, Reconnect): his device's, over every page, the preview's as before. The device tools on the hub's faces —
+  Mining's list, the Sats converter, the live-height switch — his own, as on his own Almanac. The price: his device's
+  quote and mode, as the preview's home always read it.
+- Tests: `viewerAccess.test.ts` (⭐ PREVIEW TIER — sixteen states, non-vacuous; ⭐ PREVIEW WIRING — the lens' one
+  provider, the sticky label; ONE READ, HOME, PAGES and BAR moved), `seenAsViewer.test.tsx` (⭐ LENS),
+  `viewerAlmanacWiring.test.ts` (⭐ GATES, ⭐ CALL SITES; COPIES, PIN and PREVIEW moved), `backPlace.test.ts` (ORDER moved)
+  and `e2e/viewerAlmanac.spec.ts` (PREVIEW BAR, PREVIEW HUB, PREVIEW SAVES NOTHING, PREVIEW WAY BACK, SAFE PREVIEW, FULL
+  MODE PREVIEW). § Test Suite → BL50's entry.

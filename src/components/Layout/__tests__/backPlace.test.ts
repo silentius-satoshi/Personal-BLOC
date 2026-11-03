@@ -89,11 +89,11 @@ describe('⭐ the wiring (read off AppShell)', () => {
     // mode's pages for any viewer, whatever the owner's layout (viewerAccess.test.ts pins the rest).
     const home = SHELL.indexOf("viewerMode && viewerDataLoaded && activeTab !== 'settings' && !(activeTab === 'almanac' && almanacOpen) ? (");
     const settings = SHELL.indexOf("(simpleMode || viewerMode) && activeTab === 'settings' ? (");
-    const almanac = SHELL.indexOf("(simpleMode || viewerMode) && activeTab === 'almanac' && almanacOpen ? (");
+    const almanac = SHELL.indexOf("(simpleMode || viewerMode) && activeTab === 'almanac' && almanacOpen && previewing !== 'safe' ? (");
     const journal = SHELL.indexOf("simpleMode && activeTab !== 'settings' ? (");
     expect([home, settings, almanac, journal].every((i) => i > 0), 'ORDER every branch found').toBe(true);
     expect(home < settings && settings < almanac && almanac < journal, 'ORDER home, Settings, the Almanac, the journal').toBe(true);
-    expect(SHELL, 'ORDER the preview inside the journal').toContain('{viewerPreview && !viewerMode ? <ViewerPreview /> : renderOwnerJournal()}');
+    expect(SHELL, 'ORDER the preview inside the journal').toContain('{previewing ? renderPreview() : renderOwnerJournal()}');
     expect(SHELL, 'ORDER the journal by its view').toMatch(/const renderOwnerJournal = \(\) =>\s*simpleView === 'dashboard' \? \(/);
   });
 

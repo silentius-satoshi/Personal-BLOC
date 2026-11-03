@@ -28,6 +28,20 @@
   gap: 12px;
 }
 
+/* BL50 — the label over the Almanac a trusted preview opens, above its header: sticky, so a long face never scrolls
+   the preview out of sight — "the PREVIEW banner stays" (the independent check). Nothing else in the hub sticks to the
+   top of the page: the schedule's header sticks inside its own box, the control dock to the bottom, and a computer's
+   list at 52px — below this bar. */
+.previewLabelBar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 10px 16px;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--btc);
+  box-shadow: 0 1px 0 rgba(247, 147, 26, 0.25);
+}
+
 .previewLabel {
   font-size: 11px;
   font-weight: 700;

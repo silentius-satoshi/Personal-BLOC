@@ -42,6 +42,9 @@
   transition: color 0.12s;
 }
 .iconBtn:hover { color: var(--text-primary); }
+/* BL50 — the owner's preview draws the viewer's ⚙ and Settings inert: his settings live on his device. */
+.iconBtn:disabled, .navBtn:disabled { opacity: 0.45; cursor: default; }
+.iconBtn:disabled:hover, .navBtn:disabled:hover { color: var(--text-muted); }
 
 /* Greeting */
 .greeting { margin: 18px 2px 14px; }

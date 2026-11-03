@@ -32,3 +32,24 @@ export function viewerTier(s: ViewerAccessState): ViewerTier {
 export function almanacOpensFor(s: ViewerAccessState): boolean {
   return !s.viewerMode || viewerTier(s) === 'trusted';
 }
+
+/** BL50 — the owner's "Preview as viewer" (`viewerPreview`, transient), where it is drawn, and the tier it shows: the
+ *  roster's first viewer's, or the preview's own Safe/Trusted choice (AppShell keeps it while the preview lasts). */
+export interface PreviewAccessState {
+  viewerMode:     StoreState['viewerMode'];
+  viewerPreview:  StoreState['viewerPreview'];
+  simpleMode:     StoreState['simpleMode'];
+  previewTrusted: boolean;
+}
+
+/**
+ * The tier the owner is previewing, or null when he isn't — and on a viewer's own device, always. The preview is drawn
+ * in simple mode alone (AppShell's Branch J): in full mode the flag can be set (Settings → Sharing's button is there
+ * too) and nothing shows, so there he previews nothing, and his Almanac tab stays his own. A trusted preview's bar
+ * opens the Almanac, which then reads as his trusted viewer's (`PreviewAsViewer`); a safe preview has no Almanac — the
+ * viewer it shows has none (`almanacOpensFor`).
+ */
+export function previewTier(s: PreviewAccessState): ViewerTier {
+  if (s.viewerMode || !s.viewerPreview || !s.simpleMode) return null;
+  return s.previewTrusted ? 'trusted' : 'safe';
+}

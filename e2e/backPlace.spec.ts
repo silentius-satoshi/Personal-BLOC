@@ -5,10 +5,10 @@ import { openAlmanacFace, mouseDragX, STORE_VERSION } from './helpers';
  * BL47 — the simple-mode header's way out says where it goes (spec `pbloc-spec-back-label-v1`), on screen: "← Dashboard"
  * or "← Journal" by where the owner came from, in Settings and in the Almanac — on the grid and on a face — and a tap
  * opens that page; Settings opened from inside the Almanac says "← Almanac", and the Almanac then leaves to the journal,
- * never to itself — by its "←" and by its swipe from the grid. A viewer's "← Home" and the preview's "← Preview" are
- * the rule's unit test (`backPlace.test.ts`): the dev server reaches neither page. With the five journal tabs hidden and
- * no loan, simple mode still opens the journal and every "←" goes where it says; full mode keeps its guard (HIDDEN —
- * Claude Code's F1). Each assertion carries the tag its planted bug turns red.
+ * never to itself — by its "←" and by its swipe from the grid. A viewer's "← Home" (BL48) and the preview's
+ * "← Preview" (BL50) are pinned on screen in viewerAlmanac.spec.ts, the rule in `backPlace.test.ts`. With the five
+ * journal tabs hidden and no loan, simple mode still opens the journal and every "←" goes where it says; full mode
+ * keeps its guard (HIDDEN — Claude Code's F1). Each assertion carries the tag its planted bug turns red.
  */
 /** A seed in simple or full mode, on a journal view; `extra` adds fields. */
 const seed = (simple: boolean, view: 'dashboard' | 'daily' | 'monthly', extra = ''): string => `

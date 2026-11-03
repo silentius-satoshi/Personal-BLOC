@@ -2647,7 +2647,8 @@ The hub opens on its faces as a grid — the owner's ask, "a grid of apps … si
   on a computer.)
 - **ONE catalogue.** `almanacGrid.ts` — `FACE_TILES` (key, name, group, gate), `FACE_GROUPS`, `faceShown`, `gridGroups`,
   and the `Face` union (`AlmanacView` re-exports it as `AlmanacFace`) — is pure: the hub reads its four gates once
-  (`hasCbLoan`, `ledgerFaceAvailable(monthlyLog)`, `FIRE_ON_THIS_DEPLOY` and, since BL48, `viewer` — a viewer's device)
+  (`hasCbLoan`, `ledgerFaceAvailable(monthlyLog)`, `FIRE_ON_THIS_DEPLOY` and, since BL48, `viewer` — the lens since
+  BL50, `useSeenAsViewer()`: a viewer's device, or the owner's trusted preview, § "Preview as viewer")
   and passes them in, so every combination is a unit test. The owner's grid offers exactly the faces the pill row did —
   `almanacGrid.test.ts` PILLS keeps the pill row's rule as its reference, in all sixteen combinations; a viewer's, those
   less FIRE (BL48). `visibleFaces` and the
@@ -2761,8 +2762,9 @@ click between faces, no grid page, no step back. Screens only (Standard): spec `
   simple mode, whose header scrolls away) and scrolls on its own in a short window. The open face sits beside it in
   `.pane` (`min-width: 0`) at its own width; the hub adds none.
 - **A face is always open.** There is no grid page: with no face asked for, the list opens on the face last open in
-  this session while the list shows it, else Decision (`firstListFace(lastOpenFace, groups)`). `lastOpenFace` is a
-  module variable — in memory only: nothing persisted, nothing synced, and a reload forgets it. The plan's link opens
+  this session while the list shows it, else Decision (`firstListFace(lastOpenFace[memory], groups)`). `lastOpenFace`
+  is a module variable — in memory only: nothing persisted, nothing synced, and a reload forgets it; since BL50 one per
+  lens, the owner's own hub's and his trusted preview's (§ "Preview as viewer"). The plan's link opens
   its face as before. A gate that closes on the open face opens Decision, which is ungated.
 - **No step back.** On every face the header's "Almanac" is plain (`registerTitleLink` gets null) and the edge swipe
   leaves the Almanac (`registerBack` gets null): there is no grid to go back to. The header's "←" leaves as before,
@@ -2806,7 +2808,8 @@ BL48). Heavy: spec `pbloc-spec-trusted-viewers-v1`. The routing, the tier and th
   only with `showMiningInLog` on — a device-local switch (Settings → Customize, hidden for a viewer) that no snapshot
   carries — so a viewer's Ledger never shows it, though the months' `miningSats` arrive. The owner's switch is off, so
   the two Ledgers match. If it goes on: draw the column on a viewer's device when the months carry `miningSats` — its
-  own item.
+  own item. Since BL50 the column reads the lens too: never under it — a viewer's device, the owner's trusted preview —
+  whatever the device's switch (§ "Preview as viewer").
 - **What-ifs, never saved (V4 B).** Inside the hub a viewer tries any what-if on a plan face: the open face renders
   inside `ViewerWhatIf` (true), which lifts the shared inputs' viewer lock (`useViewerLocked` in SliderInput,
   NumberInput and Toggle) — every control on a face there is a session overlay that writes nothing (each face's
@@ -2830,7 +2833,9 @@ BL48). Heavy: spec `pbloc-spec-trusted-viewers-v1`. The routing, the tier and th
 - **What a viewer's faces leave out.** The two controls that save: Scenario's Pin row and its drift line (a pin is a
   device-local copy of the position — its framing reads "Test a what-if against the plan." for a viewer); FIRE's inputs.
   The copies off the app (V5 A): the Decision schedule's Copy, Download .txt and Print, the Ledger's Copy CSV and
-  Download .csv — when a viewer's access ends the app wipes the owner's figures from his device, but not a file.
+  Download .csv — when a viewer's access ends the app wipes the owner's figures from his device, but not a file. Since
+  BL50 these gates read the lens, `useSeenAsViewer()` — a viewer's device, or the owner's trusted preview (§ "Preview
+  as viewer").
 - **A demotion (V6 A).** A safe snapshot wipes first (`viewer.md` § BL48) and a viewer on the Almanac goes home.
 - Tests: `almanacGrid.test.ts` (OWNER ONLY, NOTE, WHAT-IF; GATES, PILLS and FIRST over sixteen combinations, a viewer's
   among them), `viewerWhatIf.test.tsx`, `viewerAlmanacWiring.test.ts` (WRITES and WAYS IN among them), `ledgerColdViewer.test.ts`, `fireWiring.test.ts`
@@ -2883,6 +2888,45 @@ it, at zero, for transparency.
   FACE), `viewerSnapshot.test.ts` (COLD — the owner's payload sends the empty map) and e2e COLD ZERO
   (`viewerAlmanac.spec.ts`).
   § Test Suite → BL49's entry ("→ Cold" always shown).
+
+### "Preview as viewer" — his viewer's hub (BL50 — the owner's call B; store unchanged, NO bump)
+
+From the preview's bar, a trusted preview's "Almanac" opens the hub as the owner's trusted viewer reads it, on the
+owner's device and figures: no FIRE face, the what-if note over the plan faces, no Pin row and no copies off the app,
+every what-if unsaved (the owner's call B, from BL48's live look; spec `pbloc-spec-preview-bar-v1`). The routing and
+the bar: `viewer.md` § BL50.
+- **The lens — `Almanac/seenAsViewer.ts`.** `PreviewAsViewer`, a context (false by default; AppShell provides true
+  around the simple-mode hub while the owner previews a trusted viewer, and nowhere else), and `useSeenAsViewer()` =
+  `viewerMode || preview` — the hub as a viewer sees it. The hub's viewer GATES read it: the grid and a face's place
+  (`gridGroups` and `faceShown`'s `viewer` — FIRE's tile), the note (`viewerWhatIfNoteShown`), Scenario's Pin row,
+  drift line and framing, Decision's and the Ledger's copies, and the Ledger's Mining column (a device-local switch a
+  viewer never gets, F1 — so the preview's Ledger is his viewer's whatever the owner's switch). A face's DATA still
+  reads `viewerMode`: the Ledger's cold months (`coldMovedOf`) and the Strike hold (`strikeDepositOf`) are the device's
+  own copy — the owner's journal in his preview, equal to his viewer's copy by construction (BL48's PARITY, BL49's
+  AGREE). FIRE's own lock reads `viewerMode` too (its face never shows under the lens), and so does the shared inputs'
+  lock (`useViewerLocked` — lifted inside the hub either way, BL48 V4 B).
+- **Nothing saved, by construction.** The hub's faces call only WRITES' list (`viewerAlmanacWiring.test.ts`): the
+  three writes no viewer reaches — the pin, FIRE's two — sit behind the lens' gates; the rest are what-if overlays or
+  the device's own tools (Mining, the Sats converter, the live-height switch), the owner's own in his preview. CALL
+  SITES pins where each is named: the pin in Scenario alone, FIRE's two in FIRE's face alone, each device tool in its
+  own tool — a name WRITES allows, called from another face, would reach the preview (the independent check planted
+  one in Cycling's "Reset to live": the suite stayed green until CALL SITES).
+  Measured: the five plan faces' sliders, Decision's dock Line and Scenario's first lever in the preview — the faces
+  moved, and the stored store, its plan events, the pin, FIRE's inputs and inflation unchanged (e2e PREVIEW SAVES
+  NOTHING).
+- **His viewer's hub, text for text.** The preview's faces against a real trusted viewer's handed the owner's
+  snapshot — the phone's grid, twelve faces, the owner's Mining switch on: face for face, line for line and field for
+  field, but the preview's label (e2e PREVIEW HUB).
+- **His own Almanac unchanged.** Outside the preview the lens is off — no provider, false — so his grid, faces and
+  controls are as before: after the preview, all thirteen faces, his copies, his Pin and his Mining column, no note
+  (e2e PREVIEW WAY BACK); the flag set in full mode, with a safe roster or a trusted one, leaves his Almanac tab his
+  own (e2e FULL MODE PREVIEW); the full-mode hub never gets a provider — the lens is named in its module and AppShell
+  alone, the module exports nothing else to provide it (`viewerAccess.test.ts` PREVIEW WIRING). A computer's list
+  remembers its face per lens (`lastOpenFace`, § The Almanac on a computer), so neither opens on the other's.
+- Tests: `seenAsViewer.test.tsx` (⭐ LENS, new), `viewerAlmanacWiring.test.ts` (⭐ GATES and ⭐ CALL SITES, new; COPIES
+  and PIN moved), `almanacGrid.test.ts` (GRID, ONE RULE and KEEP moved), `fireWiring.test.ts` (DEPLOY GATE moved),
+  `controlDockWiring.test.ts` (ONCE's VIEWER moved), `ledgerColdViewer.test.ts` (FACE moved) and
+  `e2e/viewerAlmanac.spec.ts`. § Test Suite → BL50's entry.
 
 ### Almanac face navigation — TAP-ONLY (the face swipe pager was REMOVED)
 

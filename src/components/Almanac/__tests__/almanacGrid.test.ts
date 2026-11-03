@@ -101,17 +101,18 @@ describe('⭐ the hub', () => {
     expect(HUB, 'GRID the default').toMatch(/const \[face, setFace\] = useState<Face \| null>\(initialFace \?\? null\);/);
     expect(HUB, 'GRID the link, from outside').toMatch(/const \[fromOutside, setFromOutside\] = useState\(initialFace !== undefined\);/);
     expect(HUB, 'GRID no face mounts on the grid').toMatch(
-      /\) : \(\s*<div className=\{listMode \? styles\.pane : styles\.contents\}>\s*\{viewerWhatIfNoteShown\(shown, viewerMode\) && <p className=\{styles\.viewerNote\} role="note">\{VIEWER_WHAT_IF_NOTE\}<\/p>\}\s*<ViewerWhatIf\.Provider value=\{true\}>\{renderFace\(shown\)\}<\/ViewerWhatIf\.Provider>\s*<\/div>\s*\)\}/);
+      /\) : \(\s*<div className=\{listMode \? styles\.pane : styles\.contents\}>\s*\{viewerWhatIfNoteShown\(shown, seenAsViewer\) && <p className=\{styles\.viewerNote\} role="note">\{VIEWER_WHAT_IF_NOTE\}<\/p>\}\s*<ViewerWhatIf\.Provider value=\{true\}>\{renderFace\(shown\)\}<\/ViewerWhatIf\.Provider>\s*<\/div>\s*\)\}/);
     expect(HUB, 'GRID the grid or a face').toMatch(
       /\{shown === null \? \(\s*<div className=\{styles\.container\}>\s*(?:\{\}\s*)?<nav className=\{styles\.grid\} aria-label="Faces">/);
     expect(HUB, 'GRID the face on screen: the face open, or the list\'s').toContain('const shown: Face | null = face ?? listFace;');
   });
 
   it('⭐ ONE RULE — the hub reads its four gates once and asks almanacGrid; no gate of its own', () => {
+    // BL50 — the viewer gate is the lens: a viewer's device, or the owner's trusted preview (seenAsViewer.ts).
     expect(HUB, 'ONE RULE the grid').toContain(
-      'const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode });');
+      'const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer });');
     expect(HUB, 'ONE RULE the fallback').toMatch(
-      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable, viewerMode\]\);/);
+      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable, seenAsViewer\]\);/);
     expect(HUB, 'ONE RULE no pill list').not.toMatch(/visibleFaces|subnav/);
     expect(HUB, 'ONE RULE no gate spread of its own').not.toMatch(/hasCbLoan \?|ledgerAvailable \?|FIRE_ON_THIS_DEPLOY \?/);
     expect(HUB, 'ONE RULE no face falls back to a face').not.toMatch(/setFace\('halving'\)/);
@@ -222,11 +223,12 @@ describe('⭐ a computer (BL46\'s A — the owner\'s pick): the list', () => {
     expect(HUB, 'KEEP the face\'s wrapper').toMatch(
       /<div className=\{listMode \? styles\.pane : styles\.contents\}>\s*\{viewerWhatIfNoteShown[^\n]*\n\s*<ViewerWhatIf\.Provider value=\{true\}>\{renderFace\(shown\)\}<\/ViewerWhatIf\.Provider>\s*<\/div>/);
     expect(CSS, 'KEEP no box on the grid\'s side').toMatch(/\n\.contents \{\s*display: contents;\s*\}/);
+    // BL50 — the session's last face is kept per lens: the owner's own hub, and his trusted preview of his viewer's.
     expect(HUB, 'KEEP the list\'s face').toContain(
-      'const listFace: Face | null = listMode && face === null ? firstListFace(lastOpenFace, groups) : null;');
+      'const listFace: Face | null = listMode && face === null ? firstListFace(lastOpenFace[memory], groups) : null;');
     expect(HUB, 'KEEP kept as the open face').toMatch(/useEffect\(\(\) => \{ if \(listFace !== null\) setFace\(listFace\); \}, \[listFace\]\);/);
-    expect(HUB, 'KEEP the session\'s last face').toMatch(/useEffect\(\(\) => \{ if \(shown !== null\) lastOpenFace = shown; \}, \[shown\]\);/);
-    expect(HUB, 'KEEP in memory only').toMatch(/^let lastOpenFace: Face \| null = null;$/m);
+    expect(HUB, 'KEEP the session\'s last face').toMatch(/useEffect\(\(\) => \{ if \(shown !== null\) lastOpenFace\[memory\] = shown; \}, \[shown, memory\]\);/);
+    expect(HUB, 'KEEP in memory only').toMatch(/^const lastOpenFace: Record<'own' \| 'seen', Face \| null> = \{ own: null, seen: null \};$/m);
     expect(HUB, 'KEEP nothing persisted').not.toMatch(/localStorage|sessionStorage|setAlmanacFace|lastOpenFace\s*=\s*useStore/);
   });
 });

@@ -85,8 +85,8 @@ describe('⭐ the hub', () => {
     expect(calls, 'DEPLOY GATE the rule\'s one call, in the hub').toEqual(['src/components/Almanac/AlmanacView.tsx']);
     for (const f of SOURCES) expect(strip(read(f)), `DEPLOY GATE ${f} reads no env`).not.toContain('import.meta');
     expect(hub, 'DEPLOY GATE unreachable where hidden: the fallback').toMatch(
-      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable, viewerMode\]\);/);
-    expect(hub, 'DEPLOY GATE the grid, on the same rule').toContain('gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: viewerMode })');
+      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable, seenAsViewer\]\);/);
+    expect(hub, 'DEPLOY GATE the grid, on the same rule').toContain('gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer })');
     expect(count(hub, 'FIRE_ON_THIS_DEPLOY'), 'DEPLOY GATE one constant: declared, the grid, the fallback').toBe(3);
   });
 

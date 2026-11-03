@@ -2468,6 +2468,52 @@ goes red.)
     ZERO, AGREE and FACE (`ledgerColdViewer.test.ts`, 5 of 6); COLD green — the owner's payload already sends the empty
     map (BL48), and K8 shows it bites; e2e COLD ZERO red at the owner's Ledger, the other nine green. On v1.0's code,
     ALWAYS and AGREE red — the corner v1.1 closes.
+- **"Preview as viewer": his bar, and his Almanac (BL50, 2026-11-03) — the preview draws the viewer's bar; a trusted
+  preview's "Almanac" opens his hub on the owner's figures, nothing saved** (spec `pbloc-spec-preview-bar-v1` v1.0;
+  Standard, the reviewer's measured prototype, checked by an independent agent, applied byte for byte; the suite
+  3,303 → 3,308 (+6 skipped), 229 → 230 files; e2e 165 → 171 (+2 skipped). 35 planted bugs — 35 through the unit tests,
+  30 through the e2e — each an exact-once edit, red at its tagged tests, the files restored and md5-checked:
+  `Claude outputs/preview-bar/mutations-preview-bar.json`):
+  - `src/components/Almanac/__tests__/seenAsViewer.test.tsx` (1, new; rendered to static markup over a mocked store):
+    ⭐ LENS (the hub as a viewer sees it — a viewer's device, or the owner's trusted preview; never the owner's own, the
+    context off or absent).
+  - `src/components/Layout/__tests__/viewerAccess.test.ts` 7 → 9: ⭐ PREVIEW TIER (the tier the owner previews: none
+    unless he previews in simple mode — never in full mode, where nothing draws it, nor on a viewer's device; sixteen
+    states, non-vacuous) · ⭐ PREVIEW WIRING (AppShell: one roster read; the Safe/Trusted choice kept there and dropped
+    with the preview; the tier from it; a safe preview taken off the Almanac and off a way back that names it; the lens
+    around the simple-mode hub alone, the full-mode hub none — named in two files, its module exporting nothing else to
+    provide it; the label over it, sticky) — new; moved: ONE READ (the import), HOME (the preview's way in; the
+    under-layer — the preview while it lasts), PAGES (Branch I refuses a safe preview), BAR (the bar's gate the
+    Dashboard's alone; the preview's Settings and ⚙ drawn, inert; its way in, trusted only; no roster read of its own).
+  - `src/components/Almanac/__tests__/viewerAlmanacWiring.test.ts` 6 → 8: ⭐ GATES (new — in the hub's import closure
+    `viewerMode` in six modules only, each for its data or its own lock — the lens, the inputs' lock, the two data rules,
+    the Ledger's months, FIRE's lock; the four faces read the lens once; the Ledger's Mining column never under it; the
+    list's memory one per lens) · ⭐ CALL SITES (new, the independent check's — each store function WRITES allows, named
+    only where it belongs: the pin in Scenario, FIRE's two in FIRE's face, each device tool in its own tool); moved:
+    COPIES and PIN (the lens), PREVIEW (the label is `previewLabel`'s).
+  - Moved on purpose — source pins of the gates now on the lens, or of AppShell's strings: `almanacGrid.test.ts` GRID,
+    ONE RULE and KEEP (the list's memory, one per lens), `fireWiring.test.ts` DEPLOY GATE, `controlDockWiring.test.ts`
+    ONCE (its VIEWER premise; "no lock of its own" covers the lens too), `ledgerColdViewer.test.ts` FACE,
+    `backPlace.test.ts` ORDER (Branches I and J).
+  - `e2e/viewerAlmanac.spec.ts` 10 → 16 (a describe of its own): PREVIEW BAR (Trusted: Home · Almanac · Settings; Safe:
+    Home · Settings; the ⚙ and Settings disabled, a forced tap stays) · PREVIEW HUB (the owner's preview — his Mining
+    switch on — against a real trusted viewer handed his snapshot: twelve faces, field for field and line for line but
+    the label) · PREVIEW SAVES NOTHING (five plan faces' sliders, Decision's dock Line, Scenario's lever: the faces move;
+    the stored store, `planEvents`, the pin, FIRE's inputs and inflation unchanged; no FIRE, Pin or copies) · PREVIEW WAY
+    BACK ("← Preview" and the swipe — its under-layer the preview — keep the choice; no Mining column in the preview's
+    Ledger; on a long face scrolled away, the label still on screen; Exit; his own Almanac: thirteen faces, copies, Pin,
+    his Mining column, no note; the choice ends with the preview) · SAFE PREVIEW (no way in; the Almanac tab put back; a
+    roster turned safe with the grid open → the preview; Settings opened inside the hub, then the roster turned safe →
+    "← Preview", never "← Almanac") · FULL MODE PREVIEW (the flag set in full mode, a safe roster and a trusted one:
+    nothing drawn, his Almanac tab open and his). `e2e/backPlace.spec.ts`: its header (the preview's "← Preview" is
+    reached on screen now).
+  - Red first (the reviewer's, on BL49 v1.2's app code with the new and changed tests): the unit tests 17 red of 92
+    across the seven other files, and `seenAsViewer.test.tsx` fails to load (a new module) — every moved test and every
+    new one but CALL SITES, and no other (WRITES, WAYS IN and NO WORD green); CALL SITES green — the base already calls
+    each store function where it belongs, and P31 (the independent check's plant) turns it red; the e2e red at five of
+    the six, each at its first step on the bar or the way in (no bar on the base — the owner's report); FULL MODE
+    PREVIEW green — it holds on the base, which has no tier to get wrong, and P13 (the prototype's own first miss) shows
+    it bites.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

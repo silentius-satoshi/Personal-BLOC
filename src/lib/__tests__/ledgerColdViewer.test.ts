@@ -87,7 +87,10 @@ describe('⭐ the Ledger\'s cold moves on a viewer\'s device', () => {
     expect(face, 'FACE the column whenever the device knows the moves (BL49)').toContain('const showCold = hasColdColumn(coldByMonth);');
     expect(face, 'FACE a quiet month "—", never 0 (BL49)').toMatch(/function coldCell\(n: number \| undefined\) \{\s*return n == null \|\| Math\.abs\(n\) < COLD_EPS \? '—'/);
     expect(face, 'FACE the total always a number — ₿0.00000 (BL49)').toContain('<span className={styles.btcPre}>₿</span>{fmtColdBtc(totCold)}');
+    // BL50 — the copies' gate reads the lens (a viewer's device, or the owner's trusted preview); the months still come
+    // from the device's own copy (`coldMovedOf`, viewerMode above).
     expect(face, 'FACE no copies for a viewer').toMatch(
-      /\{!viewerMode && \(\s*<div className=\{styles\.actions\}>\s*<button type="button" className=\{styles\.actionBtn\} onClick=\{copyCsv\}>/);
+      /\{!seenAsViewer && \(\s*<div className=\{styles\.actions\}>\s*<button type="button" className=\{styles\.actionBtn\} onClick=\{copyCsv\}>/);
+    expect(face, 'FACE the copies\' gate, the lens').toContain('const seenAsViewer = useSeenAsViewer();');
   });
 });

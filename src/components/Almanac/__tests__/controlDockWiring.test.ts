@@ -85,8 +85,9 @@ describe('⭐ the Decision face', () => {
     // VIEWER (BL48, V4 B; R1 locked both) — inside the Almanac the card's SliderInput is live for a viewer, a what-if, so the
     // dock's is too, with no lock of its own. mutation: `disabled={s.viewerMode}` back on the dock's Line → red
     expect(panels, 'VIEWER').toMatch(/aria-label="Credit line \(what-if\)"\s*\/>/);
-    expect(panels, 'VIEWER no lock of its own').not.toContain('disabled={s.viewerMode}');
-    expect(FACE, 'VIEWER').toContain('viewerMode: st.viewerMode,');
+    expect(panels, 'VIEWER no lock of its own').not.toMatch(/disabled=\{(s\.viewerMode|seenAsViewer)\}/);
+    // BL50 — the face's viewer gate is the lens (a viewer's device, or the owner's trusted preview), read once.
+    expect(FACE, 'VIEWER').toContain('const seenAsViewer = useSeenAsViewer();');
   });
 
   it('⭐ NOTES — the scrubber\'s notes read under the chart they move', () => {

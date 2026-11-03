@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
-import { STORE_VERSION } from './helpers';
+import { STORE_VERSION, mouseDragX } from './helpers';
 
 /**
  * BL48 — trusted viewers in the Almanac (BL40's second piece; spec pbloc-spec-trusted-viewers-v1). The first viewer
@@ -9,6 +9,13 @@ import { STORE_VERSION } from './helpers';
  * viewer's the test's page. Hermetic and date-proof: round synthetic figures — $50,000 on 1 ₿ at a manual $100,000, one
  * logged month, 0.5 ₿ entered cold and a 0.1 ₿ cold move — the same manual price on both devices, live prices aborted,
  * the price history stubbed, a fixed day. Every assertion has a tag.
+ *
+ * BL50 — the owner's "Preview as viewer" (spec pbloc-spec-preview-bar-v1): its bar, his viewer's; a trusted preview's
+ * "Almanac" opens his viewer's hub on the owner's device — checked face for face, line for line and field for field
+ * against a real trusted viewer's handed the same plan, but the preview's label; its what-ifs save nothing; "← Preview"
+ * and the swipe come back to it; a safe preview has no way in; his own Almanac is his again outside it, in either mode.
+ * The preview starts as Settings → Sharing's button starts it — the flag (the dev server reaches no Sharing page: it
+ * needs a key).
  */
 const HISTORY = JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] });
 const ENTERED = Date.UTC(2026, 9, 5, 12);
@@ -173,6 +180,24 @@ async function parity(page: Page, browser: Browser, c: { loan: boolean; width: n
     if (f === 'Ledger') expect(v.lines.some((l) => l.includes('₿0.10000')), `${c.tag} Ledger: the owner's → Cold (V2)`).toBe(true);
   }
   await owner.close();
+}
+
+/** BL50 — the roster's one viewer, by his tier, on the owner's device (the preview reads slot 0, as before). */
+const ROSTER = (tier: 'trusted' | 'safe') => `, viewers: [{ index: 0, pubkeyHex: '${'a'.repeat(64)}', npub: 'npub1example',
+  label: 'Kitchen iPad', tier: '${tier}', keyVersion: 1 }], nextViewerIndex: 1`;
+/** The preview's label — over its home, and over the Almanac it opens (its CSS draws it in capitals). */
+const LABEL = (mode: 'Trusted' | 'Safe'): RegExp => new RegExp(`^PREVIEW · what your viewer sees — ${mode} mode$`, 'i');
+/** The viewer's bottom bar, his home's (the preview draws it too, BL50). */
+const homeBar = (page: Page) => page.locator('nav').filter({ hasText: 'Settings' }).last();
+
+/** The owner starts his preview from the journal, as Settings → Sharing's button does: the flag. */
+async function startPreview(page: Page, tag: string): Promise<void> {
+  await expect(page.getByLabel('Almanac'), `${tag} premise: the journal`).toBeVisible({ timeout: 20_000 });
+  await page.evaluate(async (mod) => {
+    const { useStore } = await import(/* @vite-ignore */ mod);
+    useStore.getState().setViewerPreview(true);
+  }, STORE_MOD);
+  await expect(page.getByRole('button', { name: '✕ Exit preview' }), `${tag} the preview`).toBeVisible();
 }
 
 test.describe('trusted viewers in the Almanac — BL48', () => {
@@ -389,5 +414,219 @@ test.describe('trusted viewers in the Almanac — BL48', () => {
     }, STORE_MOD);
     await expect(page.getByText(/^PREVIEW · what your viewer sees — Trusted mode$/i), 'PREVIEW the banner').toBeVisible();
     await expect(page.getByText(/Kitchen iPad/i), 'PREVIEW no roster name').toHaveCount(0);
+  });
+});
+
+test.describe('the owner\'s preview of his viewer — BL50', () => {
+  test('PREVIEW BAR — the preview draws his viewer\'s bar: Home · Almanac · Settings in Trusted mode, Home · Settings in Safe; his ⚙ and Settings drawn, inert', async ({ page }) => {
+    await prepare(page, ownerState(true, true, ROSTER('trusted')));
+    await startPreview(page, 'PREVIEW BAR');
+    await expect(page.getByText(LABEL('Trusted')), 'PREVIEW BAR the label').toBeVisible();
+    await expect(homeBar(page).getByRole('button'), 'PREVIEW BAR Trusted: Home · Almanac · Settings').toHaveText(['Home', 'Almanac', 'Settings']);
+    const settings = page.getByRole('button', { name: 'Settings', exact: true });
+    await expect(settings, 'PREVIEW BAR premise: his ⚙ and his bar\'s Settings').toHaveCount(2);
+    for (const i of [0, 1]) await expect(settings.nth(i), `PREVIEW BAR his Settings (${i}): inert`).toBeDisabled();
+    await settings.nth(1).click({ force: true });
+    await page.waitForTimeout(300);
+    await expect(page.getByText(LABEL('Trusted')), 'PREVIEW BAR a tap on it: still the preview').toBeVisible();
+    expect((await state(page)).activeTab, 'PREVIEW BAR a tap on it: no Settings').not.toBe('settings');
+    await page.getByRole('button', { name: 'Safe', exact: true }).click();
+    await expect(page.getByText(LABEL('Safe')), 'PREVIEW BAR Safe: the label').toBeVisible();
+    await expect(homeBar(page).getByRole('button'), 'PREVIEW BAR Safe: Home · Settings').toHaveText(['Home', 'Settings']);
+    await page.getByRole('button', { name: 'Trusted', exact: true }).click();
+    await expect(homeBar(page).getByRole('button'), 'PREVIEW BAR Trusted again').toHaveText(['Home', 'Almanac', 'Settings']);
+    await page.getByRole('button', { name: '✕ Exit preview' }).click();
+    await expect(page.getByLabel('Almanac'), 'PREVIEW BAR Exit: the journal').toBeVisible();
+    await expect(page.getByRole('button', { name: '✕ Exit preview' }), 'PREVIEW BAR Exit: the preview gone').toHaveCount(0);
+  });
+
+  test('PREVIEW HUB — a trusted preview\'s "Almanac" is his viewer\'s hub on the owner\'s device: face for face, line for line, field for field, but the preview\'s label', async ({ page, browser }) => {
+    test.setTimeout(300_000);
+    // The owner's own Mining column on (a device-local switch his viewer never gets): the preview's Ledger is still his
+    // viewer's.
+    const owner = await ownerDevice(browser, ownerState(true, true, `${ROSTER('trusted')}, showMiningInLog: true`));
+    await startPreview(owner.page, 'PREVIEW HUB');
+    await openAlmanac(owner.page, 'PREVIEW HUB the preview\'s');
+    await expect(owner.page.getByRole('button', { name: '← Preview', exact: true }), 'PREVIEW HUB "← Preview" back').toBeVisible();
+    await expect(owner.page.getByText(LABEL('Trusted')), 'PREVIEW HUB the label over it').toBeVisible();
+    const faces = await faceNames(owner.page, 'PREVIEW HUB the preview\'s');
+    expect(faces, 'PREVIEW HUB premise: twelve faces, no FIRE (V1)').toHaveLength(12);
+    const previewRead: Record<string, { lines: string[]; fields: string[] }> = {};
+    for (const f of faces) previewRead[f] = await readFace(owner.page, f);
+    await viewerDevice(page, owner.trusted);
+    await openAlmanac(page, 'PREVIEW HUB the viewer\'s');
+    expect(await faceNames(page, 'PREVIEW HUB the viewer\'s'), 'PREVIEW HUB face for face').toEqual(faces);
+    for (const f of faces) {
+      const v = await readFace(page, f);
+      const p = previewRead[f];
+      expect(p.fields, `PREVIEW HUB ${f}: every field's value and lock`).toEqual(v.fields);
+      expect(p.lines.filter((l) => LABEL('Trusted').test(l)), `PREVIEW HUB ${f}: the label, once`).toHaveLength(1);
+      expect(p.lines.filter((l) => !LABEL('Trusted').test(l)), `PREVIEW HUB ${f}: line for line`).toEqual(v.lines);
+    }
+    await owner.close();
+  });
+
+  test('PREVIEW SAVES NOTHING — the preview\'s what-ifs move its faces and save nothing: the stored plan, its events and the owner-only three untouched; no FIRE, Pin or copies', async ({ page }) => {
+    test.setTimeout(180_000);
+    await prepare(page, ownerState(true, true, ROSTER('trusted')));
+    await startPreview(page, 'SAVES NOTHING');
+    await openAlmanac(page, 'SAVES NOTHING');
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'SAVES NOTHING the hub').toBeVisible();
+    expect(await faceNames(page, 'SAVES NOTHING'), 'SAVES NOTHING no FIRE (its inputs save)').not.toContain('FIRE');
+    const saved = () => page.evaluate(async (mod) => {
+      const { useStore } = await import(/* @vite-ignore */ mod);
+      const s = useStore.getState();
+      return { blob: localStorage.getItem('personal-bloc-store'), events: JSON.stringify(s.planEvents),
+        pin: JSON.stringify(s.pinnedScenario), fire: JSON.stringify(s.fireInputs), inflation: s.inflationRate as number };
+    }, STORE_MOD);
+    const before = await saved();
+    for (const f of ['Decision', 'Strategy', 'Ownership', 'Cycling', 'Emergency']) {
+      const { lines } = await readFace(page, f);
+      if (f === 'Emergency') await page.getByRole('button', { name: 'Simulate', exact: true }).click();
+      const ranges = page.locator('#root input[type="range"]:not([disabled])');
+      expect(await ranges.count(), `SAVES NOTHING ${f}: its sliders are live`).toBeGreaterThan(0);
+      for (const i of [0, 1]) if (i < await ranges.count()) for (const key of ['ArrowLeft', 'ArrowLeft', 'ArrowLeft', 'ArrowRight']) await ranges.nth(i).press(key);
+      await page.waitForTimeout(800);
+      const after = (await page.locator('#root').innerText()).split('\n').map((l) => l.trim()).filter((l) => l && !/^← /.test(l));
+      expect(after, `SAVES NOTHING ${f}: the what-if moved the face`).not.toEqual(lines);
+    }
+    await readFace(page, 'Decision');
+    await expect(page.getByRole('button', { name: 'Download .txt' }), 'SAVES NOTHING no schedule copies (V5 A)').toHaveCount(0);
+    const dock = page.getByRole('region', { name: 'Controls' });
+    await dock.getByRole('button', { name: /^Line/ }).click();
+    const dockLine = dock.getByRole('slider', { name: 'Credit line (what-if)' });
+    await expect(dockLine, 'SAVES NOTHING Decision: the dock\'s Line is live').toBeEnabled();
+    for (const key of ['ArrowLeft', 'ArrowLeft', 'ArrowLeft', 'ArrowRight']) await dockLine.press(key);
+    await readFace(page, 'Ledger');
+    await expect(page.getByRole('button', { name: 'Copy CSV' }), 'SAVES NOTHING no Ledger copies (V5 A)').toHaveCount(0);
+    await readFace(page, 'Scenario');
+    await expect(page.getByRole('button', { name: "Pin today's plan" }), 'SAVES NOTHING no Pin (it saves)').toHaveCount(0);
+    const lever = page.locator('#root input:not([type="range"])').first();
+    await expect(lever, 'SAVES NOTHING Scenario: a live lever').toBeEditable();
+    await lever.fill('50000');
+    await lever.press('Tab');
+    await expect(page.locator('#root'), 'SAVES NOTHING Scenario: the diff reads it').not.toContainText('No dimension worsens');
+    expect(await saved(), 'SAVES NOTHING the stored plan, its events, the pin, FIRE\'s inputs and inflation').toEqual(before);
+  });
+
+  test('PREVIEW WAY BACK — "← Preview" and the swipe come back to the preview, its Safe/Trusted choice kept; Exit ends it, and his own Almanac is his again', async ({ page }) => {
+    test.setTimeout(120_000);
+    await prepare(page, ownerState(true, true, `${ROSTER('safe')}, showMiningInLog: true`));
+    await startPreview(page, 'WAY BACK');
+    await expect(page.getByText(LABEL('Safe')), 'WAY BACK premise: his viewer is safe').toBeVisible();
+    await expect(homeBar(page).getByRole('button'), 'WAY BACK premise: no way in').toHaveText(['Home', 'Settings']);
+    await page.getByRole('button', { name: 'Trusted', exact: true }).click();
+    await openAlmanac(page, 'WAY BACK');
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'WAY BACK the hub').toBeVisible();
+    await expect(page.getByText(LABEL('Trusted')), 'WAY BACK the choice, over the Almanac').toBeVisible();
+    await faceNames(page, 'WAY BACK');
+    await readFace(page, 'Ledger');
+    await expect(page.getByRole('columnheader', { name: 'Strike LTV', exact: true }), 'WAY BACK premise: the preview\'s Ledger').toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Mining', exact: true }), 'WAY BACK the preview\'s Ledger: no Mining column (his viewer\'s never has one)').toHaveCount(0);
+    // A long face, scrolled far down: the label is still on screen (sticky — the independent check).
+    await readFace(page, 'Decision');
+    const backBtn = page.getByRole('button', { name: '← Preview', exact: true });
+    await page.mouse.move(195, 420);
+    await page.mouse.wheel(0, 1500);
+    await expect(backBtn, 'WAY BACK premise: the face scrolled, its header off screen').not.toBeInViewport();
+    await expect(page.getByText(LABEL('Trusted')), 'WAY BACK the label stays on screen').toBeInViewport();
+    await page.mouse.wheel(0, -3000);
+    await expect(backBtn, 'WAY BACK premise: back at the top').toBeInViewport();
+    await backBtn.click();
+    await expect(page.getByText(LABEL('Trusted')), 'WAY BACK "← Preview": the preview, the choice kept').toBeVisible();
+    await expect(page.getByText('previewing — actual: Safe'), 'WAY BACK the caption: his choice, not the roster').toBeVisible();
+    // The swipe from the grid: its under-layer is the preview, and it lands there.
+    await openAlmanac(page, 'WAY BACK the swipe');
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'WAY BACK premise: the grid').toBeVisible();
+    await mouseDragX(page, 8, page.viewportSize()!.height / 2, 234, { release: false });
+    // The under-layer is hidden from the accessibility tree (EdgeBackGesture's aria-hidden): read by its text.
+    await expect(page.locator('[aria-hidden="true"]').getByText(LABEL('Trusted')), 'WAY BACK the swipe reveals the preview').toBeVisible();
+    await page.mouse.up();
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'WAY BACK the swipe leaves the Almanac').toHaveCount(0);
+    await expect(page.getByText(LABEL('Trusted')), 'WAY BACK the swipe lands on the preview, the choice kept').toBeVisible();
+    // Exit: the journal, and his own Almanac — FIRE, the copies, the Pin, no note.
+    await page.getByRole('button', { name: '✕ Exit preview' }).click();
+    await page.getByLabel('Almanac').click();
+    await expect(page.getByRole('button', { name: '← Journal', exact: true }), 'WAY BACK his Almanac: "← Journal"').toBeVisible();
+    await expect(page.getByText(LABEL('Trusted')), 'WAY BACK his Almanac: no label').toHaveCount(0);
+    expect(await faceNames(page, 'WAY BACK his own'), 'WAY BACK his own: all thirteen, FIRE among them').toHaveLength(13);
+    await readFace(page, 'Decision');
+    await expect(page.getByRole('button', { name: 'Download .txt' }), 'WAY BACK his copies').toBeVisible();
+    await expect(page.getByRole('note'), 'WAY BACK no note').toHaveCount(0);
+    await readFace(page, 'Scenario');
+    await expect(page.getByRole('button', { name: "Pin today's plan" }), 'WAY BACK his Pin').toBeVisible();
+    await readFace(page, 'Ledger');
+    await expect(page.getByRole('columnheader', { name: 'Mining', exact: true }), 'WAY BACK his Ledger: his Mining column').toBeVisible();
+    // Again: the preview follows the roster — the choice ended with the preview.
+    await page.getByRole('button', { name: '← Journal', exact: true }).click();
+    await startPreview(page, 'WAY BACK again');
+    await expect(page.getByText(LABEL('Safe')), 'WAY BACK the choice ended with the preview').toBeVisible();
+  });
+
+  test('SAFE PREVIEW — a safe preview has no way in: no "Almanac", and the Almanac tab opens the preview; a trusted preview whose viewer turns safe, its Almanac open, goes back to it', async ({ page }) => {
+    await prepare(page, ownerState(true, true, ROSTER('trusted')));
+    await startPreview(page, 'SAFE PREVIEW');
+    await page.getByRole('button', { name: 'Safe', exact: true }).click();
+    await expect(homeBar(page).getByRole('button'), 'SAFE PREVIEW no way in').toHaveText(['Home', 'Settings']);
+    await setTab(page, 'almanac', 'living');
+    await expect(page.getByText(LABEL('Safe')), 'SAFE PREVIEW the Almanac tab opens the preview').toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'SAFE PREVIEW no faces').toHaveCount(0);
+    await expect.poll(async () => (await state(page)).activeTab, { message: 'SAFE PREVIEW taken off the Almanac' }).toBe('living');
+    // A trusted preview with its Almanac open; the roster's tier turns safe (as a sync from his other device would).
+    await page.getByRole('button', { name: '✕ Exit preview' }).click();
+    await startPreview(page, 'SAFE PREVIEW again');
+    await expect(page.getByText(LABEL('Trusted')), 'SAFE PREVIEW premise: the roster\'s tier').toBeVisible();
+    await openAlmanac(page, 'SAFE PREVIEW');
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'SAFE PREVIEW premise: the grid').toBeVisible();
+    await page.evaluate(async (mod) => {
+      const { useStore } = await import(/* @vite-ignore */ mod);
+      useStore.setState((s: { viewers: { tier: string }[] }) => ({ viewers: s.viewers.map((v) => ({ ...v, tier: 'safe' })) }));
+    }, STORE_MOD);
+    await expect(page.getByText(LABEL('Safe')), 'SAFE PREVIEW turned safe: the preview, Safe mode').toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'SAFE PREVIEW turned safe: no faces').toHaveCount(0);
+    await expect(homeBar(page).getByRole('button'), 'SAFE PREVIEW turned safe: no way in').toHaveText(['Home', 'Settings']);
+    // Settings opened inside a trusted preview's hub (a corner notice opens it from any page), then the roster turns safe:
+    // Settings' way back no longer names the Almanac — it opens the preview (the independent check).
+    await page.evaluate(async (mod) => {
+      const { useStore } = await import(/* @vite-ignore */ mod);
+      useStore.setState((s: { viewers: { tier: string }[] }) => ({ viewers: s.viewers.map((v) => ({ ...v, tier: 'trusted' })) }));
+    }, STORE_MOD);
+    await openAlmanac(page, 'SAFE PREVIEW Settings');
+    await setTab(page, 'settings', 'almanac');
+    await expect(page.getByRole('button', { name: '← Almanac', exact: true }), 'SAFE PREVIEW premise: Settings from the hub').toBeVisible();
+    await page.evaluate(async (mod) => {
+      const { useStore } = await import(/* @vite-ignore */ mod);
+      useStore.setState((s: { viewers: { tier: string }[] }) => ({ viewers: s.viewers.map((v) => ({ ...v, tier: 'safe' })) }));
+    }, STORE_MOD);
+    await expect(page.getByRole('button', { name: '← Preview', exact: true }), 'SAFE PREVIEW turned safe in Settings: the way back names the preview').toBeVisible();
+    expect((await state(page)).previousTab, 'SAFE PREVIEW turned safe in Settings: no way back to the Almanac').toBe('living');
+    await page.getByRole('button', { name: '← Preview', exact: true }).click();
+    await expect(page.getByText(LABEL('Safe')), 'SAFE PREVIEW the way back: the preview').toBeVisible();
+  });
+
+  test('FULL MODE PREVIEW — full mode draws no preview: the flag set there (Sharing\'s button is in Settings in either mode) leaves his Almanac tab his own, whatever the roster', async ({ page, browser }) => {
+    // A safe roster (a tier that would send him off the tab) and a trusted one (a lens that would hide FIRE) — the
+    // independent check's second case.
+    for (const tier of ['safe', 'trusted'] as const) {
+      const ctx = await browser.newContext({ baseURL: test.info().project.use.baseURL, viewport: { width: 390, height: 844 },
+        hasTouch: true, isMobile: true, serviceWorkers: 'block' });
+      const p = tier === 'safe' ? page : await ctx.newPage();
+      const tag = `FULL MODE PREVIEW (${tier})`;
+      await prepare(p, ownerState(false, true, ROSTER(tier)));
+      const tools = p.getByRole('button', { name: /^Tools/ });
+      await expect(tools, `${tag} premise: full mode`).toBeVisible({ timeout: 20_000 });
+      await p.evaluate(async (mod) => {
+        const { useStore } = await import(/* @vite-ignore */ mod);
+        useStore.getState().setViewerPreview(true);
+      }, STORE_MOD);
+      await expect(p.getByRole('button', { name: '✕ Exit preview' }), `${tag} nothing drawn`).toHaveCount(0);
+      await tools.click();
+      await p.getByRole('button', { name: 'Almanac', exact: true }).click();
+      expect(await faceNames(p, tag), `${tag} his own Almanac: FIRE among its faces`).toContain('FIRE');
+      await p.waitForTimeout(500);
+      expect((await state(p)).activeTab, `${tag} he stays on it`).toBe('almanac');
+      await expect(p.getByRole('navigation', { name: 'Faces' }), `${tag} still open`).toBeVisible();
+      await ctx.close();
+    }
   });
 });

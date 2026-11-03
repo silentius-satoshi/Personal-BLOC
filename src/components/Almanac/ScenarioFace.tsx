@@ -4,6 +4,7 @@ import { useStore } from '../../store/useStore';
 import { selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
 import { applyOverlay, diffScenarios, type ScenarioOverlay, type DimensionDiff } from '../../simulation/scenarioDiff';
 import { NumberInput } from '../ui/NumberInput';
+import { useSeenAsViewer } from './seenAsViewer';
 import { relativeAge, todayLocalISO } from '../../utils/format';
 import styles from './ScenarioFace.module.css';
 
@@ -16,7 +17,8 @@ import styles from './ScenarioFace.module.css';
  * through the real risk math (deriveSafetyView, via diffScenarios) so the preview can't drift from the
  * owner's SafetyDashboard. BL48 (V4 B): a trusted viewer tries the levers too — inside the Almanac his NumberInputs
  * unlock (`ViewerWhatIf`), and the overlay is never saved — but has no Pin row: a pin SAVES (a device-local copy of the
- * owner's position), and a viewer's what-ifs save nothing.
+ * owner's position), and a viewer's what-ifs save nothing. BL50 — the owner's trusted preview reads it as his viewer
+ * does.
  */
 
 type LeverKey = keyof ScenarioOverlay;
@@ -45,7 +47,7 @@ export default function ScenarioFace() {
   const currentInputs = useStore(useShallow(selectSafetyViewInputs));
   const pinnedScenario = useStore((s) => s.pinnedScenario);
   const setPinnedScenario = useStore((s) => s.setPinnedScenario);
-  const viewerMode = useStore((s) => s.viewerMode);
+  const seenAsViewer = useSeenAsViewer();
   const [overlay, setOverlay] = useState<ScenarioOverlay>({});
 
   const hasCbLoan = currentInputs.hasCbLoan;
@@ -76,11 +78,11 @@ export default function ScenarioFace() {
     <div className={styles.face}>
       <div className={styles.head}>
         <div className={styles.title}>Scenario</div>
-        <div className={styles.framing}>{viewerMode ? 'Test a what-if against the plan.' : 'Pin a plan, then test a what-if against it.'}</div>
+        <div className={styles.framing}>{seenAsViewer ? 'Test a what-if against the plan.' : 'Pin a plan, then test a what-if against it.'}</div>
       </div>
 
       {/* 1 · PIN row — the owner's only (BL48): a pin saves, a viewer's what-ifs never do. */}
-      {!viewerMode && (
+      {!seenAsViewer && (
         <div className={styles.pinRow}>
           {pinnedScenario ? (
             <>
@@ -97,7 +99,7 @@ export default function ScenarioFace() {
       )}
 
       {/* 2 · DRIFT line (only when pinned — never on a viewer's device: a viewer pins nothing, and clearViewerData empties a pin) */}
-      {drift && !viewerMode && (
+      {drift && !seenAsViewer && (
         <div className={styles.drift}>
           Since pin: {drift.worsenedCount} of 3 worse
           <span className={styles.driftDeltas}>

@@ -904,9 +904,14 @@ src/
                                 # passes simpleView/setSimpleView as props to DailyModeView/SimpleModeView
                                 # (ViewToggle lives inside each view, not here). GESTURE P3: Branch J's owner journal
                                 # fork (dashboard→ViewerHomeView(ownerNav) / daily→DailyModeView / monthly→SimpleModeView)
-                                # is extracted to a local renderOwnerJournal() (Branch J = viewerPreview&&!viewerMode ?
-                                # <ViewerPreview/> : renderOwnerJournal()); renderSimpleUnder = viewerMode ?
-                                # <ViewerHomeView/> : renderOwnerJournal() (the surface back-nav reveals). Branch H
+                                # is extracted to a local renderOwnerJournal() (Branch J = previewing ? renderPreview()
+                                # : renderOwnerJournal() — BL50: previewing = previewTier(…); renderPreview() mounts
+                                # <ViewerPreview/> with the roster's tier, the Safe/Trusted choice AppShell keeps
+                                # (previewOverride) and goAlmanac); renderSimpleUnder = viewerMode ? <ViewerHomeView/> :
+                                # previewing ? renderPreview() : renderOwnerJournal() (the surface back-nav reveals).
+                                # BL50: Branch I takes the owner's trusted preview too (previewing !== 'safe'), with
+                                # <PreviewLabel/> over its header and <PreviewAsViewer.Provider value={previewing ===
+                                # 'trusted'}> around the hub; an effect takes a safe preview off the Almanac. Branch H
                                 # (simple-mode Settings) + Branch I (simple-mode Almanac) — the two header "←" surfaces — are
                                 # each wrapped in <EdgeBackGesture onBack={()=>setActiveTab(previousTab)}
                                 # renderUnder={renderSimpleUnder}> (iOS edge-swipe-back parallax; shared by owner+viewer).
@@ -981,6 +986,9 @@ src/
                                 # almanacOpensFor (the owner and a trusted viewer). AppShell reads both once: the viewer's
                                 # home bar's "Almanac", Branches G/H/I and the effect that takes a viewer off the Almanac
                                 # tab. viewer.md § BL48. Tests: __tests__/viewerAccess.test.ts, e2e/viewerAlmanac.spec.ts.
+                                # BL50: previewTier({ viewerMode, viewerPreview, simpleMode, previewTrusted }) → the
+                                # tier the owner previews, or null (not previewing, a viewer's device, full mode — the
+                                # preview is drawn in simple mode alone). viewer.md § BL50.
       DemoBanner.tsx            # C0/C2 — slim STICKY (position:sticky;top:0, C2 — not fixed) sandbox strip (+ .module.css).
                                 # Mounted by ONE AppShell line `{import.meta.env.VITE_DEMO === '1' && <DemoBanner/>}` (first
                                 # child of the top-level fragment → sticky keeps it in flow, PUSHING content down instead of
@@ -998,6 +1006,11 @@ src/
                                 # list beside the open face) and firstListFace (the face the list opens on: the last open
                                 # this session while shown, else Decision). § The Almanac on a computer; pinned by
                                 # __tests__/almanacGrid.test.ts and e2e/almanacGrid.spec.ts + e2e/almanacList.spec.ts
+      seenAsViewer.ts           # BL50 — the lens (spec pbloc-spec-preview-bar-v1): PreviewAsViewer (a context, false
+                                # by default; AppShell provides true around the simple-mode hub while the owner previews
+                                # a trusted viewer) and useSeenAsViewer() = viewerMode || preview — the hub's viewer gates
+                                # read it; a face's data still reads viewerMode. § "Preview as viewer". Tests:
+                                # __tests__/seenAsViewer.test.tsx, viewerAlmanacWiring.test.ts GATES, e2e/viewerAlmanac.spec.ts.
       FaceIcon.tsx              # BL45 — the grid's thirteen line icons, one a face (24px, stroke 1.75, aria-hidden)
       DecisionFace.tsx          # Decision face (Run B) — the TWELFTH face (+ .module.css, composes the parents'). THE
                                 # MOVE card, the Coinbase-loan line, the chart, the schedule (Copy · Download .txt ·

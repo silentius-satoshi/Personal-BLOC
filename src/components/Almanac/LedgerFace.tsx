@@ -6,6 +6,7 @@ import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbBarLevel } from '../../simulation/cbMetrics';
 import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
 import { todayLocalISO, fmtLtvPct } from '../../utils/format';
+import { useSeenAsViewer } from './seenAsViewer';
 import styles from './LedgerFace.module.css';
 
 /**
@@ -56,10 +57,13 @@ export default function LedgerFace() {
   const monthlyLog = useStore((s) => s.monthlyLog);
   const dayLog = useStore((s) => s.dayLog);
   const advisorStartDate = useStore((s) => s.advisorStartDate);
-  const viewerMode = useStore((s) => s.viewerMode);
+  const viewerMode = useStore((s) => s.viewerMode);   // the device's own copy of the months (`coldMovedOf`): data
   const viewerColdMovedByMonth = useStore((s) => s.viewerColdMovedByMonth);
+  const seenAsViewer = useSeenAsViewer();   // BL50 — the copies' gate, and the Mining column's (below)
   const hasCbLoan = useStore((s) => s.hasCbLoan);
-  const showMining = useStore((s) => s.showMiningInLog);
+  // BL48 (F1) — the Mining column draws with this device's own switch (Settings → Customize, which a viewer doesn't
+  // get): never on a viewer's Ledger — and, BL50, never in the owner's trusted preview, whatever his own switch says.
+  const showMining = useStore((s) => s.showMiningInLog) && !seenAsViewer;
   const cbLtvTriggerPct = useStore((s) => s.cbLtvTriggerPct);
   // CB cell coloring reuses the live CB gauge boundary — cbLiqFrac from the same derivation SafetyDashboard uses.
   const cbLiqFrac = deriveSafetyView(useStore(useShallow(selectSafetyViewInputs))).cbLiqFrac;
@@ -131,7 +135,7 @@ export default function LedgerFace() {
 
       {/* BL48 (V5 A) — no copy or download for a viewer: when his access ends the app wipes the owner's figures from his
           device, but not a file he saved. */}
-      {!viewerMode && (
+      {!seenAsViewer && (
         <div className={styles.actions}>
           <button type="button" className={styles.actionBtn} onClick={copyCsv}>{copyLabel}</button>
           <button type="button" className={styles.actionBtn} onClick={downloadCsv}>Download .csv</button>

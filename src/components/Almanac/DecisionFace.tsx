@@ -49,6 +49,7 @@ import { decisionDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
 import { futuresAnchor, type FuturesJob } from './futuresRun';
 import { useFutures } from './useFutures';
+import { useSeenAsViewer } from './seenAsViewer';
 import { futuresCardLine } from './futuresView';
 import { SliderInput } from '../ui/SliderInput';
 import { downloadBlob } from '../../lib/backup/downloadFile';
@@ -324,8 +325,9 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     strikeDepositISO: strikeDepositOf(st),   // Strike's 60-day hold's one fact — the journal's, or a viewer's copy (D9)
     strikeMinFromIncome: st.blocMinPaymentSource === 'income',   // D-R2-7 — the owner's minimum, as every run reads it
     goalNetBtc: planGoalOf(st.planGoalNetBtc),   // BL14 — the owner's saved goal, as THIS MONTH reads it (one plan)
-    viewerMode: st.viewerMode,   // BL48 (V5 A) — no copy, download or print of the schedule for a viewer
   })));
+  // BL48 (V5 A) — no copy, download or print of the schedule for a viewer; BL50 — nor in the owner's trusted preview.
+  const seenAsViewer = useSeenAsViewer();
 
   const [overlay, setOverlay] = useState<Overlay>({});
   const set = <K extends keyof Overlay>(k: K, v: Overlay[K]) => setOverlay((o) => ({ ...o, [k]: v }));
@@ -844,7 +846,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
         </div>
         {/* BL48 (V5 A) — no copy, download or print for a viewer: when his access ends the app wipes the owner's figures
             from his device, but not a file he saved or printed. */}
-        {!s.viewerMode && (
+        {!seenAsViewer && (
           <div className={styles.presetRow}>
             <button type="button" className={styles.ghostBtn} onClick={() => { void copySchedule(); }}>
               {copyState === 'ok' ? 'Copied ✓' : copyState === 'err' ? 'Copy failed' : 'Copy'}

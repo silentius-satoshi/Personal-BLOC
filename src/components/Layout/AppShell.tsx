@@ -56,14 +56,15 @@ import { DailyModeView }     from '../Daily/DailyModeView';
 import { ViewerHomeView }    from '../Viewer/ViewerHomeView';
 import { NoPlanNotice }      from '../Entry/NoPlanNotice';
 import { BackupNagCard }     from '../Entry/BackupNagCard';
-import { ViewerPreview }     from '../Viewer/ViewerPreview';
+import { ViewerPreview, PreviewLabel } from '../Viewer/ViewerPreview';
 import { HeaderNavCluster }  from './HeaderNavCluster';
 import { DemoBanner }        from './DemoBanner';
 import { backPlace, almanacExit } from './backPlace';
-import { almanacOpensFor, viewerTier } from './viewerAccess';
+import { almanacOpensFor, viewerTier, previewTier } from './viewerAccess';
 import { EdgeBackGesture }   from '../ui/EdgeBackGesture';
 import { CbDefenseTool }    from '../Tools/CbDefenseTool';
 import AlmanacView, { type AlmanacFace } from '../Almanac/AlmanacView';
+import { PreviewAsViewer } from '../Almanac/seenAsViewer';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
 import styles from './AppShell.module.css';
 
@@ -226,6 +227,13 @@ export function AppShell() {
   // "Almanac" button, a safe viewer — or one whose snapshot hasn't come — never.
   const viewerTrusted = viewerTier({ viewerMode, viewerDataLoaded, viewerSafeSnapshot }) === 'trusted';
   const almanacOpen   = almanacOpensFor({ viewerMode, viewerDataLoaded, viewerSafeSnapshot });
+  // BL50 — the owner's "Preview as viewer": the roster's first viewer's tier, or the preview's own Safe/Trusted
+  // choice — kept here, not in the preview, so it outlives a visit to the Almanac, and dropped when the preview ends. A
+  // trusted preview's bar opens the Almanac as that viewer reads it (`PreviewAsViewer`); a safe one's has no way in.
+  const previewActualTrusted = useStore((s) => s.viewers[0]?.tier === 'trusted');   // M1: slot 0
+  const [previewOverride, setPreviewOverride] = useState<boolean | null>(null);
+  const previewTrusted = previewOverride ?? previewActualTrusted;
+  const previewing = previewTier({ viewerMode, viewerPreview, simpleMode, previewTrusted });
   const planLoading      = usePlanLoading();   // 5e (F1) — "Loading your plan…": the session's first pull, on a device without its plan
 
   // 5e (F1) — the signed-in owner's app. Once it has been on screen, a first pull that starts later (an unlock path that
@@ -317,6 +325,16 @@ export function AppShell() {
     if (previousTab === 'almanac') setPreviousTab('living');
   }, [almanacOpen, activeTab, previousTab, setActiveTab, setPreviousTab]);
 
+  // BL50 — the preview's choice lasts as long as the preview; and a preview that turns safe with its Almanac open (the
+  // roster's tier, synced from another device) leaves the Almanac for the preview, as a demoted viewer leaves his — and
+  // a way back that names it: Settings opened inside the hub would say "← Almanac" and open the preview.
+  useEffect(() => { if (!viewerPreview) setPreviewOverride(null); }, [viewerPreview]);
+  useEffect(() => {
+    if (previewing !== 'safe') return;
+    if (activeTab === 'almanac') setActiveTab(almanacExit(previousTab));
+    if (previousTab === 'almanac') setPreviousTab('living');
+  }, [previewing, activeTab, previousTab, setActiveTab, setPreviousTab]);
+
   const goSettings = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); };
   // The face the Almanac opens on (Run 3): the Decision face from the plan's link — the Outlook's place — and the grid
   // (BL45) every other way in. Session-only. goAlmanac sets no face and takes no argument: the nav passes it as onClick,
@@ -382,12 +400,19 @@ export function AppShell() {
       <SimpleModeView onOpenSettings={goSettings} onOpenAlmanac={goAlmanac} onOpenPlanPaths={goPlanPaths} simpleView={simpleView} setSimpleView={setSimpleView} />
     );
 
-  // The surface an edge-back reveals: owner → the journal (Branch J); viewer → the read-only home (Branch G), its bar
-  // as Branch G draws it (BL48 — a trusted viewer's "Almanac" button), so the swipe ends on the page it showed.
+  // BL50 — the owner's preview (Branch J), with his bar: a trusted preview's "Almanac" opens the hub as he reads it.
+  const renderPreview = () => (
+    <ViewerPreview trusted={previewActualTrusted} override={previewOverride} setOverride={setPreviewOverride}
+      onOpenAlmanac={goAlmanac} />
+  );
+
+  // The surface an edge-back reveals: owner → the journal (Branch J), or his preview while it lasts (BL50); viewer →
+  // the read-only home (Branch G), its bar as Branch G draws it (BL48 — a trusted viewer's "Almanac" button), so the
+  // swipe ends on the page it showed.
   const renderSimpleUnder = () =>
     viewerMode
       ? <ViewerHomeView onOpenSettings={goSettings} onOpenAlmanac={viewerTrusted ? goAlmanac : undefined} />
-      : renderOwnerJournal();
+      : previewing ? renderPreview() : renderOwnerJournal();
 
   return (
     <>
@@ -453,13 +478,15 @@ export function AppShell() {
             <SettingsMain hideHeader registerBack={(fn) => { settingsBackRef.current = fn; }} />
           </div>
         </EdgeBackGesture>
-      ) : (simpleMode || viewerMode) && activeTab === 'almanac' && almanacOpen ? (
+      ) : (simpleMode || viewerMode) && activeTab === 'almanac' && almanacOpen && previewing !== 'safe' ? (
         // Branch I — same edge-swipe-back wrapper, and the same one-level chain as Branch H: from a face it reveals plain
         // app-bg (it goes to the grid), from the grid the journal parallax. On a face the title is the link to the
         // grid. For the owner, and for a trusted viewer in either layout (BL48) — from the grid his swipe reveals his
-        // home.
+        // home. BL50 — and for the owner's trusted preview: the hub as his viewer reads it, under the preview's label,
+        // "← Preview" back; never a safe preview's (its viewer has no Almanac).
         <EdgeBackGesture onBack={almanacEdgeBack} renderUnder={() => (almanacBackRef.current ? null : renderSimpleUnder())}>
           <div className={styles.simpleModeSettings}>
+            {previewing === 'trusted' && <PreviewLabel trusted />}
             <div className={styles.simpleModeSettingsHeader}>
               <button className={styles.simpleModeBackBtn} onClick={() => setActiveTab(almanacOut)}>
                 {`← ${backPlace(almanacOut, backState)}`}
@@ -468,13 +495,15 @@ export function AppShell() {
                 ? <button type="button" className={styles.simpleModeTitleLink} onClick={almanacTitleLink}>Almanac</button>
                 : <span className={styles.simpleModeSettingsTitle}>Almanac</span>}
             </div>
-            <AlmanacView initialFace={almanacFace} registerBack={(fn) => { almanacBackRef.current = fn; }}
-              registerTitleLink={registerAlmanacTitleLink} />
+            <PreviewAsViewer.Provider value={previewing === 'trusted'}>
+              <AlmanacView initialFace={almanacFace} registerBack={(fn) => { almanacBackRef.current = fn; }}
+                registerTitleLink={registerAlmanacTitleLink} />
+            </PreviewAsViewer.Provider>
           </div>
         </EdgeBackGesture>
       ) : simpleMode && activeTab !== 'settings' ? (
         <div className={styles.simpleModeRoot}>
-          {viewerPreview && !viewerMode ? <ViewerPreview /> : renderOwnerJournal()}
+          {previewing ? renderPreview() : renderOwnerJournal()}
         </div>
       ) : (
         <div className={styles.shell} data-active-tab={activeTab}>

@@ -36,7 +36,7 @@ export interface ViewerHomeViewProps {
   onOpenSettings: () => void;
   onOpenAlmanac?: () => void;              // BL48 — a TRUSTED viewer's way into the Almanac (AppShell passes it only then): the bottom bar's middle button. Absent → Home · Settings, as before
   previewSafeSnap?: SafeSnapshot | null;   // owner "Preview as viewer": inject the snap (safe) or null (force trusted live-derive); undefined = viewer device (store-driven)
-  preview?: boolean;                       // owner preview → hide settings-nav affordances + bottom nav; pill age reads 'live preview'
+  preview?: boolean;                       // owner preview → his ⚙ and bar's Settings drawn, inert (BL50); pill age 'live preview'
   ownerNav?: ReactNode;                    // owner IA — the 5-icon header cluster (Dashboard active). Present ⇒ owner-dashboard mount: replaces the lone ⚙, suppresses the bottom nav, pill reads 'live'. viewer/preview never pass it → unchanged.
   notice?: ReactNode;                      // R2b-2 — a slim owner-only card above the greeting (NoPlanNotice). Rendered ONLY when ownerNav is present, so it can never reach a viewer or pollute Preview-as-viewer fidelity.
 }
@@ -179,8 +179,9 @@ export function ViewerHomeView({ onOpenSettings, onOpenAlmanac, previewSafeSnap,
           <RolePill roles={grantedRoles} />
           {ownerNav ? (
             ownerNav
-          ) : !preview && (
-            <button className={styles.iconBtn} onClick={onOpenSettings} aria-label="Settings">
+          ) : (
+            // BL50 — the preview draws his ⚙ as his home does, inert there.
+            <button className={styles.iconBtn} onClick={onOpenSettings} disabled={preview} aria-label="Settings">
               ⚙
             </button>
           )}
@@ -263,8 +264,9 @@ export function ViewerHomeView({ onOpenSettings, onOpenAlmanac, previewSafeSnap,
         </div>
       </div>
 
-      {/* Bottom nav — hidden in owner preview AND on the owner dashboard (ownerNav supersedes it) */}
-      {!preview && !ownerNav && (
+      {/* Bottom nav — the viewer's, and the owner's preview of it (BL50: the bar as his device draws it — "Almanac"
+          when the preview hands its way in, Settings inert); never on the owner dashboard (ownerNav supersedes it) */}
+      {!ownerNav && (
         <nav className={styles.bottomNav}>
           <button className={`${styles.navBtn} ${styles.navActive}`} aria-current="page">
             Home
@@ -274,7 +276,7 @@ export function ViewerHomeView({ onOpenSettings, onOpenAlmanac, previewSafeSnap,
               Almanac
             </button>
           )}
-          <button className={styles.navBtn} onClick={onOpenSettings}>
+          <button className={styles.navBtn} onClick={onOpenSettings} disabled={preview}>
             Settings
           </button>
         </nav>
