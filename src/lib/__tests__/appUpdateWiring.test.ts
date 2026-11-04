@@ -61,7 +61,7 @@ describe('⭐ where it starts, and who may apply', () => {
     expect(fn(mod, 'applyUpdate'), 'ONLY THE TAP the tap restarts through its env').toMatch(/env\.reload\(\)/);
   });
 
-  it('⭐ WORKER CALLS — only the tap (appUpdate.ts) and dev mode\'s diagnostics (DevPanel, older; its update() on its Refresh tap alone) reach the service worker; only the seven known files restart the app', () => {
+  it('⭐ WORKER CALLS — only the tap (appUpdate.ts) and dev mode\'s diagnostics (DevPanel, older; its update() on its Refresh tap alone) reach the service worker; only the six known files restart the app', () => {
     // A hook that "warms" the worker when an update is found — `navigator.serviceWorker…update()` anywhere else — would
     // restart the app with no tap (the independent check planted one: every other BL51 test stayed green).
     expect(naming(/\bserviceWorker\b|\bgetRegistration\b|\bskipWaiting\b|\bclientsClaim\b/), 'WORKER CALLS who reaches it').toEqual([
@@ -80,7 +80,7 @@ describe('⭐ where it starts, and who may apply', () => {
     expect(dev, 'WORKER CALLS DevPanel\'s Refresh asks').toContain('onClick={() => { void refreshSwStatus(true); }}');
     expect(dev.match(/refreshSwStatus\(/g), 'WORKER CALLS nothing else runs it').toHaveLength(2);
     expect(naming(/location\.reload\(/), 'WORKER CALLS who restarts the app').toEqual([
-      'src/components/Auth/StoreMigrationGate.tsx', 'src/components/Layout/ErrorBoundary.tsx', 'src/components/Settings/DevPanel.tsx',
+      'src/components/Layout/ErrorBoundary.tsx', 'src/components/Settings/DevPanel.tsx',
       'src/components/Settings/SettingsMain.tsx', 'src/lib/appUpdate.ts', 'src/lib/nostr/disconnect.ts', 'src/lib/store/escapeHatch.ts',
     ]);
   });

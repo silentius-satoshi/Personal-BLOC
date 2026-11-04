@@ -905,7 +905,7 @@ goes red.)
     | CLICK-KEEPS | E6: a press on a hover-opened tip toggles it shut |
     | AWAY-KEEPS | E7: leaving closes a pinned tip |
     | ESCAPE | E8: Escape no longer closes |
-- **The sheet-entry race** (spec `pbloc-spec-e2e-sheet-race-v1`, v1.2; tests and docs only. Every count is from
+- **The sheet-entry race** (spec `pbloc-spec-e2e-sheet-race-v1`, v1.4; tests and docs only. Every count is from
   `--retries=0` on this Mac, and every mutation was restored and md5-checked — see § Build & Deploy → E2E):
   - e2e (`eventSheet.spec.ts`, "the sheet openers") — one test per opener: `openConsentSheet`, `openEventSheet`,
     `openEventSheetEdit`. Its `beforeEach` aborts the app's own font files (R6; self-hosted since 5e — `APP_FONT_FILES`, the dev server's URLs
@@ -2397,7 +2397,7 @@ goes red.)
     is still the review's) · COPIES (no
     copy, download or print of the schedule for a viewer, V5 A) · PIN (Scenario's Pin row and drift line the owner's
     only; the viewer's framing) · NO WORD (the family word the first viewer's examples used — in no file git would
-    commit, `00-MASTER-SPEC-INDEX.md` included; the file builds it from its letters, so it passes its own sweep) ·
+    commit, the docs included; the file builds it from its letters, so it passes its own sweep) ·
     PREVIEW (the banner reads no roster label).
   - `almanacGrid.test.ts` 16 → 19: ⭐ OWNER ONLY (FIRE leaves a viewer's hub before any gate) · NOTE (over every plan
     face a viewer gets but the Ledger; never the owner) · WHAT-IF (the faces inside `ViewerWhatIf` true) — new; moved:
@@ -2520,7 +2520,7 @@ goes red.)
   prototype, checked by an independent agent, applied byte for byte; the suite 3,308 → 3,334 (+6 skipped), 230 → 235
   files; e2e 171 → 179 (+2 skipped). 39 planted bugs — 39 through the unit tests, 16 through the e2e — each an
   exact-once edit, red at its tagged tests, the files restored and md5-checked: `Claude
-  outputs/app-updates/mutations-app-updates.json`):
+  outputs/app-updates/mutations-app-updates-v1.1.json`):
   - `src/lib/__tests__/appUpdate.test.ts` (12, new; the module with fake envs — a `fetch`, a registration and its
     worker, a page and a clock): ⭐ STAMP (version.json's sha and time, trimmed; anything else none; the bundle's own,
     its two constants) · ⭐ COMPARE (another commit, or the same one built again, available; this build current; no stamp
@@ -2568,6 +2568,22 @@ goes red.)
     other; the e2e red at its six UPDATE tests (no check, no card, no row), at COINS (the bar 2.480 ₿, 60% on Coinbase —
     the seed's 1.48 ₿ with the loan off) and at PREVIEW AT TOP (the preview 442 px down); FULL MODE PREVIEW green (its
     title alone changed).
+- **Sweep 2a — docs and purge (BL52, 2026-11-03)** (spec `pbloc-spec-sweep-2a-v1` v1.1; Light, the reviewer's measured
+  prototype, checked by three independent agents, applied byte for byte; the suite 3,334 → 3,335 (+6 skipped), 235 →
+  236 files; e2e unchanged, 179 (+2 skipped). The purge needs no test of its own — three dead components
+  (`AppUnlockGate`, `StoreMigrationGate`, `PoolSetupPanel`) and two unused packages (`@simplewebauthn/server`,
+  `@vercel/kv`) left the tree, and the production build, its stamp pinned, is byte for byte the base's. Seven planted
+  bugs, each red at its tagged test, the files restored and md5-checked: `Claude
+  outputs/sweep-2a/mutations-sweep-2a.json`):
+  - `src/lib/__tests__/rulesDiet.test.ts` (1, new): ⭐ RULES DIET (every `.md` under `.claude/rules/`, a subfolder's
+    too: within the budget, 84 KiB — 77,345 bytes at Sweep 2a, 110,876 before — each file within its cap, 32 KiB, and
+    pointing to its full text in `docs/claude/rules-in-full.md`, which is there: a section per file, more than its
+    heading).
+  - Moved on purpose: `appUpdateWiring.test.ts` ⭐ WORKER CALLS (the restart list loses `StoreMigrationGate.tsx`,
+    deleted — six files now) · `viewerAlmanacWiring.test.ts` NO WORD (its premise reaches `README.md` — the master
+    index is gone — and its title no longer names it).
+  - Red first — the base's code with these tests: WORKER CALLS (seven files restart the app; the list names six) and
+    RULES DIET (no full text) red; NO WORD green (its premise moved, not its rule).
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

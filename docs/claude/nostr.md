@@ -33,7 +33,10 @@ platforms** (R1 removed the original iOS-only gate + made the labels platform-ho
 source for that label — never re-inline the UA check), giving one-tap reliability without the NIP-46 deeplink/QR race. Built on a NEW **identity-agnostic
 `src/lib/nostr/keyVault.ts`** (PRF primary / PIN fallback, client-side, no server: PBKDF2→HKDF→AES-GCM via
 WebCrypto; `wrapSecretKey`/`unwrapSecretKey`/`probeKeyVaultCapability`; unwrapped key in MEMORY ONLY,
-never persisted) — shared infra the queued viewer-access phase reuses.
+never persisted) — shared infra the queued viewer-access phase reuses. PRF needs a passkey provider that has it: iCloud
+Keychain does, Proton Pass doesn't (the PIN remains for those). A passkey's name is set when it's registered
+(`cef1ab0`) — not retroactive: an older key reads "local-key" until re-provisioned. `hexToBytes` comes from
+`nostr-tools/utils`, never `@noble/hashes/utils` (not in that package's exports map).
 - **✅ RETIRED (copy-truth fix) — the import-path "hard backup gate" attestation checkbox.** `NostrAuthGate`'s
   Recovery-key import used to gate the whole form on `backupConfirmed` ("I have my nsec backed up outside this
   device"). **That attestation was TAUTOLOGICAL: on the IMPORT path the user is pasting a key they already hold,
@@ -358,12 +361,6 @@ src/
                                     # isn't trapped → reset re-enters the onboarding fork → reconnect with a new
                                     # token). Handoff v4 PASTE-ONLY: the send-your-npub/"Copy my npub" affordance is
                                     # RETIRED (owner mints the key; viewer only pastes a token) — no getViewerNpub here
-    AppUnlockGate.tsx              # ⚠ UNRENDERED (user-facing encryption reverted) — retained for Option-3a. Was:
-                                    # Face ID / PIN → deriveStoreKey (keyed on writerKeyWrapMeta.scheme) → setStoreKey
-                                    # + useStore.persist.rehydrate() → decrypt the blob. NOT imported by AppShell now
-    StoreMigrationGate.tsx         # ⚠ UNRENDERED (user-facing encryption reverted) — retained for Option-3a. Was:
-                                    # mode='encrypt'|'decrypt' migration gate (encrypt→migratePlaintextToEncrypted;
-                                    # decrypt→migrateEncryptedToPlaintext→clear flag+marker→reload). NOT imported now
   hooks/
     useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin).
                                     # 'local' is SKIPPED here (no optimistic auth — LocalUnlockGate drives unlock).

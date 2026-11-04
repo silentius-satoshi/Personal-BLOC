@@ -2,6 +2,19 @@
 
 <!-- Moved word for word from CLAUDE.md (BL21). This is the only copy: edit it here. -->
 
+## The master roadmap (v1)
+
+<!-- From `00-MASTER-SPEC-INDEX.md`, retired in BL52 (stale since store v18; git history keeps it, last at `e7038c9`). -->
+
+The forward plan toward the ultimate version: **Master Roadmap v1** (Jul 2026; with `phase-0-ground-truth-spec-v1` and
+`phase-4a-plan-events-design-lock-spec-v1`). Locked: D1 event-sourcing scoped to synced plan-state only · D2 single
+active writer device (hard cutover + one-way v1 bridge for rollback) · D3 Scenario Diff/Pin interleaved as Phase 3.
+Phases: 0 Ground Truth → 1 Monolith Cleave → 2 Crypto Worker → 3 Feature Checkpoint → 4 Event-Sourced Plan Core → 5
+Viewer Availability → 6 Mission Features → 7 Sweep. Phase 4 is complete at 4e (below); Phase 5's 5a–5e shipped — the
+plan log's size, the journal's pages, the plan-load guard, a buy's dollars, and 5e's start-up and offline fixes. ⚠ The
+three docs named above are in neither the repo nor the project — recovering them is the owner's item; this file is the
+authority for the plan-events design.
+
 ## Event-Sourcing Migration — Phase 4 (plan-events campaign; store unchanged, NO bump through 4e — Phase 4 COMPLETE)
 
 Phase 4 replaces whole-object LWW settings sync with an append-only **plan event log** folded into state

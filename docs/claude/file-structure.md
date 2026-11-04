@@ -385,7 +385,7 @@ src/
                                 # (0.40 — collateral leaves Strike only at or below it); the support policy's
                                 # inputs, passed in by the view — the engine imports neither.
                                 # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by the SafetyDashboard Strike bar via safetyView, LiqSimulator (until the plan of record's Run 4 deleted it) and emitBalanceReading — SimpleModeView no longer reads it since the plan of record's Run 2). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; Smart BLOC's Playbook (MonthlyPlaybook, PlaybookItems) passes it instead of a bare 0.15 (so did runAdvisor's screen call sites — AdvisorMain, OutlookProjection and SimpleModeView's log overlay; Daily's went with Run 2 — until the plan of record's Run 3 took runAdvisor off every screen)
-    emergencyModel.ts           # The Emergency Console's retained pure model (crash playbook Run 2) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Holds ONLY the stage ladder (CB_LADDER 69/72/75/81, liq = CB_LLTV 0.86; classifyStage → stage / cbLtv / liqPrice / distancePct / bandPrices), STRIKE_MARGIN_CALL_LTV 0.70 (the engine's inputs, the faces and the crash playbook import it from here) and the two last-resort walls (wall3Sale · wall4External). EmergencyState = { cbDebt, cbCollateralBtc, price } — the Strike position lives in CrashPlaybookInput; the crash-day answer is crashPlaybook, via components/Tools/crashPlaybookView. Deleted in Run 2: the Phase-1 buy-and-pledge functions (firepower, drawToLtv, floorTable, direSwitch, surplus). Imports CB_LLTV (runCoinbaseLoan) + the zero-import ltvOf (./ltv); NO cycle/power-law imports (§7 hard wall). classifyStage's LTV goes through ltvOf — so Coinbase debt with ZERO collateral reads cbLtv ∞ / stage 'liquidated' (was a flattering 0 / 'normal'); no-debt-no-collateral stays 0 / 'normal'; EmergencyConsole renders it via fmtLtvPct. ⚠ NAMED FOLLOW-UP (not fixed here): runAdvisor (4 copies) + AdvisorMain (1 — gone in the plan of record's Run 4) still open-code `x > 0 ? a/b : 0`; and the zero-collateral CB reading is still incoherent elsewhere on this model — distancePct = 1 (reads "100% above liquidation"), liqPrice and every bandPrice = $0
+    emergencyModel.ts           # The Emergency Console's retained pure model (crash playbook Run 2) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Holds ONLY the stage ladder (CB_LADDER 69/72/75/81, liq = CB_LLTV 0.86; classifyStage → stage / cbLtv / liqPrice / distancePct / bandPrices), STRIKE_MARGIN_CALL_LTV 0.70 (the engine's inputs, the faces and the crash playbook import it from here) and the two last-resort walls (wall3Sale · wall4External). EmergencyState = { cbDebt, cbCollateralBtc, price } — the Strike position lives in CrashPlaybookInput; the crash-day answer is crashPlaybook, via components/Tools/crashPlaybookView. Deleted in Run 2: the Phase-1 buy-and-pledge functions (firepower, drawToLtv, floorTable, direSwitch, surplus). Imports CB_LLTV (runCoinbaseLoan) + the zero-import ltvOf (./ltv); NO cycle/power-law imports (§7 hard wall). classifyStage's LTV goes through ltvOf — so Coinbase debt with ZERO collateral reads cbLtv ∞ / stage 'liquidated' (was a flattering 0 / 'normal'); no-debt-no-collateral stays 0 / 'normal'; EmergencyConsole renders it via fmtLtvPct. ⚠ NAMED FOLLOW-UP: the five open-coded `x > 0 ? a/b : 0` copies it named are GONE — AdvisorMain's in the plan of record's Run 4, runAdvisor's four in 5e (D5-A; see ltv.ts above); three it never named remain (`runBLOC.ts`, `runSmartBLOC_Living.ts`, `runMaxLeverage.ts`); still open: the zero-collateral CB reading is incoherent elsewhere on this model — distancePct = 1 (reads "100% above liquidation"), liqPrice and every bandPrice = $0
     safetyView.ts               # PURE single-source of the 3 safety dimensions for BOTH the owner's
                                 # SafetyDashboard AND the viewer home (dedup DONE — SafetyDashboard's inline
                                 # copy is GONE; the two can no longer drift). deriveSafetyView → {capacityUsed,
@@ -507,7 +507,7 @@ src/
       crashPlaybookHardening.test.ts   # Hardening 1 — HE-12, HE-13
 
   hooks/
-    useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick). Each store push goes through setBtcPrice, which now ALSO stamps btcPriceUpdatedAt (per-device staleness clock — DevPanel readout). Poll gated on the now-self-correcting usePageVisibility. MOUNTED AT AppShell ROOT so the poll runs for the whole session (Simple Mode mounts no price-consuming sidebar — without this, btcPrice froze at its last persisted value in Simple Mode); per-tab sidebar calls remain (harmless co-mounts)
+    useBtcPrice.ts              # Coinbase API, 10s interval (POLL_MS); syncs the store on a ≥0.1% move or once 60s have passed (STORE_SYNC_THRESHOLD / STORE_SYNC_MS; gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick). Each store push goes through setBtcPrice, which now ALSO stamps btcPriceUpdatedAt (per-device staleness clock — DevPanel readout). Poll gated on the now-self-correcting usePageVisibility. MOUNTED AT AppShell ROOT so the poll runs for the whole session (Simple Mode mounts no price-consuming sidebar — without this, btcPrice froze at its last persisted value in Simple Mode); per-tab sidebar calls remain (harmless co-mounts)
     useAppUpdate.ts             # BL51 — the session's update state (lib/appUpdate) through useSyncExternalStore: the home's card and Settings → About read it. No store field
     usePageVisibility.ts        # !document.hidden, SELF-CORRECTING (iOS-PWA resume fix): updates on visibilitychange + window focus/pageshow + a 20s interval re-read (one shared sync = setIsVisible(!document.hidden); the primitive bail-out adds no re-renders). visibilitychange ALONE misfires on iOS PWA launch/resume → isVisible could stick false → consumer polls (useBtcPrice/useBtcHistory) died forever; the extra signals recover it. Still genuinely pauses when backgrounded (NOT hardcoded true)
     useBtcHistory.ts            # BTC candle history (1H/1D/1W) via same-origin /api/btc-candles proxy; usePageVisibility gate + slow 60s refresh (NOT a tight poll); NEVER written to the store; pure parseCandles (Coinbase [t,low,high,open,close,vol] newest-first → asc close series, s→ms) + RANGE_CFG. BL23 (the plan of record's Run 4): the request AND its body run inside utils/timeLimit's withTimeLimit (15 s), so a stall ends as failed; a range change or an unmount aborts the request in flight. 5e (F12): it draws the range's history from this device's copy (lib/btcCandlesCache, through useSyncExternalStore — every mounted chart redraws when any fetch lands) at ANY age and refreshes behind it; `asOf` is the history's time once it is more than 5 minutes old (the chart labels it), and a timer labels a history on screen the moment it crosses (offline, nothing renews it); a landing goes through the cache's newer-wins rule; a range draws only its own history; a load that fails keeps whatever it can draw, and only with nothing to draw sets `error` (the chart's "price history unavailable"). Run 4's `shownRange` is gone
@@ -567,7 +567,8 @@ src/
                                 # on up/cancel. A second pointerId mid-drag synthesizes a cancel. All motion writes are
                                 # the CALLER's job (transform/opacity only). enabled:false → onPointerDown is inert.
                                 # Config kept in a ref so callbacks stay current without re-binding; unmount detaches +
-                                # cancels the pending frame. NO consumer yet (P0 is foundation-only; P1+ wire it)
+                                # cancels the pending frame. Consumers: DraggableSheet, SwipeStrip, EdgeBackGesture and
+                                # MonthEventsModal
     useLongPress.ts             # Gesture & Motion System P2 — stationary press-and-hold (Pointer Events, passive).
                                 # useLongPress({onLongPress,ms=500,slop=8,onProgressStart?,onProgressEnd?,enabled?}) →
                                 # {handlers,holding,shouldSuppressClick,cancel}. pointerdown arms a timer; move>slop or
@@ -580,7 +581,8 @@ src/
                                 # synchronous initial read; safe-default false when matchMedia is missing (node/test env).
                                 # The JS side of the reduced-motion policy — lets finger-tracking motion drivers SNAP
                                 # between rest states instead of animating (gestures still FUNCTION; the global.css block
-                                # strips CSS transitions/animations). NO consumer yet (P1+)
+                                # strips CSS transitions/animations). Consumers: DraggableSheet, SwipeStrip,
+                                # EdgeBackGesture and useCountTo
     useMediaQuery.ts            # Sticky controls — useMediaQuery(query) → boolean, useReducedMotion's pattern (a synchronous
                                 # first read, then addEventListener('change'); false when matchMedia is missing). The control
                                 # dock reads '(min-width: 1024px)' for ONE markup at a time: the bar from 1024 px, the tabs below
@@ -751,8 +753,9 @@ src/
                                 # precedent). PLAN_GOAL_FIELD ('planGoalNetBtc' — one plan event per change; null = no
                                 # goal) · PLAN_GOAL_MAX_BTC (21M) · planGoalOf(v) — THE read rule every reader goes through
                                 # (a finite number above zero, to the satoshi, at most 21M; anything else, junk from a
-                                # restored backup included, is no goal) · parseGoalInput(raw) — Settings' field: empty →
-                                # null (clears), an amount above zero → it, anything else → undefined (changes nothing);
+                                # restored backup included, is no goal) · parseGoalInput(raw) — Settings' field: empty
+                                # or 0 → null (clears), an amount above zero → it, anything else → undefined (changes
+                                # nothing);
                                 # one decimal separator, a point or a comma (the follow-ups' D-2 — a comma-decimal
                                 # region's keypad has no point; "1,000" reads as 1) · goalText(g) — the field's text,
                                 # fixed-point to the satoshi, never an exponent, so it parses back to the goal (the
@@ -1563,9 +1566,11 @@ src/
                                 # NostrAuthGate (remediation encrypt · saved-key PIN unlock · ncryptsec unlock · PIN · Confirm PIN),
                                 # RecoveryKeyCeremony (PIN unlock · encrypt · verify re-entry), ViewerLoginFlow
                                 # (token pass · PIN ×2), OwnerKeySetup (PIN ×2), ViewerUnlockGate (PIN ×2),
-                                # RevealRecoveryKey (PIN), SharingPage (PIN), LocalUnlockGate (PIN). ⚠ NOT AppUnlockGate/StoreMigrationGate
-                                # — both UNRENDERED (retained verbatim as the Option-3a rebuild basis), so a
-                                # `grep type="password" src` should show exactly those two and nothing else.
+                                # RevealRecoveryKey (PIN), SharingPage (PIN), LocalUnlockGate (PIN). The two unrendered
+                                # at-rest gates that hand-rolled their own were deleted (BL52), so
+                                # `grep type="password" src` shows nothing — but NostrAuthGate's recovery-key paste
+                                # field hand-rolls a ternary `type` (`type={reveal ? 'text' : 'password'}`), a known
+                                # violation (ui.md).
                                 # ⚠ THE FOUR iOS SUPPRESSIONS ARE BAKED IN (autoComplete/autoCorrect/autoCapitalize/
                                 # spellCheck), not props — iOS autocapitalizes an unsuppressed field, which would make
                                 # the encrypt and decrypt sides permanently disagree. One default beats 18 chances to
@@ -1666,7 +1671,7 @@ src/
                                 # renderPane(offset, live) — `live` is a `dragging` state true from gesture start (set in
                                 # the onPointerDown wrapper after shouldStart passes) until the snap/spring settles;
                                 # offset 0 is always live. Consumers can mount REAL neighbour content only while live
-                                # (AlmanacView mounts the adjacent faces during a gesture, null at rest — no heavy hooks on
+                                # (AlmanacView did, before its pager was REMOVED; none does now — no heavy hooks on
                                 # a peek). CLOBBER GUARD (load-bearing): `dragging` is cleared ONLY at settle (in the snap
                                 # setTimeout / spring-back setTimeout / reduced-motion branch), when the transform is
                                 # already at restPct → the JSX inline-transform re-render write is a no-op and can't fight
@@ -2268,12 +2273,21 @@ src/
                                 # Empty → dashed .empty. The standalone month indicator was dropped (month context lives in
                                 # act-when + pb-sub). P4b-1: a Daily-only orange .fab (bottom-right, --btc gradient, hidden
                                 # when viewerMode) → opens <EventSheet/> for ADD (setEditEvent(undefined)). P4b-2: each
-                                # editable-kind log row (isEditableKind — draw/paydown/buy/deposit/balanceReading; not
-                                # withdraw/cbCollateralReading) is tap-to-EDIT (role=button + Enter/Space + .logRowClickable
-                                # hover) → setEditEvent(ev) → the SAME <EventSheet/> in edit mode; gated !viewerMode (the
-                                # row is inert for viewers). calendar/scrubber + past-dating still out (P4c). Props
-                                # {onOpenSettings}. DailyModeView.module.css alongside (own classes incl. .fab +
-                                # .logRowClickable; uses the global --surface*/--line*/--btc/--mono tokens + reuses --green/--amber/--red/--text-*)
+                                # editable-kind log row (isEditableKind — every kind but cbCollateralReading) is
+                                # tap-to-EDIT (role=button + Enter/Space + .logRowClickable hover) → setEditEvent(ev) →
+                                # the SAME <EventSheet/> in edit mode; gated !viewerMode (the row is inert for viewers).
+                                # P4c: the Week|Month <Calendar/> drives the activity card and the log — Week the
+                                # selected day (a swipe pages a week at a time), Month the viewed month's rollup
+                                # (viewedMonth, ‹ › within 1…the current month). The FAB logs to the selected day —
+                                # past-dating; disabled on a future day — and so does a long-press on a day up to today.
+                                # Month's "from N day entries" ("from 1 day entry") opens MonthEventsModal (edit;
+                                # delete, with a Snackbar Undo). In Month scope an unconfirmed viewed month shows the
+                                # reconcile banner → <ReviewSheet/> → confirmMonth (owner-only; hidden while
+                                # usePlanMissing). The header's nav is HeaderNavCluster (active 'journal'). Props
+                                # {onOpenSettings, onOpenAlmanac, simpleView, setSimpleView}.
+                                # DailyModeView.module.css alongside (own classes incl. .fab + .logRowClickable; uses
+                                # the global --surface*/--line*/--btc/--mono tokens + reuses
+                                # --green/--amber/--red/--text-*)
       dailyView.ts              # PURE display helpers (no store/UI/price dep): selectMonthEvents(dayLog, month,
                                 # advisorStartDate) (bucketEventToMonth filter + asc-by-ts sort) + describeDayEvent(ev)
                                 # → {icon,label,detail} for all 7 DayEvent kinds (buy shows usd when present; deposit/
@@ -2578,12 +2592,12 @@ src/
                                 # (getNdpStatus' own estimate is a whole dollar, for full mode); the month log gets
                                 # `money={fmtUSDCents}`. Since Run 3 THIS MONTH has no whole-dollar figure at all
 
-api/
+api/                             # Vercel serverless functions — they run only on a deploy (preview or production), never under `npm run dev`
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
   btc-candles.js               # Vercel serverless proxy for Coinbase Exchange candles (api.exchange.coinbase.com; granularity whitelist, s-maxage=60) — same-origin so the browser avoids CORS; feeds useBtcHistory
   morpho-rate.js               # Vercel serverless proxy — POST GraphQL to api.morpho.org/graphql, marketById for the on-chain-confirmed cbBTC/USDC Base market 0x9103c3b4… (chainId 8453, 86% LLTV), s-maxage=300; feeds useMorphoRate. Schema note: this endpoint's Market uses `marketId`, NOT `uniqueKey`
   strike-balances.js           # Strike balances proxy (STRIKE_API_KEY server-only). NIP-98 gated: validateOwnerRequest(Authorization, PUBLIC_ORIGIN+req.url, method, OWNER_PUBKEY) → 401/403 (see NIP-98 Proxy Auth)
-  strike-rates.js              # Strike BTC→USD rate proxy — same NIP-98 gate as strike-balances
+  strike-rates.js              # Strike BTC→USD rate proxy — same NIP-98 gate as strike-balances. Strike's API is payments and trading only — no lending-APR endpoint — so the BLOC APR stays a manual input (`blocApr`): variable (US Prime + a margin, changing at most quarterly) and account-specific
   strike-invoices.js           # Strike invoices proxy — same NIP-98 gate (no client calls it today; gated for parity / fail-closed)
   _lib/
     ownerAuth.js               # SHARED NIP-98 validator (validateOwnerRequest) for all three Strike proxies — _-prefixed so Vercel does NOT route it; plain ESM .js (imports in Vercel node AND vitest). validateToken (kind/ts/url/method + verifyEvent) → handles BOTH false-return AND throw → unpack → pubkey===OWNER_PUBKEY else 403. Co-located ownerAuth.d.ts so the TS test imports it under tsc -b

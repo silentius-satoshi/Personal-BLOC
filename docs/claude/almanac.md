@@ -90,8 +90,8 @@ from propagating to the viewport); `.dialwrap` is now `width:100%; max-width:300
 `TOOL_KEYS` covers mobile) → lives in the **Tools dropdown** (null sidebar, `<AlmanacView/>` in main,
 no `hasCbLoan` gate — always available). Store `ActiveTab` union gains `'almanac'`; `tabOrder` default
 is unchanged (almanac auto-appends as a new key). Simple mode: an **inline FA book-solid SVG** icon
-button (`15px` Daily / `16px` Monthly, matching each view's existing grid icon) in both appbars
-(DailyModeView + SimpleModeView) → `setActiveTab('almanac')` → a new
+button (`15px`) — today the Almanac icon of `HeaderNavCluster`, the header nav the appbars render
+(DailyModeView, SimpleModeView and AppShell's Dashboard) → `setActiveTab('almanac')` → a new
 `simpleMode && activeTab === 'almanac'` surface with a ← Back header (mirrors the Settings-in-Simple-mode
 pattern, reuses `.simpleModeSettings`/`.simpleModeSettingsHeader`/`.simpleModeBackBtn`/
 `.simpleModeSettingsTitle` CSS — no new CSS). `onOpenAlmanac: () => void` prop added to both views.
@@ -393,8 +393,10 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   Run 2, D-R2-4 — none with the loan switched off) · `accruedCbBalance(...)` (the accrual boundary, as
   `EmergencyConsole` crosses it) · `income`/`expenses`/`blocApr`/`cbAprPct`/`btcPrice` · the minimum's source as
   `strikeMinFromIncome` (Run 2, D-R2-7) · `STRIKE_MAX_DRAW_LTV` · `STRIKE_MARGIN_CALL_LTV`.
-  The prototype's direct CoinGecko `fetch` is GONE — no new external host. ⚠ **AMENDED:** the Almanac's
-  only *background* network call remains the consented `useChainTip`. Both cycling faces now also carry
+  The prototype's direct CoinGecko `fetch` is GONE — no new external host. ⚠ **AMENDED:** the consented
+  `useChainTip` is not the Almanac's only *background* network call: the Power Law, Mining and Sats faces poll the
+  spot price every 10 s (`useBtcPrice`), and the Power Law, Decision and FIRE faces fetch the price history on mount
+  (`usePowerLawData`). Both cycling faces now also carry
   **`useMorphoRateOnDemand`** — same-origin `/api/morpho-rate`, **never on mount and never on a timer**,
   fires only when the owner taps "Check live rate" / "Refetch". It writes to the SESSION OVERLAY, never the
   store, so the faces stay zero-store-write. The polling `useMorphoRate` is still confined to Settings and
@@ -406,7 +408,8 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
 
 Display math over rows the engine already emits. `src/simulation/` is UNTOUCHED; all state is ephemeral
 component state; no store bump. The pure helpers live in **`src/components/Almanac/cyclingFaceView.ts`**
-(React-free, store-free, TYPE-only import of `CyclingRow`) so they are testable without a render harness.
+(React-free, store-free — but not type-only: it imports engine VALUES, `cyclingSim`'s `allInEquity`, `deriveOwnership`,
+`cbMetrics`' gauge rules and the Coinbase / Strike constants among them) so they are testable without a render harness.
 
 - **`applyPathStress(pricePath, fromMonth, factor)`** → the stress rollout: months from `fromMonth` onward
   are multiplied by `factor`, so the selected band path keeps its SHAPE (support/fair/resistance). Identity
@@ -1335,7 +1338,8 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
 - **Per-face copy** (gated on `sim.policyApplied` unless marked "off too"):
   - `policyAlert` (the headline with `call: null`, shown on warn/bad) — Strategy's state line, Ownership's verdict
     list, first in Cycling's constraints. A Strike call reads only through `strikeCapNote`, never twice.
-  - Call tones: `capWarn` / `capTone` / Ownership's cap note map `sold` → red, `cured` → amber. ⚠ **Ownership's verdict
+  - Call tones: `capTone` (Strategy) and Ownership's verdict and cap note map `sold` → red, `cured` → amber; Cycling's
+    `capWarn` maps no tone — it only shows the cap note, in the constraints box's own colour. ⚠ **Ownership's verdict
     ENTERS its call branch on the reading** — `strikeCallVerdict(capReading)` for called / sold / cured — never on
     `strikeMarginMonth` alone (v1.3 #16): under the policy a cure or a clean sale leaves that flag null, and the
     verdict fell through to the stop sentence. Its `stopMonth` verdict reads `policyStopSentence`. A liquidation
@@ -2624,8 +2628,9 @@ badge + an off-mode `~`/`est.` precision marker differ.
   `.sub2` prepends `~` when estimated + the block-height stat rsub reads `estimate`/`live`; CycleClock's
   block-height stat rsub same; CycleDial's cycle-branch `aria-valuetext` gains the `(estimated)` suffix
   (halving branch already had it).
-- **Settings → Display** (one Customization page since BL15) gains an ALMANAC group "Live block height" toggle (canonical entry, owner-only
-  block; viewers use the badge) — ON also sets consent (the inline host disclosure satisfies it).
+- **Settings → Display** (one Customization page since BL15) gains an ALMANAC group "Live block height" toggle
+  (canonical entry, owner-only block; a viewer has his own — the DEVICE group's switch in `ViewerSettings` — and a
+  trusted viewer's Almanac shows the badge) — ON also sets consent (the inline host disclosure satisfies it).
 - Supersedes `useMempoolData`, which the Power Law face deleted (spec pbloc-spec-powerlaw-face-v1, D2): its side panel
   fetched mempool.space on every open, even with live height off (F1). Now only `useChainTip` contacts an explorer, and
   only after consent. Test: `src/hooks/__tests__/useChainTip.test.ts` (PROVIDERS parse per shape + guard range).

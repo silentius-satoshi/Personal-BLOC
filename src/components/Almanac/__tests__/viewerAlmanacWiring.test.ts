@@ -187,7 +187,7 @@ const WORD = ['d', 'a', 'd'].join('');
 const OLD = new RegExp(`\\b${WORD}\\b|\\b${WORD}[’']s\\b|(?<!grand)fa${'ther'}`, 'i');
 
 describe('⭐ "viewer", never the family word (the owner\'s ask, BL48)', () => {
-  it('⭐ NO WORD — in no file of the repo: code, tests, docs, rules, the spec index, the book (grandfathering is another word)', () => {
+  it('⭐ NO WORD — in no file of the repo: code, tests, docs, rules, the book (grandfathering is another word)', () => {
     // Every file git would commit — tracked, or new and not ignored (`Claude outputs/` is ignored) — read as text.
     const files = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '-z'], { cwd: ROOT, encoding: 'utf8' })
       .split('\0').filter((f) => f && f !== 'node_modules');
@@ -198,7 +198,7 @@ describe('⭐ "viewer", never the family word (the owner\'s ask, BL48)', () => {
       return text.split('\n').flatMap((line, i) => (OLD.test(line) ? [`${f}:${i + 1}`] : []));
     });
     expect(OLD.test(`Good morning, ${WORD.toUpperCase()}`) && !OLD.test('grandfathered'), 'NO WORD premise: the sweep sees it').toBe(true);
-    expect(files, 'NO WORD premise: the whole repo').toEqual(expect.arrayContaining(['00-MASTER-SPEC-INDEX.md', 'CLAUDE.md', 'src/App.tsx']));
+    expect(files, 'NO WORD premise: the whole repo').toEqual(expect.arrayContaining(['README.md', 'CLAUDE.md', 'src/App.tsx']));
     expect(hits, 'NO WORD').toEqual([]);
   });
 

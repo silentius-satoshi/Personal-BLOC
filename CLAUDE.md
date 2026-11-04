@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-React + Vite + TypeScript PWA modeling Bitcoin accumulation strategies using Strike's Bitcoin Line of Credit (BLOC). Eight tabs: **Living on Bitcoin**, **Smart BLOC**, **Power Law**, **Sats**, **Miners**, **CB Loan** (hidden by default), **Advisor** (hidden by default), and **Settings** (not a tab — accessible via branding dropdown).
+React + Vite + TypeScript PWA modeling Bitcoin accumulation strategies using Strike's Bitcoin Line of Credit (BLOC). Nine tabs: **Living on Bitcoin**, **Smart BLOC**, **Power Law**, **Sats**, **Miners**, **CB Loan** and **Emergency** (both shown only while the Coinbase loan is switched on — off by default), **Almanac** and **Advisor** — plus **Settings** (not a tab — accessible via branding dropdown).
 
 Deployed to Vercel.
 
@@ -28,7 +28,7 @@ This file and `.claude/rules/general.md` — the constraints whose code is every
 
 - **`.claude/rules/`** — the Critical Constraints, split by area. They bind. Each file loads by itself when you Read, Write or Edit a file its `paths:` cover, and a compaction drops it until the next such read. So Read a file before you change it — again after a compaction — and before you create one, Read one beside it.
 - **`docs/claude/`** — the reference: how each part works, why, and its traps. Nothing loads these. Before you change a source file, grep `docs/claude/file-structure.md` for its name — its entry describes the file, traps included — and read the sections of its area's doc that cover what you touch. The docs are long: grep, then read the section.
-- "CLAUDE.md § X" in code comments, specs and the master index means the section headed X, now in `docs/claude/` (grep for its heading); "§ Critical Constraints" means `.claude/rules/`.
+- "CLAUDE.md § X" in code comments and specs means the section headed X, now in `docs/claude/` (grep for its heading); "§ Critical Constraints" means `.claude/rules/`.
 - Each section has one copy. Edit it where it lives now.
 
 ## The gate
@@ -67,4 +67,4 @@ Each line points at the full rule: the doc named, under the words quoted.
 | The gate, lint, the store-version bump discipline, e2e, CI and deploy | `build-deploy.md` | `store.md` |
 | Recovery — no plan found, payload kinds, the backup gate and its ladder, remanence | `recovery.md` | `identity.md` |
 | Nostr — the sync channels, signers, relays and viewers | `nostr.md` | `sync.md`, `identity.md` |
-| The event-sourced plan (Phase 4) | `phase-4.md` | `sync.md`, `store.md` |
+| The master roadmap; the event-sourced plan (Phase 4) | `phase-4.md` | `sync.md`, `store.md` |

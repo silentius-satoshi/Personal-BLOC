@@ -2,7 +2,7 @@
 
 **Plan. Log. Defend.**
 
-This book documents Personal ₿LOC — the sovereign planner for bitcoin-backed loans — from its running code. Nothing here is aspiration: every chapter is drafted from the shipped app (`CLAUDE.md`, the master spec index, and the 850+ test suite are the primary sources), and the one chapter whose subject hasn't shipped ([Chapter 16](ch16-one-key-two-ledgers.md)) is visibly empty on purpose.
+This book documents Personal ₿LOC — the sovereign planner for bitcoin-backed loans — from its running code. Nothing here is aspiration: every chapter is drafted from the shipped app (`CLAUDE.md`, the reference docs in `docs/claude/`, and the 850+ test suite are the primary sources), and the one chapter whose subject hasn't shipped ([Chapter 16](ch16-one-key-two-ledgers.md)) is visibly empty on purpose.
 
 **Status:** all chapters DRAFT v0.1, awaiting Founder review. Volatile facts (store version, test counts, field counts) drift with the code — the repo is the source of truth.
 

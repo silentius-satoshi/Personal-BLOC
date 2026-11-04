@@ -2,7 +2,7 @@
 //
 // The plan blob is persisted as AES-GCM ciphertext ({ ct, iv } envelope). The CryptoKey lives ONLY in memory
 // (this module's holder) — never persisted, mirroring viewerSync's holder discipline + the nsec key. While
-// LOCKED (no key): getItem returns null (store hydrates to seeds, AppUnlockGate shows) and setItem DROPS the
+// LOCKED (no key): getItem returns null (store hydrates to seeds, restoreSigner unlocks) and setItem DROPS the
 // write — plan data is NEVER written to localStorage in the clear once the encrypted adapter is active.
 //
 // This adapter is wired into persist ONLY when the standalone `personal-bloc-store-enc-enabled` flag is '1'
@@ -39,7 +39,7 @@ export const encryptedStorage = {
     try { env = JSON.parse(raw) as Envelope; } catch { return null; }
     // Not an {ct,iv} envelope → a plaintext (pre-encryption) blob → pass through untouched (Phase-C interim).
     if (env.ct == null || env.iv == null) return raw;
-    // Enveloped but locked → no hydrate (AppUnlockGate drives the unlock); enveloped + key → decrypt.
+    // Enveloped but locked → no hydrate (restoreSigner sets the key, then rehydrates); enveloped + key → decrypt.
     if (!storeKey) return null;
     try { return await decryptBlob(env.ct, env.iv, storeKey); }
     catch { return null; }   // wrong key / corrupt → empty, don't crash

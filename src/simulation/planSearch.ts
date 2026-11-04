@@ -126,7 +126,7 @@ export function pickWorst(
  * the horizon. Modelled paths bottom out at or near support, which the policy sizes its loans to survive, so they
  * almost never liquidate — and that tiebreak crowned Resistance, the most bullish path, where the owner simply buys
  * fewer coins. The cushion measures the risk instead, against the seizure price the chart's cliff draws
- * (`cbSeizurePrice` — one rule, two readers).
+ * (`cbSeizurePrice` — one rule; the cliff and this ranking are two of its readers).
  *
  * It measures Coinbase's seizure only: a Strike margin-call sale needs a price far under support on the policy's
  * sizing, which the modelled paths never reach.

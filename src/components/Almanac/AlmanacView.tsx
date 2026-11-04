@@ -53,7 +53,7 @@ import styles from './AlmanacView.module.css';
  *
  * THE GRID (BL40, BL45 — the owner's pick B). The hub opens on its faces as tiles in two groups — your plan's, then
  * bitcoin's — each a line icon over its name (`FaceIcon`); `almanacGrid.ts` is the ONE rule for which faces show, in
- * which group and order, from the three gates read here. A tap opens the face in place of the grid. On a face the
+ * which group and order, from the four gates read here. A tap opens the face in place of the grid. On a face the
  * header's "Almanac" is the link back to the grid (`registerTitleLink` — the owner's ask, 2026-10-31: nothing between
  * the header and the page), where the face just left is ringed; the header's "←" still leaves the Almanac in one
  * tap. Full mode has no header, so the hub keeps a one-row eyebrow there, whose "Almanac" is that link on a face. The
@@ -71,11 +71,12 @@ import styles from './AlmanacView.module.css';
  * phone, an iPad, a narrower window — the grid as above. The open face keeps its place in the tree across 1200 px (two
  * wrappers drawn `display: contents` on the grid's side), so resizing the window never remounts it.
  *
- * ⚠ FACE SWITCHING IS TAP-ONLY. The grid's tiles (and a face's own links to another) are the way to change face on
- * every platform — the horizontal swipe pager (SwipeStrip) was REMOVED, along with its `shouldStart` chart/edge
- * exclusions, the neighbour-pane preload, and the scoped `touch-action` rules that existed only to arbitrate against
- * it. Faces now own their own axes: charts scrub, tables scroll, sliders drag, and a vertical stroke that
- * starts anywhere scrolls the page. Do NOT re-introduce a pager here without re-deriving those exclusions.
+ * ⚠ FACE SWITCHING IS TAP-ONLY. The grid's tiles — the list's items on a computer — and a face's own links to another
+ * are the way to change face on every platform — the horizontal swipe pager (SwipeStrip) was REMOVED, along with its
+ * `shouldStart` chart/edge exclusions, the neighbour-pane preload, and the scoped `touch-action` rules that existed
+ * only to arbitrate against it. Faces now own their own axes: charts scrub, tables scroll, sliders drag, and a
+ * vertical stroke that starts anywhere scrolls the page. Do NOT re-introduce a pager here without re-deriving those
+ * exclusions.
  *
  * ISOLATION WALL (restated, unchanged): cycleModel/HalvingClock/CycleClock import nothing from the
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating the
@@ -97,8 +98,9 @@ const lastOpenFace: Record<'own' | 'seen', Face | null> = { own: null, seen: nul
 
 interface AlmanacViewProps {
   /** Read at mount only (the hub mounts each time it is opened): a face to open on, from outside the hub — the plan's
-   *  "other price paths" link. Absent → the grid, or on a computer the list with its first face open (BL46's A). A gated
-   *  face falls back to the grid by the effect below. */
+   *  "other price paths" link. Absent → the grid, or on a computer the list, open on the face last open in this
+   *  session while it shows, else Decision (`firstListFace`, BL46's A). A gated face falls back by the effect below —
+   *  to the grid, or on a computer to `firstListFace`'s pick. */
   initialFace?: AlmanacFace;
   /** The edge swipe's one level (AppShell Branch I, as Settings' `registerBack`): a face opened inside the hub reports its
    *  way back to the grid; the grid — and a face the link opened — report null, so the swipe leaves the Almanac. So does
@@ -135,12 +137,14 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
   const seenAsViewer = useSeenAsViewer();
 
   // A gated face whose gate closes while it is open — the loan switched off, the log emptied, or the FIRE face off this
-  // deploy (build 4b — BL42; an `initialFace` of 'fire' lands here too) — goes back to the grid, where its tile is gone.
+  // deploy (build 4b — BL42; an `initialFace` of 'fire' lands here too) — goes back to the grid, where its tile is
+  // gone; on a computer the list opens Decision (`firstListFace` — the closed face no longer shows).
   useEffect(() => {
     if (face !== null && !faceShown(face, { hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer })) setFace(null);
   }, [face, hasCbLoan, ledgerAvailable, seenAsViewer]);
 
-  // Every way into a face from inside the hub — a tile, a face's own link to another — ends the link's "from outside".
+  // Every way into a face from inside the hub — a tile, a list item on a computer, a face's own link to another — ends
+  // the link's "from outside".
   const openFace = (f: Face) => { setFace(f); setFromOutside(false); };
   const toGrid = useCallback(() => { setLastFace(face); setFace(null); setFromOutside(false); }, [face]);
 
@@ -283,9 +287,9 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
           </div>
         ) : (
           // Only the open face mounts — none on the grid, no neighbour panes — so a heavy face (Power Law/Mining hooks)
-          // mounts exactly when its tile is tapped. BL48 (V4 B): the faces are a what-if place — inside, a viewer's
-          // shared inputs unlock (`ViewerWhatIf`; FIRE's face locks its own again) — and a viewer reads so over a plan
-          // face.
+          // mounts exactly when it opens: its tile tapped, or on a computer its list item clicked or the list opening
+          // on it. BL48 (V4 B): the faces are a what-if place — inside, a viewer's shared inputs unlock
+          // (`ViewerWhatIf`; FIRE's face locks its own again) — and a viewer reads so over a plan face.
           <div className={listMode ? styles.pane : styles.contents}>
             {viewerWhatIfNoteShown(shown, seenAsViewer) && <p className={styles.viewerNote} role="note">{VIEWER_WHAT_IF_NOTE}</p>}
             <ViewerWhatIf.Provider value={true}>{renderFace(shown)}</ViewerWhatIf.Provider>

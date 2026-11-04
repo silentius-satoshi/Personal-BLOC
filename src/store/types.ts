@@ -394,14 +394,14 @@ export interface StoreState {
   viewerPreview:         boolean;   // owner-only "Preview as viewer" — transient, NEVER persisted (must not boot into preview)
   setViewerPreview:      (v: boolean) => void;
   // Transient (NOT persisted) — true once the in-memory store-encryption key holder (storeCrypto) is populated.
-  // AppShell gates AppUnlockGate on this. Mirrors viewerUnlocked.
+  // Nothing sets or reads it now — the two unrendered at-rest gates that did were deleted (BL52); kept for Option-3a.
   storeUnlocked:         boolean;
   setStoreUnlocked:      (v: boolean) => void;
   // Wipe every viewer-hydrated financial field back to its seed (data-remanence fix). VIEWER paths ONLY —
   // never the owner's Remove or any owner edit (it would destroy the owner's real data). Pure local set (no sync).
   clearViewerData:       () => void;
-  // Escape-hatch recovery: reset the OWNER's plan/records/strike fields to seeds (pure local set, NO publish).
-  // Reachable ONLY from resetAndResync (escapeHatch.ts), which immediately pulls from relays to repopulate.
+  // Reset the OWNER's plan/records/strike fields to seeds (pure local set, NO publish). No caller in the app: the
+  // escape hatch (resetAndResync, escapeHatch.ts) is reload-based and never calls it — it stays a store action.
   resetPlanToSeeds:      () => void;
 
   // Nostr session (excluded from persist — always re-auth on load)

@@ -106,10 +106,11 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     planLoaded: false, monthBucketReconcileDone: true,
   }),
 
-  // Owner-recovery reset (escape hatch). Mirrors clearViewerData's financial/records/strike seed-reset but for the
-  // OWNER. Pure local set — NO emit / NO publish (resetAndResync controls when/whether the pull runs).
+  // Owner-recovery reset, left as a store action — NO caller in the app: the escape hatch (resetAndResync) is
+  // reload-based and never calls it. Mirrors clearViewerData's financial/records/strike seed-reset but for the OWNER.
+  // Pure local set — NO emit / NO publish.
   // Deliberately PRESERVES: writerKeyWrapped/Meta (standalone — needed to re-auth), nostr identity/relays, device
-  // prefs, and the viewers roster (re-hydrate from the pull). Reachable ONLY from the escape hatch.
+  // prefs, and the viewers roster (re-hydrate from the pull).
   resetPlanToSeeds: () => set({
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),

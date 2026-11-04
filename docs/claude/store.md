@@ -6,8 +6,8 @@
 
 ### Navigation
 ```typescript
-activeTab:   'living'|'bloc'|'powerlaw'|'converter'|'mining'|'coinbase'|'advisor'|'settings';   // SESSION-ONLY (omitted from partialize) — every launch lands on the default 'living' (simple view when simpleMode); can't get stuck on a tab. Not in SETTINGS_FIELDS (no Nostr sync)
-hiddenTabs:  string[];   // default ['coinbase', 'advisor']
+activeTab:   'living'|'bloc'|'powerlaw'|'converter'|'mining'|'coinbase'|'advisor'|'liqsim'|'almanac'|'settings';   // SESSION-ONLY (omitted from partialize) — every launch lands on the default 'living' (simple view when simpleMode); can't get stuck on a tab. Not in SETTINGS_FIELDS (no Nostr sync)
+hiddenTabs:  string[];   // default [] — the CB Loan and Emergency tabs hide with `hasCbLoan`, not here
 tabOrder:    string[];   // default ['living','bloc','powerlaw','converter','mining','coinbase','advisor']
 previousTab: Exclude<ActiveTab, 'settings'>;
 ```

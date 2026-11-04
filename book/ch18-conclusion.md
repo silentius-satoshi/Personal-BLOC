@@ -18,7 +18,7 @@ The gap between "the app recommends" and "the app executes" is where your judgme
 
 ## Never a tax or financial advisor
 
-The app models the numbers you give it against thresholds you set. It will show you what an 80% crash does to your LTV; it will not tell you whether to take the loan. The advisor's tiers, the trigger and target bands, the emergency ceilings — all of them are *your* dials, with defaults you can change, running arithmetic you can read in the source.
+The app models the numbers you give it against thresholds you set. It will show you what an 80% crash does to your LTV; it will not tell you whether to take the loan. The support policy's limits, the trigger and target bands, your goal — all of them are *your* dials, with defaults you can change, running arithmetic you can read in the source.
 
 This refusal protects you from advice that cannot know your life — your jurisdiction's tax treatment, your job security, your family's tolerance for a margin call at 3 a.m. It protects the project from becoming what it critiques: one more voice telling bitcoiners what they should do with leverage. And it keeps the honesty clean. A tool that profits from your borrowing has a reason to soften the crash lens; this one has none. The footer says it plainly and this book repeats it: planning software, not financial advice — bitcoin-collateralized borrowing carries liquidation risk; model it before you live it.
 
@@ -30,7 +30,7 @@ The protection here is structural, not contractual. A privacy policy is a promis
 
 ## Never a price-alert casino
 
-No push notifications when bitcoin moves. No flashing candles, no sentiment meters, no "BTC just broke $X" adrenaline. The speculation that does exist — the power law, the halving clock, the cycle dial — lives in the Almanac behind a wall the import graph enforces: those models can never touch a liquidation number, and the emergency model imports neither clock nor cycle.
+No push notifications when bitcoin moves. No flashing candles, no sentiment meters, no "BTC just broke $X" adrenaline. The speculation that does exist — the power law, the halving clock, the cycle dial — sits behind a wall the import graph enforces: the clocks live in the Almanac, the power law's support line reaches the plan's run and the crash models only as a number handed in (the safety dashboard and the console read it, then hand it over), those models can never touch a liquidation number, and the emergency model imports neither clock nor cycle.
 
 Price-alert apps monetize your attention by keeping you anxious; anxiety is the worst possible state in which to manage leverage. This app's model of your attention is a monthly ritual and a set of bands that fire *before* your lender's do. The safety dashboard is calm on purpose: three gauges, Safe/Watch/Act, and a plan you wrote in advance for what each band means. The night the price falls, you do not need a casino floor. You need the emergency console — which already knows whether to add collateral or pay down, and by how much, because you rehearsed this when you were calm.
 
@@ -46,7 +46,7 @@ Your keys, your plan.
 
 ## From the code
 
-- **Files:** the refusals are enforced across the codebase rather than in one file — `src/simulation/` (pure core, no execution paths) · `src/simulation/emergencyModel.ts` (clock-free, cycle-free) · `src/simulation/powerLaw.ts` / `cycleModel` (Almanac-only leaves) · the `/api/strike-*` proxies (read-only, owner-signed) · the diagnostics path (metadata only)
+- **Files:** the refusals are enforced across the codebase rather than in one file — `src/simulation/` (pure core, no execution paths) · `src/simulation/emergencyModel.ts` (clock-free, cycle-free) · `src/simulation/powerLaw.ts` / `cycleModel` (leaves no risk module imports — the power law's support line is handed in as a number) · the `/api/strike-*` proxies (read-only, owner-signed) · the diagnostics path (metadata only)
 - **Numbers:** none new — this chapter cites no threshold not already documented in ch03–ch11; the footer disclaimer as shipped: "Planning software, not financial advice. Bitcoin-collateralized borrowing carries liquidation risk — model it before you live it."
 - **Tests:** the import-wall invariants (speculative models never reach risk math) and the no-money-in-diagnostics discipline are pinned in the 850+ suite
 

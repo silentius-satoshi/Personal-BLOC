@@ -414,10 +414,11 @@ localStorage flag is now **inert** (nothing reads them to gate) → a previously
 launch (the lockout occurred at the gate before any `{ct,iv}` envelope was written, so the blob is plaintext).
 **RETAINED for an Option-3a redesign (nsec-derived store key, escape-hatch-first):** the Phase A primitives
 (`keyVault` `encryptBlob`/`decryptBlob`/`deriveStoreKey`), `storeCrypto.ts` (adapter + holder), `storeMigration.ts`
-(verify-before-delete fns), the `AppUnlockGate`/`StoreMigrationGate` component files (unrendered), `storeEncEnabled`
-(now a dead export), `storeUnlocked` (transient), and the standalone writer-credential storage fix
-(`personal-bloc-writer-key-wrapped`/`-meta`, partialize-excluded). The retained component/lib files carry the prior
-design inline (+ git history) as the rebuild basis. **NOTE: the writer-side `viewerNpub`/`viewerPubkey`/
+(verify-before-delete fns), `storeEncEnabled` (the MANUAL flag the rebuild runs behind — `persistConfig.ts`,
+`session.ts`), `storeUnlocked` (transient; nothing sets or reads it now), and the standalone writer-credential storage
+fix (`personal-bloc-writer-key-wrapped`/`-meta`, partialize-excluded). The retained lib files carry the prior design
+inline, as the rebuild basis; the two unrendered gate components (`AppUnlockGate`, `StoreMigrationGate`) were deleted
+(BL52) — git history keeps them, last at `e7038c9`. **NOTE: the writer-side `viewerNpub`/`viewerPubkey`/
 `viewerLabel` are NOT here — they are now SYNCED in the owner's settings:v1 (public npubs + the owner's nickname;
 cross-device sharing config), stripped from the viewer snapshot. Only the viewer-SIDE fields stay device-local.**
 
