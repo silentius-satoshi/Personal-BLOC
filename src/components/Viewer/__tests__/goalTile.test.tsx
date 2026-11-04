@@ -2,6 +2,10 @@
 // viewer only. Its words are pure (`goalTileView`); the tile composes nothing. ⚠ SYNTHETIC round figures (public repo).
 import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { goalPair, planGoalLine, planMonthSummary } from '../../Almanac/planMonthView';
+import { planMonthRun } from '../../Almanac/planRun';
+import { buildSupportPath } from '../../Almanac/supportPolicyInputs';
+import { PLAN_POLICY_DEFAULTS } from '../../../lib/planPolicy';
 import { goalTileView, goalNowView, GOAL_TILE_TITLE } from '../goalTileView';
 import { GoalTile } from '../GoalTile';
 import { GOAL_EPS } from '../../../simulation/goal';
@@ -50,6 +54,31 @@ describe('⭐ GOAL TILE — the words', () => {
 });
 
 describe('⭐ GOAL NOW — Settings → Your plan\'s reading (BL33): the tile\'s view, or net coins alone', () => {
+  it('⭐ DUST DEBT — with a goal too, a debt that rounds to nothing never reads as a negative zero; one that shows keeps its sign (BL51, A4-10)', () => {
+    expect(goalTileView(-0.0001, 2)?.value, 'DUST DEBT the figure').toBe('₿0.000 of ₿2.000');
+    expect(goalTileView(-0.0001, 2)?.aria, 'DUST DEBT read aloud').toBe('Your goal: 0.000 bitcoin in net coins today, of 2.000 — 0%.');
+    expect(goalTileView(-0.0004999, 2)?.value, 'DUST DEBT just under half a place').toBe('₿0.000 of ₿2.000');
+    expect(goalTileView(-0.0006, 2)?.value, 'DUST DEBT one that shows').toBe('−₿0.001 of ₿2.000');
+    expect(goalTileView(-0.2, 2)?.value, 'DUST DEBT a real one').toBe('−₿0.200 of ₿2.000');
+    expect(goalNowView(-0.0001, 2), 'DUST DEBT Settings → Your plan reads the same').toEqual(goalTileView(-0.0001, 2));
+    // v1.1 (Claude Code's note 2) — wherever the goal's figures print: the pair they share, THIS MONTH's and Daily's goal
+    // line, and "Why this plan?" / Daily's plan note (planMonthSummary) — the last two rendered at a dust debt
+    expect(goalPair(-0.0001, 2), 'DUST DEBT the pair').toEqual({ net: '0.000', goal: '2.000' });
+    expect(planGoalLine({ atGoal: false, netCoinsBtc: -0.0001 } as Parameters<typeof planGoalLine>[0], 2), 'DUST DEBT the goal line')
+      .toBe("Net coins this month: ₿0.000 of your ₿2.000 goal, at today's price.");
+    const run = planMonthRun({
+      todayISO: '2026-10-12', price: 100_000, plan: { ...PLAN_POLICY_DEFAULTS }, income: 6_000, expenses: 4_000, blocApr: 13,
+      cbAprPct: 6.27, creditLine: 40_000, strikeBalance: 20_000, strikeCollateralBtc: 1, cbCollateralBtc: 1, coldBtc: 0.5,
+      cbDebt: 50_000, strikeLiquidationLtvPct: 85, hold: { inHold: false, throughISO: null }, breakerSeed: null,
+      strikeMinFromIncome: false, goalNetBtc: 2,
+    });
+    const dust = { ...run.sim, rows: run.sim.rows.map((r) => (r.m === 1 ? { ...r, netCoinsBtc: -0.0001, atGoal: false } : r)) };
+    const why = planMonthSummary(dust, run.placement, 1, buildSupportPath(new Date('2026-10-12'), 12)[1], 2);
+    expect(why, 'DUST DEBT "Why this plan?" premise: its goal sentence').toContain('— under your ₿2.000 goal.');
+    expect(why, 'DUST DEBT "Why this plan?"').toContain('are ₿0.000 — under your ₿2.000 goal.');
+    expect(why, 'DUST DEBT "Why this plan?" never a negative zero').not.toContain('−₿0.000');
+  });
+
   it('⭐ GOAL NOW — with a goal it IS the tile\'s view, under, at and past it', () => {
     for (const [net, goal] of [[0.5, 2], [2, 2], [3, 2], [1.9996, 2], [-0.2, 2], [2 * (1 - GOAL_EPS / 2), 2]] as const) {
       expect(goalNowView(net, goal), `${net} of ${goal}`).toEqual(goalTileView(net, goal));

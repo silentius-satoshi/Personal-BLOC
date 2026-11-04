@@ -15,8 +15,8 @@ function fmtTime(t: number, range: ChartRange): string {
     : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-/** `money` prints the price — the counting one too — and its tooltip: whole by default (the Dashboard, the trusted
- *  viewer's home); the Safety card on THIS MONTH and Daily passes `fmtUSDCents` (Run 2.1, BL19).
+/** `money` prints the price — the counting one too — and its tooltip: whole by default (the Dashboard, every viewer's
+ *  home and the owner's preview of it); the Safety card on THIS MONTH and Daily passes `fmtUSDCents` (Run 2.1, BL19).
  *
  *  5e (F12): the history is drawn at once from this device's copy. Once it is more than 5 minutes old (`asOf`), it is
  *  drawn muted, with its time in place of the % change ("as of 2:05 PM"), until a fresh one lands; then the label goes

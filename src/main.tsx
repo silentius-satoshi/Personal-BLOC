@@ -11,6 +11,7 @@ import './lib/demo/demoSeed';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
+import { startUpdateChecks } from './lib/appUpdate';
 import './styles/global.css';
 import App from './App.tsx';
 import { NostrProvider } from './providers/NostrProvider';
@@ -26,6 +27,9 @@ import { haptics, hapticsSupport } from './lib/haptics';
 
 // Workbox SW (vite-plugin-pwa, autoUpdate) — registers immediately; reloads clients when a new deploy's SW activates.
 registerSW({ immediate: true });
+// BL51 — the update checks: when it opens, back to the front, hourly. They only offer the update (the home's card,
+// Settings → About); the tap applies it. The service worker's own path above is unchanged.
+startUpdateChecks();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

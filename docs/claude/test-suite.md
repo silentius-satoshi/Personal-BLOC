@@ -2514,6 +2514,60 @@ goes red.)
     the six, each at its first step on the bar or the way in (no bar on the base — the owner's report); FULL MODE
     PREVIEW green — it holds on the base, which has no tier to get wrong, and P13 (the prototype's own first miss) shows
     it bites.
+- **App updates: "New version ready · Update", one tap, never a restart by itself (BL51, 2026-11-03) — with the queue's
+  three — the Dashboard's coin bars (A4-1), a dust debt's sign (A4-10), Sharing's button in full mode — and the preview
+  at its top, his Dashboard after it** (spec `pbloc-spec-app-updates-v1` v1.1; Standard, the reviewer's measured
+  prototype, checked by an independent agent, applied byte for byte; the suite 3,308 → 3,334 (+6 skipped), 230 → 235
+  files; e2e 171 → 179 (+2 skipped). 39 planted bugs — 39 through the unit tests, 16 through the e2e — each an
+  exact-once edit, red at its tagged tests, the files restored and md5-checked: `Claude
+  outputs/app-updates/mutations-app-updates.json`):
+  - `src/lib/__tests__/appUpdate.test.ts` (12, new; the module with fake envs — a `fetch`, a registration and its
+    worker, a page and a clock): ⭐ STAMP (version.json's sha and time, trimmed; anything else none; the bundle's own,
+    its two constants) · ⭐ COMPARE (another commit, or the same one built again, available; this build current; no stamp
+    unknown, never an update) · ⭐ FETCH (past every cache, within 15 s; an older deploy's SPA page, a 404, a 500, no
+    network, no answer — no stamp) · ⭐ CHECK ×3 (through checking to current, available or unknown; an offer kept
+    through a check and on an unknown answer, taken away by this build's stamp — a failed tap's too, its words until the
+    next tap; two at once share one request; none while applying; a check's answer never undoes a tap, nor a tap that
+    failed meanwhile) · ⭐ APPLY ×4 (a new worker found — no restart while it installs, the tap's own 5 s after it is
+    active; already active — the 5 s at once; failing to install — 'failed', no restart; nothing new, or no worker — a
+    plain restart; offline — 'failed', no restart, a second tap works, one tap at a time) · ⭐ SCHEDULE ×2 (10 s in; back
+    to the front once a minute at most, counted from the start, on screen; hourly on screen; its stop removes all; the
+    default check only checks).
+  - `src/lib/__tests__/appUpdateWiring.test.ts` (6, new; the source): ⭐ ONE START (main.tsx starts the checks once,
+    after `registerSW({ immediate: true })`, unchanged) · ⭐ ONLY THE TAP (`applyUpdate` named by the two buttons'
+    handlers alone; the checks never restart or touch the worker) · ⭐ WORKER CALLS (only the tap's env and DevPanel's
+    one diagnostic reach the service worker — DevPanel's on its Refresh tap alone, never on opening; the seven files
+    that restart the app, by name — the independent check planted a hook that readied the new worker, and every other
+    BL51 test stayed green) · ⭐ STAMP FILE (version.json from the bundle's own two constants, a build's alone, never
+    precached) · ⭐ PLACES (the card on the home, never the preview; the row in the owner's About and the viewer's
+    Settings; nowhere else) · ⭐ NO STORE.
+  - `src/components/ui/__tests__/appUpdateViews.test.tsx` (4, new; rendered in each of the seven states, each reached
+    through the module): ⭐ CARD ×2 (only when another build is live — ready, updating, failed; the words) · ⭐ ABOUT ×2
+    (the button and the line in every state, "Try again" after a failed tap; the viewer's row the same words).
+  - With it, from the queue: `planRunWiring.test.ts` 23 → 24, ⭐ GATE (new: the Dashboard's two coin bars read Coinbase's
+    coins through `planCbCollateralOf`, A4-1) · `goalTile.test.tsx` 6 → 7, ⭐ DUST DEBT (new: with a goal too, a debt
+    that rounds to nothing reads "₿0.000" — the tile, Settings → Your plan, the pair they share, and THIS MONTH's goal
+    line and "Why this plan?", each rendered at a dust debt; A4-10) ·
+    `src/components/Settings/__tests__/sharingPreview.test.tsx`
+    (1, new): ⭐ PREVIEW BUTTON (Monthly Mode the button; full mode a line in its place) ·
+    `src/utils/__tests__/pageTop.test.ts` (1, new): ⭐ PREVIEW AT TOP (both scrollers to the top; Sharing's button and "✕
+    Exit preview" each put the page at its top first, and nothing else does).
+  - `e2e/appUpdate.spec.ts` (6, new; `/version.json` routed, Playwright's clock): UPDATE CARD (the card at the open
+    check; no restart through three hours of checks; one tap restarts once) · UPDATE FOREGROUND (once a minute at most;
+    an older deploy's page no update; offline keeps the offer) · UPDATE STALL (a request that never answers ends at its
+    limit; the next check goes out and finds the build) · UPDATE ABOUT (this build the latest; the page or no network
+    "Couldn’t check"; another "Update", one tap) · UPDATE PREVIEW (never in the owner's preview; his Dashboard has it
+    after) · UPDATE VIEWER (a viewer's home and Settings). `e2e/goal.spec.ts` 3 → 4: COINS (the loan off: the
+    Dashboard's two coin bars count no Coinbase coins, as the goal tile doesn't). `e2e/viewerAlmanac.spec.ts`: FULL MODE
+    PREVIEW's title (the flag reaches full mode through a switch now, never Sharing's button) and PREVIEW AT TOP (new: a
+    key and three viewers seeded, his journal his Dashboard — Sharing's button tapped from the foot of its page, the
+    preview at its top, its greeting on the screen; the preview scrolled to its foot, "✕ Exit preview" — his Dashboard
+    at its top).
+  - Red first (the reviewer's, on BL50 v1.1's app code with the new and changed tests): the four files of the new
+    modules fail to load; in the other three, 3 red of 32 — GATE, DUST DEBT and PREVIEW BUTTON, every new test and no
+    other; the e2e red at its six UPDATE tests (no check, no card, no row), at COINS (the bar 2.480 ₿, 60% on Coinbase —
+    the seed's 1.48 ₿ with the loan off) and at PREVIEW AT TOP (the preview 442 px down); FULL MODE PREVIEW green (its
+    title alone changed).
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)

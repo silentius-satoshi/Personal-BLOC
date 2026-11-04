@@ -15,7 +15,7 @@ import { STORE_VERSION, mouseDragX } from './helpers';
  * against a real trusted viewer's handed the same plan, but the preview's label; its what-ifs save nothing; "← Preview"
  * and the swipe come back to it; a safe preview has no way in; his own Almanac is his again outside it, in either mode.
  * The preview starts as Settings → Sharing's button starts it — the flag (the dev server reaches no Sharing page: it
- * needs a key).
+ * needs a key) — but for PREVIEW AT TOP (BL51), which seeds one, taps the button itself, then the way out.
  */
 const HISTORY = JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] });
 const ENTERED = Date.UTC(2026, 9, 5, 12);
@@ -189,6 +189,13 @@ const ROSTER = (tier: 'trusted' | 'safe') => `, viewers: [{ index: 0, pubkeyHex:
 const LABEL = (mode: 'Trusted' | 'Safe'): RegExp => new RegExp(`^PREVIEW · what your viewer sees — ${mode} mode$`, 'i');
 /** The viewer's bottom bar, his home's (the preview draws it too, BL50). */
 const homeBar = (page: Page) => page.locator('nav').filter({ hasText: 'Settings' }).last();
+
+/** BL51 — three viewers (real share codes), so Settings → Sharing runs past a phone's screen. */
+const ROSTER3 = `, viewers: [${[['a', 'npub1424242424242424242424242424242424242424242424242424qamrcaj'],
+  ['b', 'npub1hwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwasxw04hu'],
+  ['c', 'npub1enxvenxvenxvenxvenxvenxvenxvenxvenxvenxvenxvenxvenxqn2pktz']]
+  .map(([c, npub], i) => `{ index: ${i}, pubkeyHex: '${c.repeat(64)}', npub: '${npub}', label: 'Viewer ${i + 1}', `
+    + `tier: '${i ? 'safe' : 'trusted'}', keyVersion: 1 }`).join(', ')}], nextViewerIndex: 3`;
 
 /** The owner starts his preview from the journal, as Settings → Sharing's button does: the flag. */
 async function startPreview(page: Page, tag: string): Promise<void> {
@@ -604,7 +611,7 @@ test.describe('the owner\'s preview of his viewer — BL50', () => {
     await expect(page.getByText(LABEL('Safe')), 'SAFE PREVIEW the way back: the preview').toBeVisible();
   });
 
-  test('FULL MODE PREVIEW — full mode draws no preview: the flag set there (Sharing\'s button is in Settings in either mode) leaves his Almanac tab his own, whatever the roster', async ({ page, browser }) => {
+  test('FULL MODE PREVIEW — full mode draws no preview: the flag set there (set in Monthly Mode, then full mode — his own switch, or his other device\'s, synced) leaves his Almanac tab his own, whatever the roster', async ({ page, browser }) => {
     // A safe roster (a tier that would send him off the tab) and a trusted one (a lens that would hide FIRE) — the
     // independent check's second case.
     for (const tier of ['safe', 'trusted'] as const) {
@@ -628,5 +635,42 @@ test.describe('the owner\'s preview of his viewer — BL50', () => {
       await expect(p.getByRole('navigation', { name: 'Faces' }), `${tag} still open`).toBeVisible();
       await ctx.close();
     }
+  });
+
+  test('PREVIEW AT TOP — the preview opens at its top however far down Sharing was, and his Dashboard after it however far down the preview was (BL51: each opened part-way down)', async ({ page }) => {
+    // Sharing needs a key: the store restores one from the gate's own keys (bootstrap.ts); the dev server skips the
+    // gates, and no relay is reached here. Three viewers, so the page runs past a phone's screen; his journal his
+    // Dashboard, as the owner's was.
+    await page.routeWebSocket(/.*/, () => {});
+    await page.addInitScript((pk) => {
+      localStorage.setItem('personal-bloc-nostr-pubkey', pk);
+      localStorage.setItem('personal-bloc-nostr-method', 'local');
+      localStorage.setItem('personal-bloc-nostr-auth', 'true');
+    }, '7'.repeat(64));
+    await prepare(page, ownerState(true, true, `${ROSTER3}, simpleView: 'dashboard'`));
+    const scrolled = () => page.evaluate(() => document.body.scrollTop + document.documentElement.scrollTop);
+    const greeting = page.getByText(/^Good (morning|afternoon|evening)/);
+    const settings = page.getByLabel('Settings').first();
+    await expect(settings, 'PREVIEW AT TOP the way to Settings').toBeVisible({ timeout: 20_000 });
+    await settings.click();
+    const sharing = page.getByText('Sharing', { exact: true });
+    await expect(sharing, 'PREVIEW AT TOP the Sharing row').toBeVisible();
+    await sharing.click();
+    const button = page.getByRole('button', { name: '👁 Preview as viewer' });
+    await expect(button, 'PREVIEW AT TOP the button').toBeVisible();
+    await button.scrollIntoViewIfNeeded();
+    expect(await scrolled(), 'PREVIEW AT TOP premise: Sharing scrolled down to its button').toBeGreaterThan(100);
+    await button.click();
+    const exit = page.getByRole('button', { name: '✕ Exit preview' });
+    await expect(exit, 'PREVIEW AT TOP the preview').toBeVisible();
+    await expect.poll(scrolled, 'PREVIEW AT TOP the preview at its top').toBe(0);
+    await expect(greeting, 'PREVIEW AT TOP the greeting on screen').toBeInViewport();
+    // the way out: the preview scrolled to its foot, then "✕ Exit preview" on its sticky bar
+    await page.evaluate(() => { document.body.scrollTop = document.body.scrollHeight; });
+    expect(await scrolled(), 'PREVIEW AT TOP premise: the preview scrolled down').toBeGreaterThan(100);
+    await exit.click();
+    await expect(exit, 'PREVIEW AT TOP out of the preview').toHaveCount(0);
+    await expect.poll(scrolled, 'PREVIEW AT TOP his Dashboard at its top').toBe(0);
+    await expect(greeting, 'PREVIEW AT TOP his greeting on screen').toBeInViewport();
   });
 });

@@ -165,8 +165,11 @@ export function DevPanel() {
 
   // Container-local SW diagnostics — the index.html ?swdebug probe can't be reached from inside an
   // installed PWA (and on iOS a Safari-tab probe can't see the PWA's isolated storage/SW registration at
-  // all), so this is the one surface reachable from WITHIN the running container itself.
-  const refreshSwStatus = async () => {
+  // all), so this is the one surface reachable from WITHIN the running container itself. BL51 — only the Refresh tap
+  // asks the worker to check its script (`askUpdate`); opening the panel reads alone. After a deploy, update() installs
+  // the new build and registerSW restarts the app onto it — so on a tap only (the panel's mount asked: Settings → About
+  // restarted the app, the "Updates" row beside it).
+  const refreshSwStatus = async (askUpdate: boolean) => {
     setSwLoading(true);
     try {
       const controller = ('serviceWorker' in navigator) && navigator.serviceWorker.controller
@@ -182,11 +185,15 @@ export function DevPanel() {
           if (reg.waiting)    registration.push(`waiting: ${reg.waiting.scriptURL} [${reg.waiting.state}]`);
           if (reg.active)     registration.push(`active: ${reg.active.scriptURL} [${reg.active.state}]`);
           if (registration.length === 0) registration.push('registration exists, no workers');
-          try {
-            await reg.update();
-            updateResult = 'update() resolved';
-          } catch (e) {
-            updateResult = `update() rejected: ${e instanceof Error ? e.message : String(e)}`;
+          if (askUpdate) {
+            try {
+              await reg.update();
+              updateResult = 'update() resolved';
+            } catch (e) {
+              updateResult = `update() rejected: ${e instanceof Error ? e.message : String(e)}`;
+            }
+          } else {
+            updateResult = 'not asked (Refresh asks)';
           }
         } else {
           registration.push('no registration');
@@ -231,7 +238,7 @@ export function DevPanel() {
     }
   };
 
-  useEffect(() => { void refreshSwStatus(); }, []);
+  useEffect(() => { void refreshSwStatus(false); }, []);
 
   const displayMode = window.matchMedia('(display-mode: standalone)').matches
     ? 'standalone (PWA container)'
@@ -629,7 +636,7 @@ export function DevPanel() {
 
       <Section
         title="SERVICE WORKER"
-        action={<button className={styles.btnGhost} onClick={refreshSwStatus} disabled={swLoading}>Refresh</button>}
+        action={<button className={styles.btnGhost} onClick={() => { void refreshSwStatus(true); }} disabled={swLoading}>Refresh</button>}
       >
         <div className={styles.grid}>
           <span className={styles.key}>display mode</span><span className={styles.val}>{displayMode}</span>

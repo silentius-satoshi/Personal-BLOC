@@ -136,6 +136,12 @@ describe('⭐ GATE — D-R2-4: every plan reader takes Coinbase through the swit
       .filter((p) => /^components\/(Almanac|SimpleMode|Daily)\//.test(p));
     expect(callers, 'GATE one deriver').toEqual(['components/Almanac/planRun.ts']);
   });
+  it('⭐ GATE — the Dashboard\'s two coin bars too (BL51, Hardening 1\'s A4-1): Coinbase\'s coins as the plan counts them, the goal tile\'s', () => {
+    expect(VIEWER_HOME, 'GATE the home derives nothing itself').not.toMatch(/\bderiveCbCollateral\b/);
+    expect(VIEWER_HOME, 'GATE the venue bar\'s Coinbase coins').toContain('const venueCbBtc = useStore((st) => planCbCollateralOf(st));');
+    expect(VIEWER_HOME, 'GATE where the coins sit').toContain('<VenueBar strikeBtc={venueStrikeBtc} cbBtc={venueCbBtc}');
+    expect(VIEWER_HOME, 'GATE who holds the coins').toContain('btcHeld={venueStrikeBtc + venueCbBtc}');
+  });
 });
 
 describe('⭐ MIN — D-R2-7: the owner\'s minimum source reaches every run', () => {
@@ -319,7 +325,7 @@ describe('⭐ CARD — D-R2-2 / D-R2-8: the main screens read the plan, not the 
     expect(DAILY, "CENTS the review's NDP seed to the cent").toMatch(/ndpPrefill=\{planNdpEstimateUsd\(ndpBalance, blocApr\)\}/);
     expect(DAILY, "CENTS Daily's NDP check on the same balance").toMatch(/getNdpStatus\(ndpLastPaidDate, ndpBalance, blocApr\)\.status/);
     expect(DAILY, "CENTS Daily reads no whole-dollar NDP estimate").not.toMatch(/\.estimatedAmount/);
-    // The price chart: whole by default — the Dashboard and the trusted viewer's home — and to the cent in the Safety card.
+    // The price chart: whole by default — the Dashboard, every viewer's home and the preview — and to the cent in the Safety card.
     expect(SAFETY, "CENTS the Safety card's price chart").toMatch(/<PriceChart money=\{fmtUSDCents\} \/>/);
     expect(PRICE_CHART, 'CENTS the price chart, whole by default (the Dashboard)').toMatch(/\{ money = fmtUSD \}/);
     expect(VIEWER_HOME, "CENTS the Dashboard's chart stays whole").toMatch(/<PriceChart \/>/);

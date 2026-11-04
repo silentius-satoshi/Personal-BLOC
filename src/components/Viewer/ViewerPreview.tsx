@@ -4,6 +4,7 @@ import { useStore } from '../../store/useStore';
 import { buildViewerSnapshotPayload } from '../../store/payloads';
 import { selectSafetyViewInputs, previewSafeSnapFromPayload } from '../../simulation/safetyView';
 import { ViewerHomeView } from './ViewerHomeView';
+import { toPageTop } from '../../utils/pageTop';
 import styles from './ViewerPreview.module.css';
 
 const noop = () => {};
@@ -37,7 +38,8 @@ export interface ViewerPreviewProps {
  * scales it to live price). Trusted: inject null → the live-derive path (what a trusted viewer's hydrated store
  * shows). Fidelity ≡ wire payload by construction. BL50 — his bar too: Home · Almanac · Settings in Trusted mode (its
  * "Almanac" opens the hub as he reads it), Home · Settings in Safe mode; his ⚙ and Settings drawn but inert. Gated to
- * the owner simple-mode branch in AppShell; `viewerPreview` is transient (never persisted).
+ * the owner simple-mode branch in AppShell; `viewerPreview` is transient (never persisted). BL51 — its way out opens
+ * his Dashboard at its top, as Sharing's button opens the preview at its own (utils/pageTop).
  */
 export function ViewerPreview({ trusted, override, setOverride, onOpenAlmanac }: ViewerPreviewProps) {
   const setViewerPreview = useStore((s) => s.setViewerPreview);
@@ -66,7 +68,7 @@ export function ViewerPreview({ trusted, override, setOverride, onOpenAlmanac }:
             {/* BL48 — names no viewer: it read the first roster slot's label, the owner's own nickname for one viewer. */}
             {previewLabel(effectiveTrusted)}
           </span>
-          <button className={styles.exitBtn} onClick={() => setViewerPreview(false)}>✕ Exit preview</button>
+          <button className={styles.exitBtn} onClick={() => { toPageTop(); setViewerPreview(false); }}>✕ Exit preview</button>
         </div>
         <div className={styles.previewBarBottom}>
           <div className={styles.modeToggle} role="group" aria-label="Preview privacy mode">

@@ -508,6 +508,7 @@ src/
 
   hooks/
     useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick). Each store push goes through setBtcPrice, which now ALSO stamps btcPriceUpdatedAt (per-device staleness clock — DevPanel readout). Poll gated on the now-self-correcting usePageVisibility. MOUNTED AT AppShell ROOT so the poll runs for the whole session (Simple Mode mounts no price-consuming sidebar — without this, btcPrice froze at its last persisted value in Simple Mode); per-tab sidebar calls remain (harmless co-mounts)
+    useAppUpdate.ts             # BL51 — the session's update state (lib/appUpdate) through useSyncExternalStore: the home's card and Settings → About read it. No store field
     usePageVisibility.ts        # !document.hidden, SELF-CORRECTING (iOS-PWA resume fix): updates on visibilitychange + window focus/pageshow + a 20s interval re-read (one shared sync = setIsVisible(!document.hidden); the primitive bail-out adds no re-renders). visibilitychange ALONE misfires on iOS PWA launch/resume → isVisible could stick false → consumer polls (useBtcPrice/useBtcHistory) died forever; the extra signals recover it. Still genuinely pauses when backgrounded (NOT hardcoded true)
     useBtcHistory.ts            # BTC candle history (1H/1D/1W) via same-origin /api/btc-candles proxy; usePageVisibility gate + slow 60s refresh (NOT a tight poll); NEVER written to the store; pure parseCandles (Coinbase [t,low,high,open,close,vol] newest-first → asc close series, s→ms) + RANGE_CFG. BL23 (the plan of record's Run 4): the request AND its body run inside utils/timeLimit's withTimeLimit (15 s), so a stall ends as failed; a range change or an unmount aborts the request in flight. 5e (F12): it draws the range's history from this device's copy (lib/btcCandlesCache, through useSyncExternalStore — every mounted chart redraws when any fetch lands) at ANY age and refreshes behind it; `asOf` is the history's time once it is more than 5 minutes old (the chart labels it), and a timer labels a history on screen the moment it crosses (offline, nothing renews it); a landing goes through the cache's newer-wins rule; a range draws only its own history; a load that fails keeps whatever it can draw, and only with nothing to draw sets `error` (the chart's "price history unavailable"). Run 4's `shownRange` is gone
     useCountTo.ts               # 5e (F12) — the chart's headline counts to a new figure over COUNT_MS (400 ms), easing out (pure countFrame, + − ×): the device's copy handing over to the live history, and every refresh that moves the price. Never on the first draw, from no figure (the "BTC" placeholder) or with reduced motion (useReducedMotion); frames on requestAnimationFrame's timestamps, never Date.now (the e2e fixes Date.now); the figure on screen in a ref (StrictMode-safe). Tested in src/hooks/__tests__/useCountTo.test.ts (COUNT)
@@ -773,6 +774,24 @@ src/
                                 # the rule takes them as data, so it is tested without Vite. See almanac.md § FIRE face.
                                 # Tested in src/lib/__tests__/fireDeploy.test.ts (DEPLOY RULE) and
                                 # src/components/Almanac/__tests__/fireWiring.test.ts (DEPLOY GATE)
+    appUpdate.ts                # BL51 — app updates (spec pbloc-spec-app-updates-v1): which build is live, asked of
+                                # /version.json (the build's stamp, { sha, time } — vite.config.ts's versionFile();
+                                # never precached) against the bundle's own (ownStamp: __BUILD_SHA__, __BUILD_TIME__) —
+                                # deployedStamp, compareBuild (PURE; another sha or time → available),
+                                # fetchDeployedStamp (?t= + no-store, within CHECK_TIMEOUT_MS, 15 s; an older deploy's
+                                # SPA page, an error, no network or no answer → no stamp); the session's state, no store
+                                # field (getUpdateState / subscribeUpdate): idle · checking · current · available ·
+                                # unknown · updating · failed. checkForUpdate never applies (an offer — 'available', or
+                                # 'failed' after a tap, its words kept — stays through a check and on an unknown answer;
+                                # this build's stamp takes it away; its answer never overwrites 'updating'); applyUpdate
+                                # is THE TAP, the only restart — registration.update(), the new worker takes over and
+                                # registerSW restarts the page; the tap's own restart only once that worker is active
+                                # (RELOAD_FALLBACK_MS, 5 s), never while it installs (F1); it fails to install →
+                                # 'failed'; no worker or nothing new → a plain restart; offline → 'failed'.
+                                # startUpdateChecks (main.tsx, once): 10 s in, back to the front (visibilitychange ·
+                                # focus · pageshow; once a minute at most, counted from the start, on screen), hourly on
+                                # screen. UPDATE_WORDS. Both browser envs injectable. Tested by appUpdate.test.ts,
+                                # appUpdateWiring.test.ts, e2e/appUpdate.spec.ts
     venueColors.ts              # BL15 (Customization) — the venue palette's one source: PURE, ZERO imports (the
                                 # planPolicy.ts precedent). Venue / VENUES · DEFAULT_VENUE_COLORS (= tokens.css's
                                 # --text-primary, --coinbase, --btc; a test reads the stylesheet) · VENUE_TOKEN
@@ -896,6 +915,13 @@ src/
                                 # ends. usePowerLawData and useBtcHistory fetch AND read the body inside it, so a request
                                 # that never answers ends as failed. ZERO imports. Tested in
                                 # src/utils/__tests__/timeLimit.test.ts (STALL)
+    pageTop.ts                  # BL51 (v1.1) — toPageTop(doc = document): both scrollers to 0 (<body>, the app's —
+                                # global.css: html and body 100% tall, overflow-x hidden — and the root). A page change
+                                # keeps the offset the last page left; Sharing's "Preview as viewer" (at its page's
+                                # foot) and the preview's "✕ Exit preview" (its sticky bar) each call it first, so the
+                                # preview opens at its top and his Dashboard after it (it opened part-way down: the
+                                # owner's report after BL50's live look). ZERO imports. Tested in
+                                # src/utils/__tests__/pageTop.test.ts (PREVIEW AT TOP)
 
   components/
     Layout/
@@ -1528,6 +1554,10 @@ src/
                                 # Almanac's what-ifs — AlmanacView provides true around the open face; FireFace provides
                                 # false (its inputs save). The three inputs read viewerMode through it alone.
                                 # __tests__/viewerWhatIf.test.tsx.
+      UpdateCard.tsx            # BL51 — "New version ready · Update" (+ .module.css): ViewerHomeView draws it under
+                                # its header, never in the preview; while 'available', 'updating' (its button
+                                # disabled) or 'failed' ("Try again"), else nothing. Its button is the one tap,
+                                # applyUpdate. __tests__/appUpdateViews.test.tsx
       PassphraseInput.tsx       # R2c-7a-2-polish — THE masked-entry widget (+ .module.css). A controlled input +
                                 # focus-guarded Show/Hide toggle, adopted at ALL 18 RENDERED masked fields:
                                 # NostrAuthGate (remediation encrypt · saved-key PIN unlock · ncryptsec unlock · PIN · Confirm PIN),
@@ -1754,7 +1784,8 @@ src/
                                 # (window.confirm → importRelaysFromNip65 → message by found/empty/not-found; replaces
                                 # the local list only on a real found list) + Publish-to-Nostr (publishRelayListToNip65,
                                 # no confirm) are LIVE; relaySyncBusy 'idle'|'import'|'publish' disables both + busy
-                                # labels, relaySyncMsg in a .fieldHint); about = build-tap row + DevPanel.
+                                # labels, relaySyncMsg in a .fieldHint); about = build-tap row + UpdateCheck (BL51)
+                                # + DevPanel.
                                 # GATING PRESERVED: identity/sharing/strike/plan/cbloan/tabs rows stay !viewerMode (display/about
                                 # always) — viewer visibility is unchanged from before (the zero-risk reading of the spec's
                                 # "always" table). The ONE behavioral change: the `hasCbLoan` toggle moved OUT of the subpage
@@ -1929,8 +1960,21 @@ src/
                                 # The owner MINTS every viewer key — NO viewer-supplied-npub add path (died at Handoff v4).
                                 # NO replace-guard (add = fresh nextViewerIndex; rotate = the only confirmed overwrite).
                                 # Per-row Remove → publishViewerRevocationNow(slot.pubkeyHex) + removeViewerSlot
+                                # BL51 (BL50 §10): the PREVIEW button is Monthly Mode's alone — full mode, which draws
+                                # no preview, shows PREVIEW_IN_MONTHLY_MODE in its place (sharingPreview.test.tsx); the
+                                # button puts the page at its top first (utils/pageTop — the preview opened part-way
+                                # down, at Sharing's offset; ViewerPreview's ✕ Exit preview does the same for his
+                                # Dashboard)
+      UpdateCheck.tsx           # BL51 — Settings' "Updates" (+ .module.css): "Check for updates" (checkForUpdate) or,
+                                # once another build is live, "Update" (applyUpdate; "Try again" after a failed tap),
+                                # and a line for every state after the first. SettingsMain's About (under the build
+                                # line); ViewerSettings' own row (`inRow`). __tests__/appUpdateViews.test.tsx
       DevPanel.tsx              # Dev diagnostics (devMode only): sync state, PUBLISH ACKS, COLLATERAL (baseline/pending/
                                 # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics.
+                                # BL51 (v1.1): SERVICE WORKER reads on opening (controller, registration, caches); its
+                                # Refresh tap alone asks update() — after a deploy that installs the new build and
+                                # registerSW restarts the app onto it (on opening, Settings → About restarted the app
+                                # with no tap: BL51's build plan, note 1)
                                 # ALL sections are COLLAPSIBLE via a local <Section title/action?/defaultOpen?> (returns a
                                 # FRAGMENT — header + conditional body stay flex siblings of .panel so layout is unchanged
                                 # when open; header reuses .sectionTitle with a ▸/▾ chevron; action buttons stopPropagation
@@ -2557,6 +2601,7 @@ src/
                                # 'personal-bloc-v1' cache. NO runtime caching (cross-origin price/candles/relays stay
                                # network-only). Compiled by tsconfig.worker.json (WebWorker lib, no DOM); registered from
                                # main.tsx via registerSW({ immediate: true })
+                               # BL51: /version.json never precached (globPatterns take no .json; no runtime route)
 
 tsconfig.e2e.json            # Hardening 1 G2 — tsconfig.node.json's flags + DOM, types node; includes e2e/**/*.ts + playwright.config.ts;
                                 # referenced from the root tsconfig.json, so `tsc -b` (the build) type-checks the e2e specs too

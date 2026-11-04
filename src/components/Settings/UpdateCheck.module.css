@@ -1,0 +1,56 @@
+/* BL51 — Settings → About's update row: self-contained, so the owner's and a viewer's Settings show it alike. */
+.check {
+  flex: 1;          /* the whole row when a viewer's Settings sets it in one of its rows */
+  margin: 10px 0 4px;
+}
+
+.inRow {
+  margin: 0;        /* inside a viewer's Settings row, which brings its own padding */
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.btn,
+.btnPrimary {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btnPrimary {
+  border: 1px solid var(--btc);
+  background: var(--btc);
+  color: var(--bg-base);
+  font-weight: 700;
+}
+
+.line {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}

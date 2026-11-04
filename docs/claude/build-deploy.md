@@ -260,9 +260,42 @@ Pinned by `src/__tests__/swDiag.test.ts` (the real script in `node:vm`, a fake w
 Vercel `VERCEL_GIT_COMMIT_SHA` → local `git rev-parse --short HEAD` fallback → `'dev'`), ambient
 declarations in `src/vite-env.d.ts`, rendered at the bottom of Settings (`.buildInfo`).
 
+**App updates (BL51; spec `pbloc-spec-app-updates-v1`):** the service worker takes over the moment a new one installs
+(`sw.ts`'s skipWaiting + clientsClaim), and `registerSW({ immediate: true })` — autoUpdate, its options unchanged —
+restarts the page then. But nothing asked for a new one while the app ran, so an app brought back to the front kept its
+build, and its next fresh start loaded the old build and restarted itself on the new one seconds in (measured on two
+production builds: the old build at once, then a restart onto the new about 3 s in). Now the app asks which build is
+live: `/version.json`, `{ sha, time }`, written beside the bundle by `vite.config.ts`'s `versionFile()` plugin (a
+build's alone) from the same two constants as `__BUILD_SHA__` / `__BUILD_TIME__` — 10 s after it opens, when it comes
+back to the front (`visibilitychange`, `focus`, `pageshow` — `usePageVisibility`'s three; at most once a minute, counted
+from the start, and only on screen) and hourly on screen (`lib/appUpdate.ts`'s `startUpdateChecks`, started once from
+`main.tsx`). The request goes past every cache (`?t=` and `cache: 'no-store'`) and ends within 15 s, its body too
+(`withTimeLimit` — one that never answered would hold every later check); the precache never holds the file
+(`globPatterns` take no `.json`, and `sw.ts` has no runtime route); Vercel serves a file before its SPA rewrite, so an
+older deploy, with no file, answers with `index.html` (200, `text/html`) — read as no stamp, never as an update. Another
+build — another sha, or the same commit built again (a new time: a new bundle all the same) — is 'available': the home's
+card and Settings → About offer it (viewer.md § BL51). **One tap** (`applyUpdate`) asks the worker to check its script
+(`registration.update()`); the new one installs and takes over, and registerSW's own restart loads it. The tap never
+restarts the page while that worker installs: a restart then reopens the old build, and a page opened mid-install isn't
+told when the worker takes over — an old page under the new worker, its lazy chunks gone (the independent check's F1,
+measured on a link slowed to 40 KB/s, and fixed). Once the worker is active, 5 s with no restart and the tap restarts
+the page itself; a worker that fails to install → 'failed' ("Try again"); with no worker (the dev server) or nothing new
+to install, a plain restart; offline, nothing changes and the card says so. Nothing else restarts the app: a check never
+applies, and its answer never overwrites a tap in progress; an update on offer stays on screen through a check, and
+offered when a check can't reach the file — a failed tap's "Try again" too, its words until the next tap. Dev mode's
+DevPanel (Settings → About) reads the worker on opening and asks it for a new build (`update()`) on its Refresh tap
+alone: it asked on opening too, and after a deploy that restarted the app onto the new build with no tap (both found in
+BL51's build plan). Offline launch and unlock read the same precache as before — the worker's path is unchanged.
+Declared edges, the worker's own and older than BL51: a fresh start after a deploy still restarts by itself (its check
+at registration, before the card's first) — about 3 s in on a fast link, while on a slow one the card can show first,
+and a tap then waits for that same worker; a tap restarts every open window of the app, as that restart does (the worker
+takes them all over); and a page left open a day without a check may meet the browser's own check on a request the
+worker handles, and restart then. Rule: `.claude/rules/general.md` ("The app restarts on a tap alone").
+
 **⚠️ Cross-device testing:** before ANY cross-device smoke test, confirm both devices show the same
-Build SHA in Settings — iOS home-screen PWAs are known to serve stale bundles after deploys; kill +
-relaunch (or reinstall) the PWA until the SHA matches the latest deploy. With dev mode on, smoke-test
+Build SHA in Settings — iOS home-screen PWAs are known to serve stale bundles after deploys; since BL51,
+Settings → About → "Check for updates", then "Update", takes the latest in one tap (else kill + relaunch, or
+reinstall, the PWA) until the SHA matches the latest deploy. With dev mode on, smoke-test
 reports should include the Copy Diagnostics output from the failing device.
 
 **Device-local persisted-but-unsynced fields** (persist via `...rest`, NOT in SETTINGS_FIELDS /

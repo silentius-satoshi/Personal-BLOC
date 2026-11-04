@@ -6,11 +6,11 @@ import {
   type SafetyLevel, type SafeSnapshot, type ViewerSafetyResult,
 } from '../../simulation/safetyView';
 import { supportToday } from '../../simulation/powerLaw';
-import { deriveCbCollateral } from '../../simulation/logUtils';
 import { fmtUSD, relativeAge, todayLocalISO } from '../../utils/format';
 import { PriceChart } from '../SimpleMode/PriceChart';
 import { RadialGauge } from './RadialGauge';
 import { VenueBar } from './VenueBar';
+import { UpdateCard } from '../ui/UpdateCard';
 import { OwnershipBar } from './OwnershipBar';
 import { GoalTile } from './GoalTile';
 import { goalTileView } from './goalTileView';
@@ -142,7 +142,9 @@ export function ViewerHomeView({ onOpenSettings, onOpenAlmanac, previewSafeSnap,
   // ⚠ Read-only: no setCbCollateralBtc / emitBalanceReading anywhere — those would inject a reading into the
   // viewer's OWN dayLog, which BUG3 exists to prevent.
   const venueStrikeBtc = useStore((st) => st.getCurrentBtcHeld());
-  const venueCbBtc = useStore((st) => deriveCbCollateral(st.dayLog, st.cbCollateralBtc));
+  // BL51 (Hardening 1's A4-1) — Coinbase's coins as the plan counts them (planCbCollateralOf: none with the loan switched
+  // off), as the goal tile below does: the store's figures with the loan off are the seed's 1.48 ₿ on a fresh install.
+  const venueCbBtc = useStore((st) => planCbCollateralOf(st));
   // The LIVE cold total — the owner's anchor + cold journal moves after it. Never the raw anchor, which would
   // disagree with the journal. On a viewer the dayLog is [], so this returns the pre-derived scalar the owner's
   // snapshot raw-set. 0 hides the segment rather than showing a cell nobody filled in.
@@ -186,6 +188,10 @@ export function ViewerHomeView({ onOpenSettings, onOpenAlmanac, previewSafeSnap,
             </button>
           )}
         </header>
+
+        {/* BL51 — "New version ready · Update", on every viewer's home and the owner's Dashboard; never in his preview of
+            his viewer (the card is his device's, not his viewer's). */}
+        {!preview && <UpdateCard />}
 
         {/* R2b-2 — owner-only notice slot. `ownerNav` is the owner-dashboard discriminator (the real viewer and
             ViewerPreview never pass it), so this can't leak into a viewer surface. */}
@@ -235,9 +241,9 @@ export function ViewerHomeView({ onOpenSettings, onOpenAlmanac, previewSafeSnap,
 
           {/* Composition, not a gauge — see VenueBar. TRUSTED-ONLY: `mode` and `figures` are set together in
               computeViewerSafety so they cannot disagree, and the C-safe snapshot carries no absolutes to
-              feed it. NOT gated on hasCbLoan — collateral can sit on Coinbase with no loan against it. The
-              gate is the mode, never whether the values are non-zero: a trusted owner with genuinely zero CB
-              collateral must stay distinguishable from a safe-mode viewer. */}
+              feed it. Coinbase's coins are the plan's (planCbCollateralOf — none with the loan switched off;
+              BL51, A4-1), the goal tile's. The gate is the mode, never whether the values are non-zero: a
+              trusted owner with genuinely zero CB collateral must stay distinguishable from a safe-mode viewer. */}
           {s.mode === 'trusted' && (
             <VenueBar strikeBtc={venueStrikeBtc} cbBtc={venueCbBtc} coldBtc={venueColdBtc} btcPrice={venuePrice} />
           )}

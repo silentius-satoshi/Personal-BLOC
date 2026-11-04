@@ -125,6 +125,17 @@ test.describe('the goal amount — BL14', () => {
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });
 
+  test('COINS — the loan switched off: the Dashboard\'s two coin bars count no Coinbase coins, as the goal tile doesn\'t (BL51, A4-1)', async ({ page }) => {
+    // The store's Coinbase figures with the loan off are the seed's — 1.48 ₿ on a fresh install — and the plan reads none.
+    await start(page, `simpleMode: true, simpleView: 'dashboard', planGoalNetBtc: 2, hasCbLoan: false, strikeCollateralBtc: 1`);
+    await expect(page.getByRole('group', { name: /^Your goal:/ }), 'COINS the goal tile: net coins today, no Coinbase coins')
+      .toContainText('₿1.000 of ₿2.000', { timeout: 15_000 });
+    await expect(page.getByRole('img', { name: /^Split:/ }), 'COINS where the coins sit')
+      .toHaveAttribute('aria-label', 'Split: 100% on Strike, 0% on Coinbase, 1.000 ₿ total');
+    await expect(page.getByRole('img', { name: /^Ownership split:/ }), 'COINS who holds the coins')
+      .toHaveAttribute('aria-label', /, 1\.000 ₿ held$/);
+  });
+
   test('TILE — none without a goal', async ({ page }) => {
     await start(page, `simpleMode: true, simpleView: 'dashboard', ${LOAN}`);
     await expect(page.getByText("If BTC were at support ($64,700): 77.3% LTV — over the plan's 45% limit"), 'NONE the Dashboard')

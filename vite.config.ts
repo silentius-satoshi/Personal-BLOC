@@ -1,4 +1,5 @@
 import { defineConfig, configDefaults } from 'vitest/config'
+import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { execSync } from 'node:child_process'
@@ -9,9 +10,27 @@ function gitSha(): string {
   try { return execSync('git rev-parse --short HEAD').toString().trim(); } catch { return 'dev'; }
 }
 
+// One stamp per build: the bundle's (__BUILD_SHA__, __BUILD_TIME__) and version.json's are the same two values.
+const BUILD_SHA = gitSha()
+const BUILD_TIME = new Date().toISOString()
+
+/** BL51 — the deployed build's stamp, beside the app: `version.json`, the sha and time the bundle carries, so a running
+ *  app can ask which build is live (src/lib/appUpdate.ts). Not precached — the PWA's globPatterns take no `.json` — so
+ *  the service worker lets the request through to the network; on Vercel the file is served before the SPA rewrite. */
+function versionFile(): Plugin {
+  return {
+    name: 'bloc-version-file',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: `${JSON.stringify({ sha: BUILD_SHA, time: BUILD_TIME })}\n` })
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    versionFile(),
     // Workbox full-manifest precaching (real offline support). injectManifest → we own src/sw.ts.
     VitePWA({
       strategies: 'injectManifest',
@@ -30,8 +49,8 @@ export default defineConfig({
     }),
   ],
   define: {
-    __BUILD_SHA__:  JSON.stringify(gitSha()),
-    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __BUILD_SHA__:  JSON.stringify(BUILD_SHA),
+    __BUILD_TIME__: JSON.stringify(BUILD_TIME),
   },
   test: {
     globals: true,

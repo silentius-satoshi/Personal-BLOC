@@ -3,6 +3,7 @@ import { useStore } from '../../store/useStore';
 import { fetchViewerSnapshot, resetViewerSession, getViewerNpub } from '../../lib/nostr/viewerSync';
 import { relativeAge } from '../../utils/format';
 import styles from './ViewerSettings.module.css';
+import { UpdateCheck } from './UpdateCheck';
 
 /**
  * Viewer V4 — the purpose-built FLAT viewer Settings (no subpages), rendered by SettingsMain in place
@@ -159,6 +160,7 @@ export function ViewerSettings() {
           {__BUILD_SHA__} · {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
         </span>
       </div>
+      <div className={styles.row}><UpdateCheck inRow /></div>
 
       {/* Sign out */}
       <button className={styles.signOutBtn} onClick={signOut}>Sign out</button>

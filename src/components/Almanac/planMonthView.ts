@@ -303,12 +303,15 @@ export function planStatus(sim: CyclingResult, plan: PlacementPlan, m: number, f
  *  below the goal never to print as the goal. `reached` is the engine's own verdict (`atGoalOf`, which forgives float
  *  dust): a figure at the goal by that rule prints to three places, never as eight digits of dust. */
 export function goalPair(net: number, goal: number, reached: boolean = net >= goal): { net: string; goal: string } {
+  // BL51 (Hardening 1's A4-10) — a dust debt never reads as a negative zero ("−₿0.000"), as Settings' reading already
+  // doesn't: rounded to nothing, it is nothing; a debt that shows at more digits keeps its sign.
+  const unsigned = (s: string): string => (/^-0\.0+$/.test(s) ? s.slice(1) : s);
   for (let d = 3; d <= 8; d++) {
-    const a = net.toFixed(d);
+    const a = unsigned(net.toFixed(d));
     const b = goal.toFixed(d);
     if (reached || a !== b || d === 8) return { net: a, goal: b };
   }
-  return { net: net.toFixed(8), goal: goal.toFixed(8) };
+  return { net: unsigned(net.toFixed(8)), goal: goal.toFixed(8) };
 }
 
 /** A net-coins figure from `goalPair`, with its sign before the ₿ — owing more than every coin is worth reads "−₿0.200",

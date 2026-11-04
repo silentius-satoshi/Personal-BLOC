@@ -58,9 +58,11 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
     "2 unknowns, 1 equation" claim with a third ratio in play — not a UI task.
   - **NO PAYLOAD CHANGE was needed** — C-P4 already ships `strikeCollateralBtc` and VIEWER BUG2 ships
     `cbCollateralBtc` to the trusted viewer (`applyViewerEvent` raw-sets both in one `setState`).
-    `ViewerHomeView` reads them through the DERIVES (`getCurrentBtcHeld()` /
-    `deriveCbCollateral(dayLog, cache)`), never the raw caches — the viewer's `dayLog` is `[]` so each
-    returns the hydrated scalar, but the helper is the single definition. ⚠ Read-only: no
+    `ViewerHomeView` reads them through the DERIVES (`getCurrentBtcHeld()` / `planCbCollateralOf(st)` —
+    Coinbase's coins as the plan counts them, none with the loan switched off, as the goal tile reads them, since
+    BL51: Hardening 1's A4-1; `deriveCbCollateral(dayLog, cache)` before, which counted a fresh install's seed,
+    1.48 ₿, with the loan off), never the raw caches — the viewer's `dayLog` is `[]` so each returns the hydrated
+    scalar (Coinbase's with his owner's loan on), but the helper is the single definition. ⚠ Read-only: no
     `setCbCollateralBtc`/`emitBalanceReading` anywhere (they'd inject a reading into the viewer's OWN
     `dayLog`, which BUG3 exists to prevent). The dollar figures use a new `btcPrice` binding — the gauge
     sub-lines render pre-computed absolutes, so there was no resolved-price binding to reuse.
@@ -190,9 +192,9 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   names the mode + "✕ Exit preview" AND carries a **Safe|Trusted override** (`override: boolean | null` — the
   preview's own state until BL50, AppShell's `previewOverride` since, so it outlives a visit to the Almanac;
   `effectiveTrusted = override ?? trusted`) — a pure what-if lens that **NEVER writes
-  `viewerPrivacyTrusted`**; forcing safe spreads `{ ...getState(), viewerPrivacyTrusted: false }` through
-  `buildViewerSnapshotPayload` so the mode is exercised via the REAL builder (fidelity ≡ wire payload under the
-  hypothetical setting), and an amber "previewing — actual: {Safe|Trusted}" caption flags drift. **Preview
+  `viewerPrivacyTrusted`**; forcing safe hands the builder the tier — `buildViewerSnapshotPayload(getState(),
+  'safe')`, its own parameter since M2 — so the mode is exercised via the REAL builder (fidelity ≡ wire payload
+  under the hypothetical setting), and an amber "previewing — actual: {Safe|Trusted}" caption flags drift. **Preview
   fidelity ≡ wire payload by construction** (the injected snap IS the safe branch of the payload — pinned by a
   deep-equal test, incl. the forced-safe-from-a-trusted-store override case). The viewer home (real viewer AND
   preview — one shared render path) embeds the full live `PriceChart` (`components/SimpleMode/PriceChart.tsx`,
@@ -314,8 +316,10 @@ and the faces' words: `almanac.md` § BL14.
   "₿0.500 of ₿2.000", "net coins today · 25%" (or "net coins today · at or past your goal", by the engine's own
   `atGoalOf`), the bar's fill 0..1 (never over full), and the tile read aloud. `null` with no goal or with net coins that
   can't be read. Its figures go through `goalPair` / `netBtcText` (a figure under the goal never prints as the goal; a
-  sign before the ₿). 🔴 It never names a plan move — what the plan does at the goal is THIS MONTH's to say — and it has no
-  colour verdict: reaching a goal is not a risk level. `GOAL_TILE_TITLE` = "Your goal". BL33: + `goalNowView(net, goal)`
+  sign before the ₿ — none, since BL51 (Hardening 1's A4-10), on a dust debt that rounds to nothing: "₿0.000 of
+  ₿2.000", never "−₿0.000"). 🔴 It never names a plan move — what the plan does at the goal is THIS MONTH's to say —
+  and it has no colour verdict: reaching a goal is not a risk level. `GOAL_TILE_TITLE` = "Your goal". BL33: +
+  `goalNowView(net, goal)`
   — Settings → Your plan's reading beside the goal field: with a goal it IS the tile's view; with none, net coins alone
   ("₿1.800", "net coins today", no bar; a dust debt never prints "-0.000"); `null` when net coins can't be read.
 - **`src/components/Viewer/GoalTile.tsx`** (+ `.module.css`) — pure-from-props: the title, the value, a bar (no width
@@ -329,8 +333,9 @@ and the faces' words: `almanac.md` § BL14.
   screen's own `s`, so every mode draws as before, the owner preview's included.
 - **The figure: net coins TODAY, the plan's own definition** (`simulation/goal`'s `netCoinsBtc`), at the live price
   (`btcPrice`): Strike's coins (`getCurrentBtcHeld()`) + Coinbase's AS THE PLAN COUNTS THEM (`planCbCollateralOf` — none
-  with the Coinbase loan switched off, D-R2-4; never the venue bar's `venueCbBtc`) + cold (`getCurrentColdBtc()`), less
-  Strike's balance (`f.strike.balance`) and Coinbase's ACCRUED balance (`f.cb.balance`, 0 with no loan) — each the read
+  with the Coinbase loan switched off, D-R2-4; since BL51 the venue bar's `venueCbBtc` reads the same) + cold
+  (`getCurrentColdBtc()`), less Strike's balance (`f.strike.balance`) and Coinbase's ACCRUED balance (`f.cb.balance`, 0
+  with no loan) — each the read
   THIS MONTH's run makes, so the two agree. THIS MONTH's figure reads the month's decision (a month of Coinbase's interest
   later), so with a loan open it sits a little under the tile's: ₿0.497 against ₿0.500 on the e2e's seed — "this month"
   on one, "today" on the other. Since BL33 the figure is read in ONE place, `useNetCoinsToday` (exported beside
@@ -441,10 +446,11 @@ on the owner's device and figures, nothing saved. What the hub does under it: `a
   and no bar.
 - **The tier — `previewTier({ viewerMode, viewerPreview, simpleMode, previewTrusted })` (`viewerAccess.ts`, pure).**
   'trusted' or 'safe' while the owner previews; null otherwise — always on a viewer's device, and in full mode: the
-  preview is drawn in simple mode alone (Branch J), and Settings → Sharing's button sets the flag in either mode, so in
-  full mode it draws nothing and his Almanac tab stays his own. AppShell reads the roster once (`viewers[0]?.tier ===
-  'trusted'` — M1: slot 0, as the preview read it) and keeps the preview's Safe/Trusted choice (`previewOverride`), so
-  it outlives a visit to the Almanac; an effect drops it when the preview ends.
+  preview is drawn in simple mode alone (Branch J). Settings → Sharing's button is Monthly Mode's alone since BL51
+  (full mode shows a line in its place), but the flag outlives a switch to full mode — his own, or his other device's,
+  synced — so in full mode it draws nothing and his Almanac tab stays his own. AppShell reads the roster once
+  (`viewers[0]?.tier === 'trusted'` — M1: slot 0, as the preview read it) and keeps the preview's Safe/Trusted choice
+  (`previewOverride`), so it outlives a visit to the Almanac; an effect drops it when the preview ends.
 - **The pages.** Branch J renders `renderPreview()` while `previewing`, else the journal; the edge-back under-layer
   (`renderSimpleUnder`) the same, so a swipe out of the preview's Almanac reveals the preview and lands on it. Branch I
   takes the owner's trusted preview — `… && almanacOpen && previewing !== 'safe'` — with the label alone above its
@@ -463,3 +469,35 @@ on the owner's device and figures, nothing saved. What the hub does under it: `a
   `viewerAlmanacWiring.test.ts` (⭐ GATES, ⭐ CALL SITES; COPIES, PIN and PREVIEW moved), `backPlace.test.ts` (ORDER moved)
   and `e2e/viewerAlmanac.spec.ts` (PREVIEW BAR, PREVIEW HUB, PREVIEW SAVES NOTHING, PREVIEW WAY BACK, SAFE PREVIEW, FULL
   MODE PREVIEW). § Test Suite → BL50's entry.
+
+## BL51 — app updates: the home's card, and "Updates" in Settings (the owner's call A; store unchanged, NO bump)
+
+Spec `pbloc-spec-app-updates-v1`. How a build is offered and applied: `build-deploy.md` § App updates. Here, where it
+shows.
+- **The card — `components/ui/UpdateCard.tsx`** (+ `.module.css`): "New version ready · Update" at the top of
+  `ViewerHomeView`, under its header — every viewer's home and the owner's Dashboard (its `ownerNav` mount); never in
+  the owner's preview of his viewer (`{!preview && <UpdateCard />}`): the card is the device's, not his viewer's. It
+  shows while the session's state (`lib/appUpdate.ts`, read through `hooks/useAppUpdate.ts`) is 'available',
+  'updating' (its button disabled, "Updating…") or 'failed' ("Couldn’t update — check your connection" · "Try
+  again"); otherwise nothing. An offer stays on screen through a check, a failed tap's words with it until the next tap.
+  Its button is the one tap, `applyUpdate()`.
+- **"Updates" — `components/Settings/UpdateCheck.tsx`** (+ `.module.css`): under the build line in the owner's Settings
+  → About, and in a row of its own under "Version" in a viewer's Settings (`inRow`). "Check for updates" checks on
+  demand; once another build is live, "Update" — the same tap ("Try again" after a tap that failed, as on the card). A
+  line under it for every state after the first: "Checking…", "You’re on the latest version", "Couldn’t check — check
+  your connection", "New version ready", "Updating…", "Couldn’t update — check your connection".
+- **With it, from the queue** (Light): the home's two coin bars count Coinbase's coins as the plan does (Hardening 1's
+  A4-1 — § Viewer Experience Revamp, the venue bar); a dust debt reads "₿0.000" wherever the goal's figures print — the
+  goal tile and Settings → Your plan, THIS MONTH's and Daily's goal line, "Why this plan?" and Daily's plan note, all
+  through `goalPair` (A4-10 — § BL14); Sharing's "Preview as viewer" is Monthly Mode's (§ BL50's tier). And, from BL50's
+  live look: Sharing's "Preview as viewer" opens the preview at its top, and "✕ Exit preview" opens his Dashboard at its
+  top. The app scrolls `<body>`, and a page change keeps the offset the last page left — the button sits at Sharing's
+  foot, and "✕ Exit preview" rides the preview's sticky bar, so the preview opened part-way down its home (measured: 442
+  px down, its greeting off the screen) and his Dashboard at the preview's offset. Each of the two buttons puts the page
+  at its top first (`utils/pageTop`'s `toPageTop`). Other page changes are as before — nothing sets the offset; most
+  land at the top through a short page between them, but not all: full mode's "Switch to simple view" opens his
+  Dashboard at the full-mode page's offset (measured; logged in the spec, its own item).
+- Tests: `appUpdateViews.test.tsx` (⭐ CARD, ⭐ ABOUT — in every state), `appUpdateWiring.test.ts` (⭐ PLACES),
+  `planRunWiring.test.ts` (⭐ GATE, the coin bars), `goalTile.test.tsx` (⭐ DUST DEBT), `sharingPreview.test.tsx` (⭐
+  PREVIEW BUTTON), `utils/__tests__/pageTop.test.ts` (⭐ PREVIEW AT TOP), `e2e/appUpdate.spec.ts` (UPDATE PREVIEW, UPDATE
+  VIEWER), `e2e/goal.spec.ts` (COINS) and `e2e/viewerAlmanac.spec.ts` (PREVIEW AT TOP). § Test Suite → BL51's entry.

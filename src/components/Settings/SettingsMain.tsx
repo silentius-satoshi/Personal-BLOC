@@ -17,6 +17,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useStore } from '../../store/useStore';
 import { importRelaysFromNip65, publishRelayListToNip65 } from '../../lib/nostr/syncEngine';
 import { DevPanel } from './DevPanel';
+import { UpdateCheck } from './UpdateCheck';
 import { SharingPage } from './SharingPage';
 import { ViewerSettings } from './ViewerSettings';
 import { NostrAuthGate } from '../Auth/NostrAuthGate';
@@ -1062,6 +1063,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
           <p className={styles.buildInfo} onClick={handleBuildTap}>
             Build {__BUILD_SHA__} · {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </p>
+          <UpdateCheck />
           {devMode && <DevPanel />}
         </div>
       )}

@@ -9,7 +9,11 @@ import { buildHandoffToken } from '../../lib/nostr/handoffToken';
 import { Toggle } from '../ui/Toggle';
 import { PassphraseInput } from '../ui/PassphraseInput';
 import { SecretKeyCard } from '../Auth/SecretKeyCard';
+import { toPageTop } from '../../utils/pageTop';
 import styles from './SharingPage.module.css';
+
+/** BL51 (BL50 §10) — in full mode, in the button's place: the preview is drawn in Monthly Mode (simple mode) alone. */
+export const PREVIEW_IN_MONTHLY_MODE = 'Preview as viewer opens in Monthly Mode — turn it on in Settings → Customization.';
 
 /**
  * Sharing subpage (Viewer M3) — the owner's viewer-access home, extracted from SettingsMain.
@@ -26,6 +30,7 @@ export function SharingPage() {
   // Preview-as-viewer trigger (relocated here from the journal headers) — sets the transient flag AND
   // leaves Settings so AppShell's branch J renders the (unchanged) ViewerPreview overlay.
   const setViewerPreview = useStore((s) => s.setViewerPreview);
+  const simpleMode = useStore((s) => s.simpleMode);   // BL51 (BL50 §10) — the preview is drawn in Monthly Mode alone
   const setActiveTab     = useStore((s) => s.setActiveTab);
   const previousTab      = useStore((s) => s.previousTab);
 
@@ -69,13 +74,20 @@ export function SharingPage() {
 
       {/* PREVIEW — see exactly what a viewer sees (the overlay carries its own Safe / Trusted toggle). */}
       <div className={styles.groupTitle} style={{ marginTop: 20 }}>PREVIEW</div>
-      <p className={styles.desc}>Open a live preview of the viewer experience, with a Safe / Trusted toggle.</p>
-      <button
-        className={styles.actionBtn}
-        onClick={() => { setViewerPreview(true); setActiveTab(previousTab); }}
-      >
-        👁 Preview as viewer
-      </button>
+      {simpleMode ? (
+        <>
+          <p className={styles.desc}>Open a live preview of the viewer experience, with a Safe / Trusted toggle.</p>
+          <button
+            className={styles.actionBtn}
+            onClick={() => { toPageTop(); setViewerPreview(true); setActiveTab(previousTab); }}
+          >
+            👁 Preview as viewer
+          </button>
+        </>
+      ) : (
+        // BL51 (BL50 §10) — full mode draws no preview (BL50, C9): the button would set the flag and show nothing.
+        <p className={styles.desc}>{PREVIEW_IN_MONTHLY_MODE}</p>
+      )}
     </div>
   );
 }
