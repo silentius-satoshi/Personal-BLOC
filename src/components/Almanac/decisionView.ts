@@ -21,6 +21,8 @@ import type { PlacementInput } from '../../simulation/placement';
 import { fmtTurnDate, type NeverDrawVerdict } from './cyclingFaceView';
 import type { BreakerSeed } from './supportPolicyInputs';
 import { fmtUSD } from '../../utils/format';
+import { deriveVenueSplit } from '../../simulation/viewerVenue';
+import type { Venue } from '../../lib/venueColors';
 
 /**
  * The Decision face's SCHEDULE and THE MOVE's copy — pure, so every sentence is testable without a render harness.
@@ -708,6 +710,208 @@ function lineLines(ctx: MoveCardContext, hasLoan: boolean): MoveLine[] {
 }
 
 const LINE_MONTHS_WORD = 'two';
+
+// ── R1 (BL45, B′) — THE MOVE in sections ─────────────────────────────────────────────────────────────────────
+// The card's lines, arranged: "To do today" first — THIS MONTH's own rows (`todayActions`) and today's state lines —
+// then one card per venue (Strike, Coinbase, cold storage), each folding under a row with the ₿ it holds once today's
+// move is made (`opening`), then the quiet foot. ONE source: every line comes from `moveCard`, whose rules decide when
+// it shows — all but "Nothing to move today." (`NOTHING_TODAY_LINE`), the view's own; a fact that splits a line into an
+// amount and its parts reads the same inputs through the same formulas, and the FIGURES sweep holds the two to the same
+// figures. The figures are THE MOVE's — its inputs, its moves, the position the owner ends up holding; the one new
+// figure is cold storage's share of every coin (the Dashboard's split, `deriveVenueSplit`). The printout keeps
+// `moveCard`'s lines (`moveCardText`): the schedule under it lists today's moves.
+
+/** The section's label. */
+export const TODO_LABEL = 'To do today';
+/** Nothing moves today and no state line says why — the section is never empty (a Coinbase over its limit, say). */
+export const NOTHING_TODAY_LINE = 'Nothing to move today.';
+export const VENUE_NAME: Readonly<Record<Venue, string>> = Object.freeze({
+  strike: 'Strike', coinbase: 'Coinbase', cold: 'Cold storage',
+});
+
+/** A fact's part, listed under its amount — its dot the venue's colour, or else the fact's tone. */
+export interface FactPart { text: string; venue: Venue | null }
+/** One fact on a venue's card: a label, an amount (or a short sentence) and its parts. */
+export interface MoveFact {
+  key: string;
+  /** `null` — a line of its own across the card: the rarer lines keep `moveCard`'s words. */
+  label: string | null;
+  value: string;
+  parts: FactPart[];
+  tone: MoveTone;
+  action?: LineAction;
+  /** In view while the card is folded: every warning, and the line's what-if with its way back (BL45 — a warning
+   *  never folds out of sight). */
+  folded: boolean;
+}
+/** One of today's moves — THIS MONTH's own row — and the two venues it moves between, from and to. */
+export interface TodoRow { key: string; text: string; venues: [Venue, Venue] }
+/** A venue's card: its row (dot, name, the ₿ it holds once today's move is made) and its facts. `rowName` is the row's
+ *  name for a screen reader — its name and its ₿, apart. */
+export interface VenueCard { venue: Venue; name: string; held: string; rowName: string; facts: MoveFact[] }
+export interface MoveSections {
+  title: string;
+  lead: MoveLine[];
+  /** `null` with nothing to arrange — the policy off or ignored, or the plan unavailable: the card is its lines. */
+  todo: { rows: TodoRow[]; notes: MoveLine[] } | null;
+  venues: VenueCard[];
+  foot: MoveLine[];
+}
+/** What the owner holds today, before the move — THE MOVE's own inputs (`PlacementInput`). */
+export type HeldBtc = Pick<PlacementInput, 'strikeCollateralBtc' | 'cbCollateralBtc' | 'coldBtc'>;
+
+/** Today's three legs, by kind: the venues each moves between, from and to (`todayActions`' kinds). */
+export const TODAY_VENUES: Readonly<Partial<Record<ActionKind, [Venue, Venue]>>> = Object.freeze({
+  strikeToCoinbase: ['strike', 'coinbase'], strikeToCold: ['strike', 'cold'], coinbaseToCold: ['coinbase', 'cold'],
+});
+
+/** A share of every coin, as a whole percent — the card's own ends (never "0%" or "100%" for a part, as `fmtBelowPct`). */
+export function fmtSharePct(share: number): string {
+  if (share >= 1) return '100%';
+  const pct = Math.round(share * 100);
+  return pct < 1 ? 'less than 1%' : pct > 99 ? 'more than 99%' : `${pct}%`;
+}
+
+const heldText = (btc: number): string => (shownBtc(btc) ? `${fmtBtc3(btc)} ₿` : '—');
+const rowNameOf = (venue: Venue, btc: number): string => `${VENUE_NAME[venue]}, ${shownBtc(btc) ? `${fmtBtc3(btc)} ₿` : 'none'}`;
+const keepsText = (after: number, before: number): string =>
+  `${shownBtc(after) ? `${fmtBtc3(after)} ₿` : 'nothing'} of ${fmtBtc3(before)} ₿`;
+const fact = (
+  key: string, label: string, value: string, parts: FactPart[], tone: MoveTone = 'plain', folded = false,
+): MoveFact => ({ key, label, value, parts, tone, folded });
+/** A line kept whole — in view folded when it warns, or when `folded` says so. */
+const lineFact = (l: MoveLine, folded = l.tone === 'warn' || l.tone === 'bad'): MoveFact => ({
+  key: l.key, label: null, value: l.text, parts: [], tone: l.tone, ...(l.action !== undefined ? { action: l.action } : {}), folded,
+});
+const part = (text: string, venue: Venue | null = null): FactPart => ({ text, venue });
+const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * THE MOVE in sections (B′). `card` is `moveCard(ctx)` — the very lines, from the very context — and `today` THE MOVE's
+ * input holdings. Every line of `card` is placed but two: `moves` (its figures are the To do rows and the venues' rows)
+ * and, but at the stand-down, `why` (its figures are the venues' For).
+ */
+export function moveSections(card: MoveCardCopy, ctx: MoveCardContext, today: HeldBtc): MoveSections {
+  const at = (key: string): MoveLine | undefined => card.lines.find((l) => l.key === key);
+  const { plan } = ctx;
+  if (!ctx.policyApplied || plan.state === 'unavailable') {
+    return { title: card.title, lead: card.lines, todo: null, venues: [], foot: [] };
+  }
+  const hasLoan = ctx.hasCbLoan && shownUsd(ctx.cbDebt);   // moveCard's own F3 predicate
+  const made = plan.state === 'ready' && plan.worthMoving;  // todayActions' own gate (N5)
+  const lead = card.lines.filter((l) => l.key === 'planOfRecord');
+
+  // ── To do today ──
+  const rows: TodoRow[] = todayActions(plan).flatMap((a) => {
+    const v = TODAY_VENUES[a.kind];
+    return v !== undefined ? [{ key: a.kind, text: a.text, venues: v }] : [];
+  });
+  const notes = card.lines.filter((l) =>
+    l.key === 'state' || l.key === 'batch' || l.key === 'aligned' || (l.key === 'why' && plan.standDown));
+  if (rows.length === 0 && notes.length === 0) notes.push(line('todayNone', 'plain', NOTHING_TODAY_LINE));
+
+  // ── Strike ──
+  const strike: MoveFact[] = [];
+  if (made && !plan.standDown && shownBtc(plan.strikeToCbBtc + plan.strikeToColdBtc)) {
+    strike.push(fact('strikeKeeps', 'Keeps', keepsText(plan.opening.strikeCollateralBtc, today.strikeCollateralBtc), []));
+  }
+  if (!plan.standDown) {
+    strike.push(fact('strikeFor', 'For', `your ${fmtUSD(ctx.runLineUsd)} line`, [part(`At support: ${fmtUSD(ctx.support)}`)]));
+  }
+  const short = at('short');
+  if (short !== undefined) strike.push(lineFact(short));
+  const ln = at('line');
+  if (ln !== undefined) {
+    if (ln.tone === 'good' && ln.action === undefined) {
+      // "Your $L line already covers two months of bills and one Coinbase paydown (T% → G%)." — its For holds the $L.
+      const covers = [part(`${cap(LINE_MONTHS_WORD)} months of bills`)];
+      if (hasLoan) {
+        covers.push(part(`One Coinbase paydown, ${Math.round(ctx.cbLtvTriggerPct)}% → ${Math.round(ctx.cbLtvTargetPct)}%`));
+      }
+      strike.push(fact('line', 'The line', 'covers', covers, 'good'));
+    } else {
+      // A suggestion keeps its sentence and its Try; a what-if, its way back — in view, since the card's figures are
+      // the what-if's.
+      strike.push(lineFact(ln, ln.action?.kind === 'backToLine'));
+    }
+  }
+  const lineHold = at('lineHold');
+  if (lineHold !== undefined) strike.push(lineFact(lineHold));
+  const venues: VenueCard[] = [{
+    venue: 'strike', name: VENUE_NAME.strike, held: heldText(plan.opening.strikeCollateralBtc),
+    rowName: rowNameOf('strike', plan.opening.strikeCollateralBtc), facts: strike,
+  }];
+
+  // ── Coinbase — with the loan switched on, or coins there today or after the move ──
+  if (ctx.hasCbLoan || shownBtc(today.cbCollateralBtc) || shownBtc(plan.opening.cbCollateralBtc)) {
+    const cb: MoveFact[] = [];
+    if (made && !plan.standDown && shownBtc(plan.cbToColdBtc)) {
+      cb.push(fact('cbKeeps', 'Keeps', keepsText(plan.opening.cbCollateralBtc, today.cbCollateralBtc), []));
+    }
+    if (made && shownBtc(plan.strikeToCbBtc)) {
+      cb.push(fact('cbToday', 'Today', `+${fmtBtc3(plan.strikeToCbBtc)} ₿`, [part('from Strike', 'strike')]));
+    }
+    if (!plan.standDown) {
+      // moveCard's `why` clause, as a noun phrase: what Coinbase keeps coins for at support.
+      const room = ctx.bearBufferMonths;
+      const billsKnown = Number.isFinite(ctx.expenses) && ctx.expenses > 0;
+      const forText = hasLoan
+        ? (room > 0 && billsKnown
+          ? `its ${fmtUSD(ctx.cbDebt)} debt plus ${room} months of bills at support`
+          : `its ${fmtUSD(ctx.cbDebt)} debt at support`)
+        : (room > 0 && billsKnown ? `${room} months of bills of room at support` : null);
+      if (forText !== null) cb.push(fact('cbFor', 'For', forText, []));
+    }
+    const over = at('overLimit');
+    if (over !== undefined) cb.push(lineFact(over));
+    if (at('cliff') !== undefined) {
+      const m = cbMetrics(ctx.cbDebt, plan.opening.cbCollateralBtc, ctx.price, ctx.cbLtvTriggerPct);
+      cb.push(fact('cliff', 'Seizes at', fmtUSD(m.liqPrice),
+        [part(`${fmtBelowPct(Math.abs(m.pctToLiq))} below today`)], 'warn', true));
+      const alert = at('alert');
+      if (alert !== undefined) {
+        cb.push(alert.tone === 'plain'
+          ? fact('alert', 'Price alert', fmtUSD(m.triggerPrice), [
+            part(`Your ${ctx.cbLtvTriggerPct}% trigger`),
+            part(consoleTail(ctx).trim().replace(/\.$/, '')),
+          ])
+          : lineFact(alert));   // at or past the trigger: moveCard's words, in view folded
+      }
+      if (at('cliffDepth') !== undefined) {
+        const depth = ceilingLiquidationMultiple(ctx.cbStop, CB_LLTV);
+        cb.push(fact('cliffDepth', 'Survives',
+          `down to ${depth.toFixed(2)}× support (${fmtUSD(depth * ctx.support)}), at its limit`, []));
+      }
+    }
+    venues.push({
+      venue: 'coinbase', name: VENUE_NAME.coinbase, held: heldText(plan.opening.cbCollateralBtc),
+      rowName: rowNameOf('coinbase', plan.opening.cbCollateralBtc), facts: cb,
+    });
+  }
+
+  // ── Cold storage — with coins there today or after the move ──
+  if (shownBtc(today.coldBtc) || shownBtc(plan.opening.coldBtc)) {
+    const o = plan.opening;
+    const split = deriveVenueSplit(o.strikeCollateralBtc, o.cbCollateralBtc, o.coldBtc);
+    const share = part(`${fmtSharePct(split.coldShare)} of all ${fmtBtc3(split.combinedBtc)} ₿`, 'cold');
+    const now = shownBtc(today.coldBtc) ? `${fmtBtc3(today.coldBtc)} ₿ in your own custody` : 'nothing yet';
+    const coldIn = made ? plan.strikeToColdBtc + plan.cbToColdBtc : 0;
+    const cold: MoveFact[] = [];
+    if (shownBtc(coldIn)) {
+      const from: FactPart[] = [];
+      if (shownBtc(plan.strikeToColdBtc)) from.push(part(`${fmtBtc3(plan.strikeToColdBtc)} ₿ from Strike`, 'strike'));
+      if (shownBtc(plan.cbToColdBtc)) from.push(part(`${fmtBtc3(plan.cbToColdBtc)} ₿ from Coinbase`, 'coinbase'));
+      cold.push(fact('coldNow', 'Now', now, []), fact('coldToday', 'Today', `+${fmtBtc3(coldIn)} ₿`, from),
+        fact('coldAfter', 'After', `${fmtBtc3(o.coldBtc)} ₿`, [share]));
+    } else {
+      cold.push(fact('coldNow', 'Now', now, [share]));
+    }
+    venues.push({ venue: 'cold', name: VENUE_NAME.cold, held: heldText(o.coldBtc), rowName: rowNameOf('cold', o.coldBtc), facts: cold });
+  }
+
+  const foot = card.lines.filter((l) => l.key === 'breaker' || l.key === 'pathInvariant');
+  return { title: card.title, lead, todo: { rows, notes }, venues, foot };
+}
 
 // ── Run B — the rest of the face's copy ──────────────────────────────────────────────────────────────────────
 // ⚠ I31 (Run B): DecisionFace.tsx holds labels only. Every sentence it shows lives here, where a test reaches it.

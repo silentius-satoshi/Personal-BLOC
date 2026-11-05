@@ -201,7 +201,7 @@ describe('⭐ GOAL — BL14: the owner\'s goal reaches every run, and every scre
     // δ4 — THE MOVE's over-limit line reads THIS MONTH's figure (THE MOVE's facts, a month of Coinbase interest) against the
     // goal, only where the policy applies, and the card's memo depends on both.
     expect(FACE, 'GOAL move').toMatch(/atGoalThisMonth: sim\.policyApplied && atGoalThisMonthOf\(placementInput, s\.cbAprPct, s\.goalNetBtc\),/);
-    const moveMemo = FACE.slice(FACE.indexOf('const move = useMemo(() => moveCard({'));
+    const moveMemo = FACE.slice(FACE.indexOf('const moveCtx = useMemo((): MoveCardContext => ({'));   // R1 — the card's context
     const moveDeps = depsOf(moveMemo.slice(0, moveMemo.indexOf(']);') + 3));
     expect(moveDeps, 'GOAL move depends on the goal').toMatch(/s\.goalNetBtc/);
     expect(moveDeps, 'GOAL move depends on the rate').toMatch(/s\.cbAprPct/);
@@ -448,7 +448,7 @@ describe('⭐ NOTE · CACHE · HOLD · WHATIF · CRASH', () => {
   });
   it('⭐ WHATIF — §4.7: a what-if on the policy or the line flips THE MOVE\'s first line', () => {
     expect(FACE).toMatch(/const moveWhatIf = overlay\.supportPolicy !== undefined \|\| overlay\.creditLine !== undefined;/);
-    const move = memoBody(FACE, 'move');
+    const move = memoBody(FACE, 'moveCtx');   // R1 — the card's context, which the card and its sections read
     expect(move, 'WHATIF passed').toMatch(/whatIf: moveWhatIf,/);
     expect(depsOf(move), 'WHATIF a dependency').toMatch(/\bmoveWhatIf\b/);
   });

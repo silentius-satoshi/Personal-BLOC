@@ -2138,6 +2138,24 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   **Policy v2 Run B (B3):** the cliff line never names a seizure price under the dust floor, and says "less than 1%" /
   "more than 99%" (`fmtBelowPct`, F11). Right after it comes the price alert at the owner's trigger, or "Coinbase is at
   or past your t% trigger at today's price — work from the Emergency Console" (§ Policy v2 → Run B).
+- **THE MOVE in sections (R1 — B′, BL45; spec `pbloc-spec-decision-sections-v1`).** The card is `moveCard`'s lines,
+  arranged by `moveSections`: the plan-of-record line; **To do today**, always open — THIS MONTH's own rows
+  (`todayActions`), each with its two venues' dots, then today's state lines (`state`, `batch`, `aligned`, and the
+  stand-down's `why`), or "Nothing to move today."; then a card per venue — **Strike** (Keeps · For · The line),
+  **Coinbase**, with the loan switched on or coins there today or after the move (Keeps or Today · For · Seizes at ·
+  Price alert · Survives), **Cold storage**, with coins there today or after (Now · Today · After, with its share of
+  every coin) — each folding under a row (a 44px button, named for a screen reader "Strike, 1.219 ₿") with the ₿ it
+  holds once today's move is made (`opening`); then the foot (the breaker, the path line), quiet unless the breaker
+  warns. A fact is an amount with its parts listed under it; the rarer lines — Strike short of its line, Coinbase over
+  its limit, at or past the trigger, a suggested line with its Try, the line's what-if with its way back, the hold a
+  raised line restarts — keep `moveCard`'s words on their venue's card. Every card starts folded on every visit, its
+  fold the component's own state (nothing stored or synced); folded, every warning stays in view, in `moveCard`'s order
+  (BL45 named the Coinbase card's seizure price; R1 keeps every warning), and so does the what-if's way back. No figure
+  moves: every figure `moveCard` prints is on the sections (`moveSections.test.ts` FIGURES, a sweep), and the new ones
+  are THE MOVE's own — today's holdings, the position after the move, cold storage's arrival and total, and its share
+  (`deriveVenueSplit`, the Dashboard's split; `fmtSharePct` says "less than 1%" and "more than 99%" at the ends). With
+  no Coinbase card — no loan switched on, no coins there — the why line's Coinbase clause goes with it. The printout
+  (Copy · Download · Print) keeps `moveCard`'s lines: the schedule under it lists today's moves.
 - **The seeding rule (D10, v1.6 — amended in Run B and in Policy v2 Run B).**
   `seedFromMove = seedsFromMove(placement.seeded, { ...PLAN_ENGINE_CONTEXT, supportPolicy, pricePath: paths[0], expenses })`
   — the move is worth making AND the engine will APPLY the policy (`supportPolicyResolution`, the run's own answer with

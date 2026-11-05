@@ -1069,6 +1069,12 @@ src/
                                 # BL33: the cold-storage card (ColdStorageCard, from coldCardView) under the outcome
                                 # strip, showTotal={false} — the strip's first tile is its total — at the run's own buffer,
                                 # PLAN_COLD_BUFFER_PCT (engineInputsOf)
+                                # R1 (B′, BL45): THE MOVE renders in sections — `moveSections(move, moveCtx,
+                                # placementInput)`, the card's lines and their sections off ONE context memo
+                                # (`moveCtx`): To do today (always open), a `VenueCardView` per venue — its fold its own
+                                # `useState(false)`, folded on every visit, nothing stored or synced; folded, its
+                                # warnings stay in view — then the foot. Values and parts come from the view; the face
+                                # renders them (`FactRow`, `MoveLineRow`).
       decisionView.ts           # Decision face (Run A) — the SCHEDULE and THE MOVE's copy, pure. ACTION_FIELDS is
                                 # ONE field → action table in the engine's month order (a field added to CyclingRow
                                 # without a row here is a step the printed schedule silently drops; a completeness
@@ -1125,6 +1131,14 @@ src/
                                 # 0.01 ₿); moveCard at plan.standDown — the why and aligned lines in
                                 # GOAL_STAND_DOWN_WORDS' terms, the moves line lists only what moves (δ2), and no line
                                 # words (δ1 — the what-if pair stays)
+                                # R1 (B′, BL45): `moveSections(card, ctx, today)` arranges `moveCard`'s lines — To do
+                                # today (`todayActions`, THIS MONTH's own rows, with `TODAY_VENUES`; the state lines;
+                                # `NOTHING_TODAY_LINE` when there is nothing else), a card per venue (Strike, Coinbase
+                                # with the loan or coins there, cold storage with coins there), each fact an amount with
+                                # its parts or a line kept whole, every warning `folded: true`; the foot (the breaker,
+                                # the path line). Every line but `moves` and (save at the stand-down) `why` is placed
+                                # once; their figures are the rows' and the venues'. The one new figure: cold storage's
+                                # share (`deriveVenueSplit`, `fmtSharePct`). The printout keeps `moveCard`'s lines.
       decisionChartView.ts      # Decision face (Run A) — the chart series, pure. buildChartSeries (the seam is
                                 # EXACT: history's last point IS forward's first; the support line spans both
                                 # halves — history via supportAtDates, forward via the engine's own path; history

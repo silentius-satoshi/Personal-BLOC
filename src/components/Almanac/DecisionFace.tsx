@@ -36,9 +36,10 @@ import {
   atGoalThisMonthOf,
   decisionDisclaimer, pathSublabel, pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles,
   scheduleFileName, manualPriceNote, stressNote, fmtBtc3, BELOW_SUPPORT_NOTE, DECISION_FRAMING, ON_SUPPORT_NOTE,
-  SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY, seedsFromMove,
-  type DecisionPath, type LineAction, type MoveTone,
+  SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY, seedsFromMove, moveSections, TODO_LABEL,
+  type DecisionPath, type LineAction, type MoveTone, type MoveCardContext, type MoveLine, type MoveFact, type VenueCard,
 } from './decisionView';
+import { VENUE_COLOR } from './planMonthView';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import { ColdStorageCard } from './ColdStorageCard';
 import { coldCardView } from './coldCardView';
@@ -154,6 +155,82 @@ const TONE_CLASS: Record<MoveTone, string> = {
 const TONE_COLOR: Record<MoveTone, string> = {
   plain: 'var(--text-primary)', good: 'var(--green)', warn: 'var(--amber)', bad: 'var(--red)',
 };
+
+/** A part's dot when it names no venue: the fact's tone (plain reads muted). */
+const PART_DOT: Record<MoveTone, string> = {
+  plain: 'var(--text-muted)', good: 'var(--green)', warn: 'var(--amber)', bad: 'var(--red)',
+};
+
+/** One of THE MOVE's lines, with its button when it has one. Quiet: the plan-of-record line, the path line and a plain
+ *  breaker — so the sectioned card's lead and foot read quiet; a breaker that warns, and the unsectioned card's state
+ *  line, keep their tone. */
+function MoveLineRow({ l, onAction }: { l: MoveLine; onAction: (a: LineAction) => void }) {
+  const quiet = l.key === 'planOfRecord' || l.key === 'pathInvariant' || (l.key === 'breaker' && l.tone === 'plain');
+  return (
+    <div className={`${styles.moveLine} ${quiet ? styles.moveQuiet : ''} ${TONE_CLASS[l.tone]}`}>
+      <span>{l.text}</span>
+      {l.action && (
+        <button type="button" className={styles.ghostBtn} onClick={() => onAction(l.action!)}>{l.action.label}</button>
+      )}
+    </div>
+  );
+}
+
+/** A fact: its label, its amount and its parts listed under it — or, unlabelled, a line of its own. */
+function FactRow({ f, onAction }: { f: MoveFact; onAction: (a: LineAction) => void }) {
+  if (f.label === null) {
+    return (
+      <div className={`${styles.factLine} ${TONE_CLASS[f.tone]}`}>
+        <span>{f.value}</span>
+        {f.action && (
+          <button type="button" className={styles.ghostBtn} onClick={() => onAction(f.action!)}>{f.action.label}</button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className={styles.fact}>
+      <span className={styles.factKey}>{f.label}</span>
+      <div className={TONE_CLASS[f.tone]}>
+        <span>{f.value}</span>
+        {f.parts.length > 0 && (
+          <ul className={styles.factParts}>
+            {f.parts.map((p) => (
+              <li key={p.text}>
+                <i className={styles.partDot} style={{ background: p.venue !== null ? VENUE_COLOR[p.venue] : PART_DOT[f.tone] }}
+                  aria-hidden="true" />
+                {p.text}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A venue's card (B′): its row — dot, name, the ₿ it holds once today's move is made — folds its facts. It starts
+ *  folded on every visit and keeps its state in the component alone: nothing is stored or synced (BL45). Folded, the
+ *  facts that warn stay in view. */
+function VenueCardView({ card, onAction }: { card: VenueCard; onAction: (a: LineAction) => void }) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  const shown = open ? card.facts : card.facts.filter((f) => f.folded);
+  return (
+    <div className={styles.venue}>
+      <button type="button" className={styles.venueHead} aria-label={card.rowName} aria-expanded={open}
+        aria-controls={bodyId} onClick={() => setOpen((o) => !o)}>
+        <i className={styles.venueDot} style={{ background: VENUE_COLOR[card.venue] }} aria-hidden="true" />
+        <span className={styles.venueName}>{card.name}</span>
+        <span className={styles.venueHeld}>{card.held}</span>
+        <span className={styles.venueChev} aria-hidden="true">{open ? '⌄' : '›'}</span>
+      </button>
+      <div id={bodyId} className={styles.venueBody}>
+        {shown.map((f) => <FactRow key={f.key} f={f} onAction={onAction} />)}
+      </div>
+    </div>
+  );
+}
 
 interface Overlay {
   path?: DecisionPath;
@@ -513,7 +590,8 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   const breakerRead = useMemo(() => breakerReading(breakerSeed, historyLoading), [breakerSeed, historyLoading]);
   // §4.7 — a what-if that changes THE MOVE (the policy's settings or the line) flips the card's first line.
   const moveWhatIf = overlay.supportPolicy !== undefined || overlay.creditLine !== undefined;
-  const move = useMemo(() => moveCard({
+  // R1 (B′) — ONE context: the card's lines (`moveCard`) and their sections (`moveSections`) read the very same object.
+  const moveCtx = useMemo((): MoveCardContext => ({
     whatIf: moveWhatIf,
     policyApplied: sim.policyApplied,
     policyEnabled: policySettings.enabled,
@@ -544,6 +622,9 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     suggested, s.expenses, placementInput, s.cbLtvTriggerPct, s.cbLtvTargetPct, s.hasCbLoan, consoleRuns,
     moveWhatIf, s.cbAprPct, s.goalNetBtc,
   ]);
+  const move = useMemo(() => moveCard(moveCtx), [moveCtx]);
+  // THE MOVE's input holdings are today's, before the move (`placementInput`, B1).
+  const sections = useMemo(() => moveSections(move, moveCtx, placementInput), [move, moveCtx, placementInput]);
   const onLineAction = (a: LineAction) => {
     if (a.kind === 'tryLine') set('creditLine', a.lineUsd);
     else setOverlay(({ creditLine: _c, ...rest }) => rest);
@@ -719,20 +800,32 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
         <div className={styles.framing}>{DECISION_FRAMING}</div>
       </div>
 
-      {/* 1 · THE MOVE — every line from moveCard; the face composes none. */}
+      {/* 1 · THE MOVE, in sections (R1 — B′, BL45): every line from moveCard, arranged by moveSections; the face composes
+          none. To do today first, always open; a card per venue, folded on each visit (nothing stored); the quiet foot. */}
       <section className={styles.moveCard} aria-label={move.title}>
         <span className={styles.cardLabel}>{move.title}</span>
-        {move.lines.map((l) => (
-          <div key={l.key}
-            className={`${styles.moveLine} ${l.key === 'planOfRecord' || l.key === 'pathInvariant' ? styles.moveQuiet : ''} ${TONE_CLASS[l.tone]}`}>
-            <span>{l.text}</span>
-            {l.action && (
-              <button type="button" className={styles.ghostBtn} onClick={() => onLineAction(l.action!)}>
-                {l.action.label}
-              </button>
-            )}
+        {sections.lead.map((l) => <MoveLineRow key={l.key} l={l} onAction={onLineAction} />)}
+        {sections.todo !== null && (
+          <div className={styles.todo}>
+            <span className={styles.todoLabel}>{TODO_LABEL}</span>
+            {sections.todo.rows.map((r) => (
+              <div key={r.key} className={styles.todoRow}>
+                <span className={styles.todoDots} aria-hidden="true">
+                  <i className={styles.venueDot} style={{ background: VENUE_COLOR[r.venues[0]] }} />→
+                  <i className={styles.venueDot} style={{ background: VENUE_COLOR[r.venues[1]] }} />
+                </span>
+                <span>{r.text}</span>
+              </div>
+            ))}
+            {sections.todo.notes.map((l) => <MoveLineRow key={l.key} l={l} onAction={onLineAction} />)}
           </div>
-        ))}
+        )}
+        {sections.venues.map((v) => <VenueCardView key={v.venue} card={v} onAction={onLineAction} />)}
+        {sections.foot.length > 0 && (
+          <div className={styles.moveFoot}>
+            {sections.foot.map((l) => <MoveLineRow key={l.key} l={l} onAction={onLineAction} />)}
+          </div>
+        )}
       </section>
 
       {/* 2 · The Coinbase-loan line (decision 2). */}

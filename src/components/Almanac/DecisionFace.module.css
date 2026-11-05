@@ -64,6 +64,122 @@
 .toneWarn { color: var(--amber); }
 .toneBad { color: var(--red); }
 
+/* R1 (B′, BL45) — THE MOVE in sections: To do today, always open; a card per venue that folds under its row; the quiet
+   foot. The insets are the card's own surface steps (--surface-2), the venue marks the venue tokens. */
+.todo {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid color-mix(in srgb, var(--green) 35%, transparent);
+}
+.todoLabel {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+/* A state line right under the label (no rows today) keeps the rows' gap. */
+.todo .moveLine:first-of-type { margin-top: 8px; }
+.todoRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+.todoDots {
+  flex-shrink: 0;
+  width: 38px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.venueDot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.venue {
+  margin-top: 10px;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+/* The fold's row — a 44px tap target. */
+.venueHead {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+.venueName { flex-grow: 1; font-weight: 600; }
+.venueHeld { font-weight: 600; }
+.venueChev {
+  width: 18px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.venueBody { padding-bottom: 10px; }
+.venueBody:empty { display: none; }
+.fact {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  column-gap: 8px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+.fact:first-child { margin-top: 0; }
+.factKey { font-size: 11.5px; color: var(--text-muted); }
+.factParts { list-style: none; margin: 3px 0 0; padding: 0; color: var(--text-muted); }
+.toneGood .factParts, .toneWarn .factParts, .toneBad .factParts { color: inherit; }
+.factParts li { display: flex; align-items: flex-start; gap: 8px; margin-top: 2px; }
+.partDot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-top: 5.5px;
+  border-radius: 50%;
+}
+/* A line kept whole on a venue's card (the rarer lines), with its button when it has one. */
+.factLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+.factLine:first-child { margin-top: 0; }
+.moveFoot { margin-top: 12px; }
+.moveFoot .moveLine { margin-top: 6px; }
+.moveFoot .moveLine:first-child { margin-top: 0; }
+
 /* The path picker — six options, so a grid rather than the parents' single flex row (which clips at phone width):
    the four modelled paths on one row, the two worst options beneath, each two columns wide for its sublabel (D3). */
 .pathRow {

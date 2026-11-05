@@ -128,9 +128,10 @@ describe('⭐ THE MOVE — the held anchor, today\'s support, one input object (
   });
 
   it('⭐ B1 — the card reads its price, support, debt and stop from that same object', () => {
-    const args = callArgs(SRC, 'moveCard');
-    expect(args.length, 'moveCard calls found').toBe(1);
-    const ctx = args[0];
+    // R1 (B′) — ONE context object: the card's lines and their sections read it (moveCard, moveSections).
+    expect(callArgs(SRC, 'moveCard'), 'moveCard calls found').toEqual(['moveCtx']);
+    const ctx = memoBody(SRC, 'moveCtx');
+    expect(ctx, 'the context memo').toMatch(/^const moveCtx = useMemo\(\(\): MoveCardContext => \(\{/);
     expect(ctx).toMatch(/\bprice: placementInput\.price,/);
     expect(ctx).toMatch(/\bsupport: placementInput\.support,/);
     expect(ctx).toMatch(/\bcbDebt: placementInput\.cbDebt,/);
@@ -336,5 +337,37 @@ describe('⭐ I31 (Run B) — the face composes no sentence', () => {
   it('⭐ no string literal and no JSX text in DecisionFace.tsx is a sentence — every one lives in decisionView', () => {
     const found = [...strings, ...jsxText].filter(isSentence);
     expect(found).toEqual([]);
+  });
+});
+
+describe('⭐ R1 (B′, BL45) — THE MOVE in sections', () => {
+  /** The function component `name`, up to the next top-level function. */
+  const component = (name: string): string => {
+    const at = SRC.indexOf(`function ${name}(`);
+    const end = SRC.indexOf('\n}\n', at);
+    return at < 0 || end < 0 ? '' : SRC.slice(at, end + 2);
+  };
+
+  it('⭐ ONE CONTEXT — the card and its sections read the one context; the sections, THE MOVE\'s input holdings', () => {
+    expect(SRC, 'ONE CONTEXT the card').toMatch(/const move = useMemo\(\(\) => moveCard\(moveCtx\), \[moveCtx\]\);/);
+    expect(SRC, 'ONE CONTEXT the sections').toMatch(
+      /const sections = useMemo\(\(\) => moveSections\(move, moveCtx, placementInput\), \[move, moveCtx, placementInput\]\);/);
+  });
+
+  it('⭐ RENDERED ONCE — the card renders its sections, never its flat lines (the printout keeps those)', () => {
+    expect(SRC, 'RENDERED ONCE no flat render').not.toMatch(/move\.lines\.map/);
+    for (const part of ['sections.lead.map', 'sections.todo.rows.map', 'sections.todo.notes.map', 'sections.venues.map',
+      'sections.foot.map']) expect(SRC, `RENDERED ONCE ${part}`).toContain(part);
+    expect(SRC, 'RENDERED ONCE the printout').toMatch(/scheduleToText\(schedule, header, moveCardText\(move\), disclaimer, consoleRuns\)/);
+  });
+
+  it('⭐ FOLDED ON EACH VISIT — a venue\'s fold is its component\'s own state, folded at first; nothing stored or synced', () => {
+    const v = component('VenueCardView');
+    expect(v, 'FOLDED premise').toMatch(/^function VenueCardView\(/);
+    expect(v, 'FOLDED starts folded').toMatch(/const \[open, setOpen\] = useState\(false\);/);
+    expect(v, 'FOLDED no store').not.toMatch(/useStore|setState\b|localStorage|sessionStorage/);
+    expect(v, 'FOLDED the row says so').toMatch(/aria-expanded=\{open\}/);
+    expect(v, 'FOLDED the row\'s name').toMatch(/aria-label=\{card\.rowName\}/);
+    expect(v, 'FOLDED shows its warnings').toMatch(/const shown = open \? card\.facts : card\.facts\.filter\(\(f\) => f\.folded\);/);
   });
 });
