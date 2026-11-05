@@ -23,6 +23,7 @@ import type { BreakerSeed } from './supportPolicyInputs';
 import { fmtUSD } from '../../utils/format';
 import { deriveVenueSplit } from '../../simulation/viewerVenue';
 import type { Venue } from '../../lib/venueColors';
+import { monthYear } from './futuresView';
 
 /**
  * The Decision face's SCHEDULE and THE MOVE's copy — pure, so every sentence is testable without a render harness.
@@ -748,7 +749,13 @@ export interface MoveFact {
 export interface TodoRow { key: string; text: string; venues: [Venue, Venue] }
 /** A venue's card: its row (dot, name, the ₿ it holds once today's move is made) and its facts. `rowName` is the row's
  *  name for a screen reader — its name and its ₿, apart. */
-export interface VenueCard { venue: Venue; name: string; held: string; rowName: string; facts: MoveFact[] }
+export interface VenueCard {
+  venue: Venue; name: string; held: string; rowName: string; facts: MoveFact[];
+  /** BL54 — the Cold storage card's look ahead, on the path below; on no other card. */
+  ahead?: AheadSection;
+}
+/** BL54 — the look ahead: its label (the path, by the dock's name) and its facts, shown when the card is open. */
+export interface AheadSection { label: string; facts: MoveFact[] }
 export interface MoveSections {
   title: string;
   lead: MoveLine[];
@@ -791,7 +798,95 @@ const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
  * input holdings. Every line of `card` is placed but two: `moves` (its figures are the To do rows and the venues' rows)
  * and, but at the stand-down, `why` (its figures are the venues' For).
  */
-export function moveSections(card: MoveCardCopy, ctx: MoveCardContext, today: HeldBtc): MoveSections {
+// ── R1b (BL54) — Cold storage, ahead ─────────────────────────────────────────────────────────────────────────
+// The Cold storage card always shows (0 ₿ included) and, under today's facts, says what the plan does with cold on the
+// path the face shows — the displayed run, the schedule's own, its stress included when one is on: the next move into
+// cold, the goal (with one set) and the cold at the horizon. Its figures are that run's — the schedule's and the lower
+// Cold storage card's — so they move with the path, as the schedule does; today's facts don't, and the footer's "This
+// move…" stays true. The one part of the card that is not `moveCard`'s lines.
+
+/** The look ahead's label, before the path's name (BL54). */
+export const AHEAD_LABEL = 'Ahead, on the path below';
+/** A count of months: "1 month", "7 months". */
+export const monthsText = (m: number): string => `${m} month${m === 1 ? '' : 's'}`;
+/** Net coins, signed, as the goal tile says them: never "-0.000". */
+const netText = (btc: number): string => { const t = fmtBtc3(btc); return t === '-0.000' ? '0.000' : t; };
+
+/** What the Cold storage card reads of the path below (BL54). */
+export interface ColdAheadInput {
+  /** The schedule's rows (`planSchedule` of the displayed run): its moves into cold, as the face lists them. */
+  schedule: ReadonlyArray<Pick<ScheduleRow, 'm' | 'actions'>>;
+  /** The displayed run's rows: the goal's months and the cold at the horizon. */
+  rows: ReadonlyArray<Pick<CyclingRow, 'm' | 'atGoal' | 'goalStandDown' | 'coldBtc' | 'netCoinsBtc'>>;
+  /** The owner's goal in net coins; `null` with none — and then no Goal line. */
+  goalNetBtc: number | null;
+  /** Month 0's local date, `yyyy-mm-dd` — the months' names ("Dec 2026"). */
+  startISO: string;
+  /** The path as the dock names it — "Support", "Fair", "4-yr cycle", "Worst (stitched)" — and Worst (modeled) with its
+   *  crown, as the schedule's header names it ("Worst (modeled): Resistance path"). */
+  pathLabel: string;
+  /** A stress is on — the run is the stressed one, and the label says so. */
+  stressed: boolean;
+}
+
+/** The schedule's moves INTO cold — never coins leaving it, or moving between Strike and Coinbase. */
+const INTO_COLD: ReadonlySet<ActionKind> = new Set<ActionKind>(['strikeToCold', 'coinbaseToCold']);
+
+/** BL54 — the Cold storage card's look ahead. `null` with nothing ahead to read (a run of month 0 alone). */
+export function coldAhead(a: ColdAheadInput): AheadSection | null {
+  const last = a.rows[a.rows.length - 1];
+  if (last === undefined || last.m < 1) return null;
+  const horizon = last.m;
+  const when = (m: number): string => monthYear(a.startISO, m);
+  const facts: MoveFact[] = [];
+  // Next — the first month after today whose row moves coins into cold (BL54), whatever their size: its month, and what
+  // comes from Strike and from Coinbase, a move under THE MOVE's threshold marked "(small — can wait)" as the row marks
+  // it. ⚠ No threshold on the month: THE MOVE batches a month's moves by their total, Strike's release into Coinbase
+  // included (D16), so a small sweep into cold can go with a bigger move that month — and on the board's plans it does
+  // (spec `pbloc-spec-cold-ahead-v1` §3, C3).
+  const next = a.schedule.find((r) => r.m >= 1 && r.actions.some((x) => INTO_COLD.has(x.kind) && x.btc !== null));
+  if (next === undefined) {
+    facts.push(fact('coldNext', 'Next', `none within ${monthsText(horizon)}`, []));
+  } else {
+    const parts = [part(when(next.m))];
+    for (const x of next.actions) {
+      if (x.btc === null) continue;
+      const small = x.btc < MOVE_THRESHOLD_BTC ? ' (small — can wait)' : '';
+      if (x.kind === 'strikeToCold') parts.push(part(`${fmtBtc3(x.btc)} ₿ from Strike${small}`, 'strike'));
+      if (x.kind === 'coinbaseToCold') parts.push(part(`${fmtBtc3(x.btc)} ₿ from Coinbase${small}`, 'coinbase'));
+    }
+    facts.push(fact('coldNext', 'Next', `in ${monthsText(next.m)}`, parts));
+  }
+  // Goal — with one set: when net coins first reach it, and the month from which every coin goes to cold (at it, both
+  // loans repaid: `goalStandDown`). "Goes to", never "is in": Strike's 60-day hold can keep its coins a month or two
+  // more (`cyclingSim` moves them only once `m >= strikeHoldUntil`) — the stand-down's own words
+  // (`supportPolicyView`'s GOAL_STAND_DOWN_WORDS).
+  if (a.goalNetBtc !== null) {
+    const goal = `${fmtBtc3(a.goalNetBtc)} ₿`;
+    const reach = a.rows.find((r) => r.atGoal === true);
+    if (reach === undefined) {
+      const net = last.netCoinsBtc;
+      facts.push(fact('coldGoal', 'Goal', `not within ${monthsText(horizon)}`,
+        net === null ? [] : [part(`net coins ${netText(net)} ₿ of ${goal} by ${when(horizon)}`)]));
+    } else {
+      const parts = [part(reach.m === 0 ? `net coins at your ${goal} goal` : `${when(reach.m)} — net coins reach ${goal}`)];
+      const all = a.rows.find((r) => r.goalStandDown);
+      if (all !== undefined) {
+        parts.push(part(all.m === 0 ? 'every coin goes to cold storage today'
+          : `every coin goes to cold storage from ${when(all.m)}`, 'cold'));
+      }
+      facts.push(fact('coldGoal', 'Goal', reach.m === 0 ? 'reached' : `in ${monthsText(reach.m)}`, parts));
+    }
+  }
+  // By the end — the cold at the horizon (the outcome strip's first tile, on the same run).
+  facts.push(fact('coldEnd', 'By the end', shownBtc(last.coldBtc) ? `${fmtBtc3(last.coldBtc)} ₿` : 'nothing',
+    [part(`${when(horizon)}, in ${monthsText(horizon)}`)]));
+  return { label: `${AHEAD_LABEL}: ${a.pathLabel}${a.stressed ? ', stressed' : ''}`, facts };
+}
+
+export function moveSections(
+  card: MoveCardCopy, ctx: MoveCardContext, today: HeldBtc, ahead: ColdAheadInput | null = null,
+): MoveSections {
   const at = (key: string): MoveLine | undefined => card.lines.find((l) => l.key === key);
   const { plan } = ctx;
   if (!ctx.policyApplied || plan.state === 'unavailable') {
@@ -889,11 +984,12 @@ export function moveSections(card: MoveCardCopy, ctx: MoveCardContext, today: He
     });
   }
 
-  // ── Cold storage — with coins there today or after the move ──
-  if (shownBtc(today.coldBtc) || shownBtc(plan.opening.coldBtc)) {
+  // ── Cold storage — always (BL54): today's, today's arrival, and the look ahead on the path below ──
+  {
     const o = plan.opening;
     const split = deriveVenueSplit(o.strikeCollateralBtc, o.cbCollateralBtc, o.coldBtc);
-    const share = part(`${fmtSharePct(split.coldShare)} of all ${fmtBtc3(split.combinedBtc)} ₿`, 'cold');
+    // The share with coins there only — never "less than 1%" of nothing.
+    const share = shownBtc(o.coldBtc) ? [part(`${fmtSharePct(split.coldShare)} of all ${fmtBtc3(split.combinedBtc)} ₿`, 'cold')] : [];
     const now = shownBtc(today.coldBtc) ? `${fmtBtc3(today.coldBtc)} ₿ in your own custody` : 'nothing yet';
     const coldIn = made ? plan.strikeToColdBtc + plan.cbToColdBtc : 0;
     const cold: MoveFact[] = [];
@@ -902,11 +998,15 @@ export function moveSections(card: MoveCardCopy, ctx: MoveCardContext, today: He
       if (shownBtc(plan.strikeToColdBtc)) from.push(part(`${fmtBtc3(plan.strikeToColdBtc)} ₿ from Strike`, 'strike'));
       if (shownBtc(plan.cbToColdBtc)) from.push(part(`${fmtBtc3(plan.cbToColdBtc)} ₿ from Coinbase`, 'coinbase'));
       cold.push(fact('coldNow', 'Now', now, []), fact('coldToday', 'Today', `+${fmtBtc3(coldIn)} ₿`, from),
-        fact('coldAfter', 'After', `${fmtBtc3(o.coldBtc)} ₿`, [share]));
+        fact('coldAfter', 'After', `${fmtBtc3(o.coldBtc)} ₿`, share));
     } else {
-      cold.push(fact('coldNow', 'Now', now, [share]));
+      cold.push(fact('coldNow', 'Now', now, share));
     }
-    venues.push({ venue: 'cold', name: VENUE_NAME.cold, held: heldText(o.coldBtc), rowName: rowNameOf('cold', o.coldBtc), facts: cold });
+    const look = ahead === null ? null : coldAhead(ahead);
+    venues.push({
+      venue: 'cold', name: VENUE_NAME.cold, held: heldText(o.coldBtc), rowName: rowNameOf('cold', o.coldBtc), facts: cold,
+      ...(look !== null ? { ahead: look } : {}),
+    });
   }
 
   const foot = card.lines.filter((l) => l.key === 'breaker' || l.key === 'pathInvariant');

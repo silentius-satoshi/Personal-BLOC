@@ -36,7 +36,7 @@ import {
   atGoalThisMonthOf,
   decisionDisclaimer, pathSublabel, pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles,
   scheduleFileName, manualPriceNote, stressNote, fmtBtc3, BELOW_SUPPORT_NOTE, DECISION_FRAMING, ON_SUPPORT_NOTE,
-  SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY, seedsFromMove, moveSections, TODO_LABEL,
+  SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY, seedsFromMove, moveSections, TODO_LABEL, type ColdAheadInput,
   type DecisionPath, type LineAction, type MoveTone, type MoveCardContext, type MoveLine, type MoveFact, type VenueCard,
 } from './decisionView';
 import { VENUE_COLOR } from './planMonthView';
@@ -211,7 +211,7 @@ function FactRow({ f, onAction }: { f: MoveFact; onAction: (a: LineAction) => vo
 
 /** A venue's card (B′): its row — dot, name, the ₿ it holds once today's move is made — folds its facts. It starts
  *  folded on every visit and keeps its state in the component alone: nothing is stored or synced (BL45). Folded, the
- *  facts that warn stay in view. */
+ *  facts that warn stay in view. Open, Cold storage's look ahead follows its facts, under its label (BL54). */
 function VenueCardView({ card, onAction }: { card: VenueCard; onAction: (a: LineAction) => void }) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
@@ -227,6 +227,12 @@ function VenueCardView({ card, onAction }: { card: VenueCard; onAction: (a: Line
       </button>
       <div id={bodyId} className={styles.venueBody}>
         {shown.map((f) => <FactRow key={f.key} f={f} onAction={onAction} />)}
+        {open && card.ahead !== undefined && (
+          <>
+            <span className={styles.aheadLabel}>{card.ahead.label}</span>
+            {card.ahead.facts.map((f) => <FactRow key={f.key} f={f} onAction={onAction} />)}
+          </>
+        )}
       </div>
     </div>
   );
@@ -623,8 +629,6 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     moveWhatIf, s.cbAprPct, s.goalNetBtc,
   ]);
   const move = useMemo(() => moveCard(moveCtx), [moveCtx]);
-  // THE MOVE's input holdings are today's, before the move (`placementInput`, B1).
-  const sections = useMemo(() => moveSections(move, moveCtx, placementInput), [move, moveCtx, placementInput]);
   const onLineAction = (a: LineAction) => {
     if (a.kind === 'tryLine') set('creditLine', a.lineUsd);
     else setOverlay(({ creditLine: _c, ...rest }) => rest);
@@ -655,6 +659,13 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     : choice === 'worstModeled' ? `${WORST_META[1].label}: ${crownNoun}`
       : metaOf(choice).label;
   const header = scheduleHeader({ todayISO, pathLabel: choiceLabel, months, openingBtc });
+  // BL54 — the Cold storage card's look ahead: the displayed run (the schedule's, its stress included), on the path the
+  // dock names. THE MOVE's input holdings are today's, before the move (`placementInput`, B1).
+  const coldAheadInput = useMemo((): ColdAheadInput => ({
+    schedule, rows: sim.rows, goalNetBtc: s.goalNetBtc, startISO: todayISO, pathLabel: choiceLabel, stressed: lens !== 1,
+  }), [schedule, sim.rows, s.goalNetBtc, todayISO, choiceLabel, lens]);
+  const sections = useMemo(() => moveSections(move, moveCtx, placementInput, coldAheadInput),
+    [move, moveCtx, placementInput, coldAheadInput]);
   const disclaimer = decisionDisclaimer(sim.policyApplied);
   const scheduleText = useMemo(
     () => scheduleToText(schedule, header, moveCardText(move), disclaimer, consoleRuns),

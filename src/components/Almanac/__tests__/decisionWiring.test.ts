@@ -350,8 +350,26 @@ describe('⭐ R1 (B′, BL45) — THE MOVE in sections', () => {
 
   it('⭐ ONE CONTEXT — the card and its sections read the one context; the sections, THE MOVE\'s input holdings', () => {
     expect(SRC, 'ONE CONTEXT the card').toMatch(/const move = useMemo\(\(\) => moveCard\(moveCtx\), \[moveCtx\]\);/);
+    // BL54 — the sections read one more input, the Cold storage card's look ahead (⭐ AHEAD WIRED).
     expect(SRC, 'ONE CONTEXT the sections').toMatch(
-      /const sections = useMemo\(\(\) => moveSections\(move, moveCtx, placementInput\), \[move, moveCtx, placementInput\]\);/);
+      /const sections = useMemo\(\(\) => moveSections\(move, moveCtx, placementInput, coldAheadInput\),\s*\[move, moveCtx, placementInput, coldAheadInput\]\);/);
+  });
+
+  it('⭐ AHEAD WIRED — the cold card looks ahead on the displayed run: the schedule\'s, the path the dock names, its stress', () => {
+    const at = SRC.indexOf('const coldAheadInput = useMemo((): ColdAheadInput => ({');
+    expect(at, 'AHEAD WIRED premise — the memo is there').toBeGreaterThan(-1);
+    const end = SRC.indexOf('}),', at);
+    expect(end, 'AHEAD WIRED premise — and it closes').toBeGreaterThan(at);
+    const body = SRC.slice(at, end);
+    expect(body, 'AHEAD WIRED the schedule\'s rows and the run\'s').toMatch(/schedule, rows: sim\.rows,/);
+    expect(body, 'AHEAD WIRED never the unstressed run').not.toMatch(/baseSim/);
+    expect(body, 'AHEAD WIRED the goal, month 0').toMatch(/goalNetBtc: s\.goalNetBtc, startISO: todayISO,/);
+    expect(body, 'AHEAD WIRED the path by the dock\'s name, its stress').toMatch(/pathLabel: choiceLabel, stressed: lens !== 1,/);
+    expect(SRC, 'AHEAD WIRED the schedule is the displayed run\'s').toMatch(
+      /const schedule = useMemo\(\(\) => planSchedule\(sim, placement\), \[sim, placement\]\);/);
+    const v = component('VenueCardView');
+    expect(v, 'AHEAD WIRED shown open only, under its label').toMatch(
+      /\{open && card\.ahead !== undefined && \([\s\S]*?<span className=\{styles\.aheadLabel\}>\{card\.ahead\.label\}<\/span>/);
   });
 
   it('⭐ RENDERED ONCE — the card renders its sections, never its flat lines (the printout keeps those)', () => {

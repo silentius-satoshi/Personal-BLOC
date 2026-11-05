@@ -1075,6 +1075,10 @@ src/
                                 # `useState(false)`, folded on every visit, nothing stored or synced; folded, its
                                 # warnings stay in view — then the foot. Values and parts come from the view; the face
                                 # renders them (`FactRow`, `MoveLineRow`).
+                                # R1b (BL54): the sections read one more input, `coldAheadInput` — the schedule,
+                                # `sim.rows`, the goal, month 0 and the path by the dock's name (`choiceLabel`, stressed
+                                # with the lens on) — and `VenueCardView` shows Cold storage's look ahead when open,
+                                # under its label (`.aheadLabel`, To do today's).
       decisionView.ts           # Decision face (Run A) — the SCHEDULE and THE MOVE's copy, pure. ACTION_FIELDS is
                                 # ONE field → action table in the engine's month order (a field added to CyclingRow
                                 # without a row here is a step the printed schedule silently drops; a completeness
@@ -1139,6 +1143,11 @@ src/
                                 # the path line). Every line but `moves` and (save at the stand-down) `why` is placed
                                 # once; their figures are the rows' and the venues'. The one new figure: cold storage's
                                 # share (`deriveVenueSplit`, `fmtSharePct`). The printout keeps `moveCard`'s lines.
+                                # R1b (BL54): the cold card always (0 ₿: "nothing yet", no share), and `coldAhead` — its
+                                # look ahead on the displayed run (`ColdAheadInput`): Next (the first month after today
+                                # whose row moves coins into cold, a move under `MOVE_THRESHOLD_BTC` marked as the row
+                                # marks it), Goal (with one: `atGoal`, then `goalStandDown`), By the end (the horizon's
+                                # cold), under `AHEAD_LABEL` and the path.
       decisionChartView.ts      # Decision face (Run A) — the chart series, pure. buildChartSeries (the seam is
                                 # EXACT: history's last point IS forward's first; the support line spans both
                                 # halves — history via supportAtDates, forward via the engine's own path; history

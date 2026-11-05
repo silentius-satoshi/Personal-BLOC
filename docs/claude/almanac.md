@@ -2143,19 +2143,33 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   (`todayActions`), each with its two venues' dots, then today's state lines (`state`, `batch`, `aligned`, and the
   stand-down's `why`), or "Nothing to move today."; then a card per venue — **Strike** (Keeps · For · The line),
   **Coinbase**, with the loan switched on or coins there today or after the move (Keeps or Today · For · Seizes at ·
-  Price alert · Survives), **Cold storage**, with coins there today or after (Now · Today · After, with its share of
-  every coin) — each folding under a row (a 44px button, named for a screen reader "Strike, 1.219 ₿") with the ₿ it
-  holds once today's move is made (`opening`); then the foot (the breaker, the path line), quiet unless the breaker
-  warns. A fact is an amount with its parts listed under it; the rarer lines — Strike short of its line, Coinbase over
-  its limit, at or past the trigger, a suggested line with its Try, the line's what-if with its way back, the hold a
-  raised line restarts — keep `moveCard`'s words on their venue's card. Every card starts folded on every visit, its
-  fold the component's own state (nothing stored or synced); folded, every warning stays in view, in `moveCard`'s order
-  (BL45 named the Coinbase card's seizure price; R1 keeps every warning), and so does the what-if's way back. No figure
-  moves: every figure `moveCard` prints is on the sections (`moveSections.test.ts` FIGURES, a sweep), and the new ones
-  are THE MOVE's own — today's holdings, the position after the move, cold storage's arrival and total, and its share
-  (`deriveVenueSplit`, the Dashboard's split; `fmtSharePct` says "less than 1%" and "more than 99%" at the ends). With
-  no Coinbase card — no loan switched on, no coins there — the why line's Coinbase clause goes with it. The printout
-  (Copy · Download · Print) keeps `moveCard`'s lines: the schedule under it lists today's moves.
+  Price alert · Survives), **Cold storage**, always (BL54 — Now · Today · After, with its share of every coin when it
+  holds any; then, open, its look ahead) — each folding under a row (a 44px button, named for a screen reader "Strike,
+  1.219 ₿") with the ₿ it holds once today's move is made (`opening`); then the foot (the breaker, the path line), quiet
+  unless the breaker warns. A fact is an amount with its parts listed under it; the rarer lines — Strike short of its
+  line, Coinbase over its limit, at or past the trigger, a suggested line with its Try, the line's what-if with its way
+  back, the hold a raised line restarts — keep `moveCard`'s words on their venue's card. Every card starts folded on
+  every visit, its fold the component's own state (nothing stored or synced); folded, every warning stays in view, in
+  `moveCard`'s order (BL45 named the Coinbase card's seizure price; R1 keeps every warning), and so does the what-if's
+  way back. No figure moves: every figure `moveCard` prints is on the sections (`moveSections.test.ts` FIGURES, a
+  sweep), and the new ones are THE MOVE's own — today's holdings, the position after the move, cold storage's arrival
+  and total, and its share (`deriveVenueSplit`, the Dashboard's split; `fmtSharePct` says "less than 1%" and "more than
+  99%" at the ends). With no Coinbase card — no loan switched on, no coins there — the why line's Coinbase clause goes
+  with it. The printout (Copy · Download · Print) keeps `moveCard`'s lines: the schedule under it lists today's moves.
+- **Cold storage ahead (R1b — BL54; spec `pbloc-spec-cold-ahead-v1`).** The Cold storage card always shows on the
+  sectioned card — 0 ₿ reads "nothing yet", its row "—", and no share of nothing — and, open, under today's facts,
+  "Ahead, on the path below: Support" (the dock's name for the path, `choiceLabel`; ", stressed" with a stress on), the
+  label as To do today's: **Next** — the first month after today whose schedule row moves coins into cold, whatever
+  their size, "in N months", its month (`monthYear`) and what comes from Strike and from Coinbase — one under
+  `MOVE_THRESHOLD_BTC` marked "(small — can wait)", as its row marks it — or "none within N months"; **Goal** — only
+  with a goal: "in N months" to the first month at it (`atGoal`), its month, and the month from which every coin goes to
+  cold (`goalStandDown`, both loans repaid — "goes to": Strike's 60-day hold can keep its coins a month or two more),
+  "reached" at month 0, or "not within N months" with the net coins reached by then; **By the end** — the cold at the
+  horizon, its month. `coldAhead` reads the displayed run — the schedule's rows (`planSchedule(sim, …)`) and `sim.rows`,
+  its stress included — so it moves with the path, as the schedule and the lower Cold storage card do; today's facts
+  don't, and the footer's "This move…" stays true of the move. Its figures are the run's own (`coldAhead.test.ts` AHEAD
+  FIGURES, a sweep). BL45 kept the path's cold figures off THE MOVE's card, since they change with the path; they now
+  sit on it too, named with the path, and the lower card and the outcome strip keep theirs.
 - **The seeding rule (D10, v1.6 — amended in Run B and in Policy v2 Run B).**
   `seedFromMove = seedsFromMove(placement.seeded, { ...PLAN_ENGINE_CONTEXT, supportPolicy, pricePath: paths[0], expenses })`
   — the move is worth making AND the engine will APPLY the policy (`supportPolicyResolution`, the run's own answer with

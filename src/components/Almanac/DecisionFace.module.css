@@ -83,6 +83,16 @@
 }
 /* A state line right under the label (no rows today) keeps the rows' gap. */
 .todo .moveLine:first-of-type { margin-top: 8px; }
+/* BL54 — the Cold storage card's look ahead: its label as To do today's, a gap above it. */
+.aheadLabel {
+  display: block;
+  margin: 12px 0 2px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
 .todoRow {
   display: flex;
   align-items: flex-start;
