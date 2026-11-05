@@ -12,7 +12,7 @@
 export const SETTINGS_FIELDS = [
   'income', 'expenses', 'blocApr', 'creditLine',
   'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorMonthStartBalance', 'advisorActualBtcHeld',
-  'cbLoanBalance', 'cbAprPct', 'hasCbLoan',   // cbCollateralBtc excluded (local derived cache, converges via the dayLog on records:v1)
+  'cbLoanBalance', 'cbAprPct', 'hasCbLoan',   // cbCollateralBtc excluded (local derived cache, converges via the dayLog — the journal's pages since 5b)
   'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
   // BL15 (Customization) — the venue colours: a PREF (prefs:v1), in the backup, EXPOSED to a trusted viewer (the owner's
   // colours); never in the safe snapshot (a fixed ratio list). undefined is never written, so it never travels.
@@ -67,7 +67,7 @@ type SettingsField = (typeof SETTINGS_FIELDS)[number];
 export type PrefsField = (typeof PREFS_FIELDS)[number];
 export type PlanField = Exclude<SettingsField, PrefsField>;
 
-// A type-guard predicate so .filter() narrows to readonly PlanField[] (NOT string[] / the wide 45-union) —
+// A type-guard predicate so .filter() narrows to readonly PlanField[] (NOT string[] / the wide 47-union) —
 // the correct realization of the lock's `(typeof PLAN_EVENT_FIELDS)[number]`; a naive filter widens the type.
 export const PLAN_EVENT_FIELDS = SETTINGS_FIELDS.filter(
   (f): f is PlanField => !(PREFS_FIELDS as readonly string[]).includes(f),

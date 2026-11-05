@@ -73,10 +73,12 @@ function eventTone(kind: DayEvent['kind']): { dot: string; ring: boolean; amt: s
 
 
 /**
- * Daily Mode P4a — READ-ONLY day-level view. Mirrors SimpleModeView's data (SafetyDashboard + position
- * trio + plan reference) but its activity card shows the granular dayLog for the current strategy month.
- * Presentation aligned to mode-toggle-preview.html (layered surfaces, divided trio, two-part activity
- * card [aggregate streams + per-event log], terminal playbook plan card). No event sheets / writes / calendar.
+ * Daily Mode — the day-level journal (P4a; the calendar, the event sheets and the month review since P4b–P4c). The
+ * SafetyDashboard, the position trio and the plan card (THIS MONTH's run); a Week|Month calendar whose selected day drives
+ * the activity card (`dayActivity`); a long press on a day, or the + button, opens the add sheet for it, and a row of the
+ * day's log opens its event to edit — the sheets log, edit and delete the journal's events. Presentation aligned to
+ * mode-toggle-preview.html (layered surfaces, divided trio, two-part activity card [aggregate streams + per-event log],
+ * terminal playbook plan card).
  */
 export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSimpleView }: DailyModeViewProps) {
   const btcPrice   = useStore((s) => s.btcPrice);
@@ -273,7 +275,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             )}
           </div>
 
-          {/* P4c-1a — Week|Month calendar (render + select only; does NOT yet drive the activity card) */}
+          {/* P4c-1a — Week|Month calendar: a tap selects a day and the activity card follows it; a long press opens the add sheet for that day */}
           <Calendar
             dayLog={dayLog}
             advisorStartDate={advisorStartDate}
@@ -371,6 +373,15 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                       <span className={styles.logTime}>sum</span>
                       <span className={styles.logType}><span className={`${styles.dot} ${styles.dotG}`} />BLOC paydown</span>
                       <span className={`${styles.logAmt} ${styles.amtNeu}`}>{fmtUSDCents(monthRollup.streams.paydown)}</span>
+                    </div>
+                  )}
+                  {/* Sweep 2b, W3 — Coinbase's paydowns (journal-only): the bars count both loans, so the rollup names both;
+                      BLOC paydown's green dot, so no venue colour reaches it. */}
+                  {monthRollup.streams.cbPaydown > 0 && (
+                    <div className={styles.logRow}>
+                      <span className={styles.logTime}>sum</span>
+                      <span className={styles.logType}><span className={`${styles.dot} ${styles.dotG}`} />Coinbase paydown</span>
+                      <span className={`${styles.logAmt} ${styles.amtNeu}`}>{fmtUSDCents(monthRollup.streams.cbPaydown)}</span>
                     </div>
                   )}
                   {showCapitalized && (

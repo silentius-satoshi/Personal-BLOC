@@ -2,9 +2,24 @@
 // The sheet's local field-state (SheetState) → DayEvent[] (buildEventsFromSheet) and the Save gate
 // (readingComplete). Kept pure so the LD6 atomic flow+reading write + the LTV fraction conversion are unit-tested.
 import type { DayEvent } from '../../simulation/types';
-import { flowVenue, orderTs, type UnreconciledCbFlows } from '../../simulation/logUtils';
+import { bucketEventToMonth, flowVenue, orderTs, priorStocksForMonth, type UnreconciledCbFlows } from '../../simulation/logUtils';
 import { cbBorrowFee } from '../../simulation/runCoinbaseLoan';
 import { fmtUSDCents } from '../../utils/format';
+
+/** Sweep 2b — the past-date note, a flow logged for an earlier day with its balances skipped. The flow is written alone,
+ *  and the month's balances then come from `rollupMonth`: its own reading when it has one; else the month before's,
+ *  carried and marked provisional — only when that month has a reading to carry (`priorStocksForMonth`). The note says
+ *  so only then: its old "this month is marked provisional" was false for a month with a reading of its own, or none in
+ *  the month before. v1.1: and only when the move itself feeds the month (`feedsMonth`) — a Coinbase or cold
+ *  collateral move is journal-only (`COLLATERAL_FEEDS_MONTH`, held to `isMonthlyMeaningful`), so skipping its balances
+ *  carries nothing. */
+export const PAST_BALANCES_NOTE = "Past date — current balances optional. Skip if you don't have them.";
+export function pastBalancesNote(dayLog: DayEvent[], advisorStartDate: string, month: number, feedsMonth: boolean): string {
+  const ownReading = dayLog.some((e) => e.kind === 'balanceReading' && bucketEventToMonth(e.date, advisorStartDate) === month);
+  return !feedsMonth || ownReading || priorStocksForMonth(dayLog, advisorStartDate, month) === undefined
+    ? PAST_BALANCES_NOTE
+    : `${PAST_BALANCES_NOTE} This month carries the month before's balances, marked provisional, until a reading is logged.`;
+}
 
 /**
  * The stale-Coinbase-balance warning shown under the reading's "Coinbase loan balance" field (pure copy over
@@ -55,6 +70,12 @@ export const COLLATERAL_TARGET_RULES: Record<CollateralTarget, {
   cb:     { needsReading: true,  needsLiqPrice: true,  ltvWarnVenue: 'cb' },
   cold:   { needsReading: false, needsLiqPrice: false, ltvWarnVenue: null },
 };
+
+/** Sweep 2b v1.1 — whether a collateral move feeds its month's rollup, as the store decides (`isMonthlyMeaningful`,
+ *  dailyRouting.ts): Strike's does; a Coinbase or cold move is journal-only. The past-date note promises a carried,
+ *  provisional month only for a move that feeds one (`pastBalancesNote`'s `feedsMonth`); every other sheet that shows
+ *  the note feeds its month. ⭐ PAST NOTE holds this table to `isMonthlyMeaningful`, target by target. */
+export const COLLATERAL_FEEDS_MONTH: Record<CollateralTarget, boolean> = { strike: true, cb: false, cold: false };
 
 /**
  * EDIT-mode rebuild of a draw/paydown (was inlined in EventSheet.handleSave as `{id,date,ts,kind,amount}` — which

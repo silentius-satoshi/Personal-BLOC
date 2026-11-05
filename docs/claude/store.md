@@ -16,7 +16,7 @@ previousTab: Exclude<ActiveTab, 'settings'>;
 ```typescript
 income:           number;   // default 4000
 expenses:         number;   // default 3500
-btcPrice:         number;   // updated every 60s fetch when btcPriceMode === 'live'
+btcPrice:         number;   // live mode (btcPriceMode === 'live'): useBtcPrice polls every 10 s and pushes the price here on a ≥0.1% move, or once 60 s have passed
 btcPriceMode:     'live' | 'manual';   // default 'live'; 'manual' suppresses live overwrites
 btcPriceUpdatedAt: number | null;   // default null; ms of last setBtcPrice. PER-DEVICE, NOT synced (not in SETTINGS_FIELDS/buildSettingsPayload); persists via partialize rest; stamped by setBtcPrice → DevPanel price-age diagnostic
 activeTier:       'min' | 'rec' | 'ideal' | 'custom';  // default 'rec'
@@ -66,7 +66,7 @@ miningInputs: {
 ```typescript
 cbLoanBalance:       number;                       // default 60000
 cbCollateralBtc:     number;                       // default 1.48 — derived cache (deriveCbCollateral over dayLog); NOT a synced scalar, but P3 CONVERGES it cross-device via the synced dayLog (rides the journal sync — 5b: monthly pages, and records:v1 while it fits). setCbCollateralBtc emits a cbCollateralReading. ⚠ Every plan reader (the four faces' selectors, usePlanMonth for THIS MONTH's and Daily's plan cards, and — since the plan of record's Run 4 — the Smart BLOC sidebar's suggested line) reads it — and cbLoanBalance — only through planRun's planCbCollateralOf / planCbLoanBalanceOf (the plan of record's Run 2, D-R2-4): 0 with hasCbLoan off, so a fresh install's seed $60,000 on 1.48 ₿ never reaches a plan. The crash gate (isCrashDay — the Emergency Console and the plan card's crash line, usePlanCardInputs; since Run 4 also the CB Loan tab's banner) still reads the store figures, behind hasCbLoan (so did runAdvisor's three screen callers — the Advisor tab, Simple Mode's Outlook and THIS MONTH's log overlay — until the plan of record's Run 3 took runAdvisor off every screen)
-strikeCollateralBtc: number;                       // default 0 (v20 Collateral-Truth) — derived cache (deriveStrikeCollateral over dayLog); reading-anchored current Strike collateral (= getCurrentBtcHeld). NOT synced (rides partialize ...rest); converges cross-device via the dayLog on records:v1. Refreshed in the 3 dayLog mutators + setDayLog + onRehydrate
+strikeCollateralBtc: number;                       // default 0 (v20 Collateral-Truth) — derived cache (deriveStrikeCollateral over dayLog); reading-anchored current Strike collateral (= getCurrentBtcHeld). NOT synced (rides partialize ...rest); converges cross-device via the dayLog (rides the journal sync — 5b: monthly pages, and records:v1 while it fits). Refreshed in the 3 dayLog mutators + setDayLog + onRehydrate
 cbAprPct:            number;                       // default 4.77
 cbMonthlyPayment:    number;                       // default 0. INERT since the plan of record's Run 4 (D3): no component reads or writes it — the CB Loan tab's projection, its sidebar's MONTHLY PAYMENT, Settings' "Monthly payment" and the Advisor sidebar's "Min. payment" are gone (invariant 6 — the key stays)
 cbLiquidationPrice:  number;                       // default 0 (0 = not set; guard before calling compute fn)
@@ -148,7 +148,7 @@ build is refused by an older build. **The counts** (since BL15 — § BL15 below
 BL48's `viewerColdMovedByMonth`; 111 once a device chooses venue colours), 42 trusted settings keys (47 − the 5 strips).
 - **Its one editor** is Settings → Your plan (`YourPlanSection`'s `GoalField`, owner-only under `!viewerMode`): "Your
   goal — net coins", saved when the field is left or Enter is pressed, never per keystroke (`parseGoalInput`: empty
-  clears; an amount above zero sets — a point or a comma for the decimal, since an iPhone's decimal keypad in a
+  or a typed 0 clears; an amount above zero sets — a point or a comma for the decimal, since an iPhone's decimal keypad in a
   comma-decimal region has no point (the follow-ups' D-2); anything else says what to type and changes nothing). The
   field shows the goal fixed-point to the satoshi (`goalText`, never an exponent — the follow-ups' D-4), so a click in
   and out writes nothing: the text parses back to the goal, and the setter's unchanged check (`planInputsSlice.ts:91`)

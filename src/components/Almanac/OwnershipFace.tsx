@@ -542,7 +542,8 @@ export default function OwnershipFace() {
       // policy, a month the playbook moved collateral in counts too: it can hold the line with no shift).
       defendedFromSub(selRow, applied) ?? `liq ${fmtLiqK(cbLiq)} · 86% instant`,
       cbZone(selRow.cbLtv)],
-    ['Strike LTV', fmtLtvPct(selRow.strikeLtv), `liq ${fmtLiqK(strikeLiq)} · 85%, 72h cure`,
+    // BL53 — at the liquidation LTV Strike sells at once; the 72-hour cure is the 70% margin call's (the disclaimer).
+    ['Strike LTV', fmtLtvPct(selRow.strikeLtv), `liq ${fmtLiqK(strikeLiq)} · ${Math.round(strikeLiqLtv * 100)}% instant`,
       LEVEL_COLOR[strikeZoneLevel(selRow.strikeLtv, strikeLiqLtv)]],
     ['Net ownership', sBtc(gained.yours), `gross ${sBtc(gained.gross)}`,
       gained.yours >= 0 ? 'var(--green)' : 'var(--red)'],
@@ -1242,8 +1243,9 @@ export default function OwnershipFace() {
 
           <div className={styles.disclaimer}>
             Opening position {fmtBtc(openingBtc)} — Strike {strikeAprPct.toFixed(0)}% APR, line capped at 50% of
-            posted collateral, margin call at 70%, liquidation at {Math.round(strikeLiqLtv * 100)}% with a 72-hour
-            cure. Coinbase {cbAprPct.toFixed(2)}% variable, liquidation at 86% with no cure window and a{' '}
+            posted collateral, margin call at {Math.round(STRIKE_MARGIN_CALL_LTV * 100)}% with a 72-hour cure, partial
+            liquidation at {Math.round(strikeLiqLtv * 100)}% with no cure window. Coinbase {cbAprPct.toFixed(2)}%
+            variable, liquidation at 86% with no cure window and a{' '}
             {(CB_LIQUIDATION_PENALTY * 100).toFixed(2)}% penalty. The two collateral pools are never combined —
             Strike collateral is fixed and every purchase lands on Coinbase. Held is display only and is never a
             denominator. Power law bands are a pattern, not a forecast.

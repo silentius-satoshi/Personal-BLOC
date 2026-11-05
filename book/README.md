@@ -4,7 +4,7 @@
 
 This book documents Personal ₿LOC — the sovereign planner for bitcoin-backed loans — from its running code. Nothing here is aspiration: every chapter is drafted from the shipped app (`CLAUDE.md`, the reference docs in `docs/claude/`, and the 850+ test suite are the primary sources), and the one chapter whose subject hasn't shipped ([Chapter 16](ch16-one-key-two-ledgers.md)) is visibly empty on purpose.
 
-**Status:** all chapters DRAFT v0.1, awaiting Founder review. Volatile facts (store version, test counts, field counts) drift with the code — the repo is the source of truth.
+**Status:** all chapters DRAFT v0.1, awaiting Founder review. Volatile facts (store version, test counts, field counts) drift with the code — the repo is the source of truth. Chapters 04, 05 and 08 were drafted before the plan of record (2026-10-19): the Advisor's tiers and strategies, the Outlook and the Monthly Playbook card they describe are retired — THIS MONTH's card, on the support policy, and the Almanac's Decision face replaced them.
 
 **New here?** Read [00](ch00-about.md) → [01](ch01-introduction.md) → [09 (the Safety Dashboard everything feeds)](ch09-safety-dashboard.md) → [11 (feel the crash)](ch11-scenario-diff-crash-test.md) → back to Part 1.
 

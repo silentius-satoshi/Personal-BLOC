@@ -51,7 +51,7 @@ If you are new, do not read front to back. Take the TOC's reading order: **Chapt
 ## From the code
 
 - **Files:** `src/simulation/` (the pure core: `runBLOC`, `runAdvisor`, `runCoinbaseLoan`, `safetyView`, `cbMetrics`, `strikeCredit`, `logUtils`), `src/store/` (the journal and rollup), `src/components/Layout/AppShell.tsx` (the gate ladder and viewer home), `src/pages/LandingPage.tsx` (the crash-test widget).
-- **Numbers:** Strike 65% warn / 70% margin call / 85% partial liquidation (72h); Coinbase (Morpho) 86% LLTV, instant, ~4.4% penalty; advisor trigger/target/rotate-back defaults 75/65/55; emergency ladder 69/72/75/81; credit-used bands warn 75% / act 90%; crash lens = price × 0.2.
+- **Numbers:** Strike 65% warn / 70% margin call (72 hours to cure) / 85% partial liquidation (at once, no cure — BL53); Coinbase (Morpho) 86% LLTV, instant, ~4.4% penalty; advisor trigger/target/rotate-back defaults 75/65/55; emergency ladder 69/72/75/81; credit-used bands warn 75% / act 90%; crash lens = price × 0.2.
 - **Tests:** the 850+ vitest suite — rollup and provisional-month invariants, the single-classifier safety view, and the confirm-anchored projection are each pinned by tests.
 
 *Related chapters: 00 (what the app is), 07 (the monthly sign-off), 09 (the Safety Dashboard), 11 (Scenario Diff & the Crash Test), 12–14 (keys, sync, and viewer sharing).*

@@ -6,7 +6,8 @@
 
 ```typescript
 // Shared — exact, no sign
-export const fmtUSD = (n) => '$' + Math.round(Math.abs(n)).toLocaleString();
+const WHOLE = new Intl.NumberFormat(undefined);   // built once — toLocaleString()'s output, byte for byte (Sweep 2b, F1)
+export const fmtUSD = (n) => '$' + WHOLE.format(Math.round(Math.abs(n)));
 
 // SummaryBar LOCAL — sign-preserving (NEVER replace with shared fmtUSD)
 function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).toLocaleString(); }

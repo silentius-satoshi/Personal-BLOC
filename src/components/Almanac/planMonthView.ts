@@ -2,6 +2,7 @@ import type { CyclingResult, CyclingRow } from '../../simulation/cyclingSim';
 import type { PlacementPlan } from '../../simulation/placement';
 import { MOVE_THRESHOLD_BTC } from '../../simulation/placement';
 import { cbSeizurePrice } from '../../simulation/cbMetrics';
+import { cbAtSupportLine } from '../../simulation/safetyView';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import {
   fmtBelowPct, shownBtc, shownUsd, policyIgnoredNote, goalActs, goalDefenseOf, GOAL_STAND_DOWN_WORDS,
@@ -366,11 +367,14 @@ export interface PlanMeter {
   over: boolean;
 }
 
-/** The meter, read aloud (its `aria-label`). A sentence, so it lives here, not in the card (I31). */
+/** The meter, read aloud (its `aria-label`) — Safety's at-support line without a price, then the seizure line (Sweep 2b,
+ *  W1: BL29's words, which replaced "of its collateral's value" on screen): "If BTC were at support: 46.0% LTV — over the
+ *  plan's 45% limit; Coinbase seizes at 86%." Over or within is the engine's own verdict (`over`), and the figure follows
+ *  Run 4.1's nearest-tenth rule (`cbAtSupportLine`), so the word and the figure can't disagree. A sentence, so it lives
+ *  here, not in the card (I31). */
 export function planMeterAria(m: PlanMeter): string {
-  const pct = (x: number): number => Math.round(x * 100);
-  return `Coinbase is at ${pct(m.atSupport)}% of its collateral's value at support; your limit is ${pct(m.limit)}%, `
-    + `and it seizes at ${pct(m.seize)}%.`;
+  const atSupport = cbAtSupportLine({ support: null, ltv: m.atSupport, limit: m.limit, level: m.over ? 'act' : 'safe' });
+  return `${atSupport}; Coinbase seizes at ${Math.round(m.seize * 100)}%.`;
 }
 
 /** Box 3, as rows: Strike, Coinbase at THE ROW'S support (the support the engine judged that month by), the price at

@@ -1,7 +1,13 @@
 import type { MiningCurrency } from '../simulation/types';
 
+/** Whole numbers, grouped the device's way — ONE formatter, built once (Sweep 2b, F1): `toLocaleString()` builds one on
+ *  every call, about 40× slower on Node 26 than on Node 22, and the plan card's sweep formats about 150,000 sentences.
+ *  The same default locale and options, so its output is `toLocaleString()`'s, byte for byte — `fmtWhole.test.ts`
+ *  (⭐ F1) holds `fmtUSD`, `fmtMiningUSD` and `fmtMining`'s sats to the old expressions. */
+const WHOLE = new Intl.NumberFormat(undefined);
+
 export const fmtUSD = (n: number): string =>
-  '$' + Math.round(Math.abs(n)).toLocaleString();
+  '$' + WHOLE.format(Math.round(Math.abs(n)));
 
 /** ONE formatter, built once: `toLocaleString` with options builds a new one on every call, and the plan card's sweep
  *  formats about 150,000 sentences (plan of record §13.13). */
@@ -58,13 +64,13 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 export function fmtMiningUSD(n: number): string {
   if (n < 0.01) return '$' + n.toFixed(4);
   if (n < 100)  return '$' + n.toFixed(2);
-  return '$' + Math.round(n).toLocaleString();
+  return '$' + WHOLE.format(Math.round(n));
 }
 
 export function fmtMining(value_usd: number, currency: MiningCurrency, btcPrice: number): string {
   if (currency === 'usd') return fmtMiningUSD(value_usd);
   const sats = Math.round((value_usd / btcPrice) * 100_000_000);
-  if (currency === 'sats') return `${sats.toLocaleString()} sats`;
+  if (currency === 'sats') return `${WHOLE.format(sats)} sats`;
   return `${(sats / 100_000_000).toFixed(8)} BTC`;
 }
 

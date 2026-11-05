@@ -6,7 +6,7 @@
 
 That sentence is the headline on the landing page, and it is the whole premise. A bitcoiner with a stack and a monthly cost of living has two ways to pay for groceries: sell sats, or borrow dollars against them. Selling ends the position and triggers the tax. Borrowing keeps the stack intact — and puts a new number in your life: LTV, the ratio of what you owe to what your collateral is worth.
 
-That number is a live wire. Coinbase's Morpho-backed loan liquidates instantly at 86% LTV — no margin call, no grace period, a penalty of roughly 4.4%. Strike's BLOC warns at 65%, margin-calls at 70%, and partially liquidates at 85% on a 72-hour window. The lender's dashboard will show you today's LTV. It will not plan your defense, rehearse the crash, or tell you in March that your December looks like a liquidation.
+That number is a live wire. Coinbase's Morpho-backed loan liquidates instantly at 86% LTV — no margin call, no grace period, a penalty of roughly 4.4%. Strike's BLOC warns at 65%, margin-calls at 70% with 72 hours to cure, and partially liquidates at 85% at once, with no cure window. The lender's dashboard will show you today's LTV. It will not plan your defense, rehearse the crash, or tell you in March that your December looks like a liquidation.
 
 Personal ₿LOC exists to make that defense ordinary. It is planning and operating software for living on bitcoin-backed credit: it models the loans real bitcoiners actually carry — Strike's BLOC and Coinbase's Morpho loan, with manual entry for anything else — and it never touches your funds. It is planning software, not financial advice. The decisions, and the loans, are yours.
 
@@ -53,7 +53,7 @@ The recurring verbs are plan, log, and defend. The recurring promise is: your ke
 ## From the code
 
 - **Files:** `src/pages/LandingPage.tsx` (the public pitch, the crash-test widget), `src/components/Layout/AppShell.tsx` (the app shell and gate ladder), `src/simulation/` (the pure core the pillars run on: `cbMetrics`, `strikeCredit`, `safetyView`).
-- **Numbers:** Strike bands 65% warn / 70% margin call / 85% partial liquidation (72h window); Coinbase (Morpho) LLTV 86%, instant, no grace, LIF ≈ 1.04384 (~4.4% penalty); store v21; 850+ tests; event-sourcing shipped through Phase 4d (4e pending soak); license FSL-1.1-MIT; Hosted tier COMING SOON, prepaid over Lightning.
+- **Numbers:** Strike bands 65% warn / 70% margin call (72 hours to cure) / 85% partial liquidation (at once, no cure — BL53); Coinbase (Morpho) LLTV 86%, instant, no grace, LIF ≈ 1.04384 (~4.4% penalty); store v21; 850+ tests; event-sourcing shipped through Phase 4d (4e pending soak); license FSL-1.1-MIT; Hosted tier COMING SOON, prepaid over Lightning.
 - **Tests:** the 850+ vitest suite pins the shared-helper invariants ("one definition per number"); the landing widget imports the app's real band constants so its thresholds cannot drift.
 
 *Related chapters: 01 (the core loop in detail), 09 (the dashboard everything feeds), 16 (the BitBooks bridge, future), 17 (free, source-available, hosted someday).*

@@ -16,14 +16,14 @@ Each question is a dimension. Each dimension gets a bar, a level — Safe, Watch
 
 **Credit used.** Drawn balance divided by credit line. This is capacity, not market risk — the price can't move it — so its bands are wide: amber at 75% used, red at 90%. In the owner's own view this bar is always green, because to the owner capacity is *room*, not danger (more on that below). The classifier still computes the level, and the viewer sees it.
 
-**Strike LTV.** Debt divided by pledged collateral times price, via one shared function (`computeStrikeLtv`). Strike's published terms warn at 65%, margin-call at 70%, and partially liquidate at 85% with a 72-hour window. The dashboard's bands are set *relative to* your Strike liquidation LTV so they fire before Strike does: amber at liquidation × 0.76, red at liquidation × 0.82. At the default 85% liquidation line, that means the bar goes amber at 64.6% LTV and red at 69.7% — you turn amber before Strike's warning letter and red before its margin call.
+**Strike LTV.** Debt divided by pledged collateral times price, via one shared function (`computeStrikeLtv`). Strike's published terms warn at 65%, margin-call at 70% with 72 hours to cure, and partially liquidate at 85% at once. The dashboard's bands are set *relative to* your Strike liquidation LTV so they fire before Strike does: amber at liquidation × 0.76, red at liquidation × 0.82. At the default 85% liquidation line, that means the bar goes amber at 64.6% LTV and red at 69.7% — you turn amber before Strike's warning letter and red before its margin call.
 
 **Coinbase LTV.** Debt divided by collateral times price, via `cbMetrics`, with the balance first *accrued*: Coinbase's Morpho loan compounds interest daily, so the app rolls your last entered balance forward from its as-of date before computing anything. A stale figure would understate the risk; accrual keeps the read honest. The bands: green below your own advisor trigger (75% by default — your paydown line, not Morpho's), amber from there, red at liquidation × 0.93. Morpho liquidates at 86% LTV, instantly, with no grace and a ~4.4% penalty — so red arrives just under 80%, while there is still time to act.
 
 | Dimension | Watch (amber) | Act (red) | The lender acts at |
 |---|---|---|---|
 | Strike credit used | 75% | 90% | — (capacity, not a lender line) |
-| Strike LTV | liq × 0.76 (64.6% at default) | liq × 0.82 (69.7%) | 65 warn / 70 margin call / 85 partial liq (72h) |
+| Strike LTV | liq × 0.76 (64.6% at default) | liq × 0.82 (69.7%) | 65 warn / 70 margin call (72h cure) / 85 partial liq (at once) |
 | Coinbase LTV | your trigger (75% default) | liq × 0.93 (~80%) | 86% instant, ~4.4% penalty |
 
 The pattern in that table is the whole doctrine of Part 3: **your bands fire before the lender's.**
@@ -69,7 +69,7 @@ The dashboard tells you where you stand. When the answer is Act, the next chapte
 ## From the code
 
 - **Files:** `src/simulation/safetyView.ts` (`deriveSafetyView`, `selectSafetyViewInputs`, `deriveViewerOverall`, `LEVEL_COLOR`, `CREDIT_WARN_USED`, `CREDIT_ACT_USED`), `src/simulation/cbMetrics.ts` (`cbMetrics`, `accruedCbBalance`, `barLevel`, `cbBarLevel`, `worseLevel`, `CB_ACT_LTV_FACTOR`), `src/simulation/strikeCredit.ts` (`computeStrikeLtv`, `strikeAvailableCredit`), `src/simulation/runCoinbaseLoan.ts` (`CB_LLTV`), `src/components/SafetyDashboard.tsx`
-- **Numbers:** credit warn 0.75 / act 0.90 · Strike bands at liq × 0.76 / × 0.82 (0.646 / 0.697 at the default 85% liquidation LTV) · Strike terms 65 / 70 / 85 (72h) · CB green below trigger (default 75), red at cbLiqFrac × 0.93 (`CB_ACT_LTV_FACTOR`) · `CB_LLTV` 0.86, instant, ~4.4% penalty · crash lens price × 0.2 (crash LTV = live LTV × 5)
+- **Numbers:** credit warn 0.75 / act 0.90 · Strike bands at liq × 0.76 / × 0.82 (0.646 / 0.697 at the default 85% liquidation LTV) · Strike terms 65 / 70 (72h cure) / 85 (at once) · CB green below trigger (default 75), red at cbLiqFrac × 0.93 (`CB_ACT_LTV_FACTOR`) · `CB_LLTV` 0.86, instant, ~4.4% penalty · crash lens price × 0.2 (crash LTV = live LTV × 5)
 - **Tests:** `src/simulation/__tests__/safetyView.test.ts` (19 cases: band edges, zero-guards, hasCbLoan gating, overall composition), `cbMetrics.test.ts` (metrics, accrual, entered-vs-computed liquidation price, `barLevel`/`worseLevel`)
 
 *Related chapters: ch06 (readings anchor the gauges), ch10 (what Act means), ch11 (the crash test), ch14 (the viewer's gauges).*

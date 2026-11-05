@@ -882,6 +882,8 @@ src/
                                 # "—", the total ₿0.00000) or a month is placed; a viewer without them, null, none.
                                 # coldMonthOk (v1.1) — a month it can place: ONE rule for the gate and the viewer's
                                 # copy, so the owner's Ledger and his viewer's show the column on the same snapshots.
+                                # Sweep 2b (F2): the CSV's dollars to the cent and coins to the satoshi (usdCell, btcCell — no exponent, a "."
+                                # whatever the language); a month whose cold moves net to float residue, an empty cell (coldCell).
                                 # See almanac.md § M-L1. Tested in
                                 # src/lib/__tests__/ledgerCsv.test.ts and ledgerCold.test.ts
                                 # + src/lib/__tests__/ledgerCsvHardening.test.ts (HJ-23, HJ-24 — Hardening 1: CB bal / CB LTV under their own headers; RFC 4180 quote doubling)
@@ -895,6 +897,8 @@ src/
 
   utils/
     format.ts                   # fmtUSD, fmtMining (sats-aware) + DUST_USD / shownUsd — THE one $0.50 dust floor
+                                # (Sweep 2b, F1: fmtUSD and fmtMining's whole figures through WHOLE, ONE Intl.NumberFormat built once —
+                                # toLocaleString()'s output, byte for byte, held by __tests__/fmtWhole.test.ts)
                                 # (W1 moved it here from supportPolicyView, which re-exports it, because
                                 # src/simulation's cbSeizurePrice reads it too). A source guard pins ONE definition.
                                 # + fmtTooltipUsd — THE chart-tooltip price (Power Law polish P1): the Decision AND the
@@ -1205,7 +1209,9 @@ src/
                                 # stood down with nothing on Strike reads "Limit is bound by collateral — at your goal
                                 # with both loans repaid, nothing is pledged to Strike." (never "backed again above $0");
                                 # every other month the face's words. OwnershipFace renders it. Tested in
-                                # __tests__/ownershipFaceView.test.ts and goalViews.test.ts (STAND LIMIT)
+                                # __tests__/ownershipFaceView.test.ts and goalViews.test.ts (STAND LIMIT). BL53 (Sweep 2b): OwnershipFace's
+                                # Strike LTV tile and disclaimer give the 72-hour cure to the 70% call, none to the liquidation LTV —
+                                # __tests__/strikeTermsWords.test.ts ⭐ STRIKE 85.
       supportPolicyInputs.ts    # Support policy — the faces' ONLY §2 crossing for it: buildSupportPath(start, months)
                                 # = plBandAt('floor', start, m), bit-equal to the on-the-line price path from month 1;
                                 # supportPolicyFor(settings, path, bills, strikeLiqPct, mode) → the engine input, or
@@ -1359,7 +1365,7 @@ src/
                                 # the gradient inside THIS MONTH's `.pmDot` 1px border and repeats it under the border — a
                                 # class rule can't fix it, the shorthand resets the origin). AFTER — planAfter: both loans
                                 # at month-end, Coinbase at THE ROW'S support with a meter (limit and seizure ticks, read
-                                # aloud by planMeterAria), the cliff cbSeizurePrice with fmtBelowPct; no meter and no
+                                # aloud by planMeterAria — Safety's at-support line and the seizure line, Sweep 2b's W1), the cliff cbSeizurePrice with fmtBelowPct; no meter and no
                                 # over-the-limit tone under a refused policy. monthTrack
                                 # — the scrubber's year (past months faint, green within, amber over until the cure, red
                                 # from a liquidation, never green under a refused policy). A past month from the Ledger
@@ -2196,7 +2202,7 @@ src/
     CoinbaseLoan/
       CoinbaseLoanMain.tsx      # The CB Loan tab, since the plan of record's Run 4: header; the crash-day banner (on
                                 # isCrashDay — the console's line, atTriggerLine(trigger, true), and "Open the
-                                # Emergency Console →", onOpenConsole); stat cards (CURRENT LTV in Safety's colour and
+                                # Emergency Console →", onOpenConsole); stat cards (AUTO-LIQ PRICE and DROP TO LIQ from cbLiqCards — Sweep 2b, W2; CURRENT LTV in Safety's colour and
                                 # words — SAFE / FAIR / POOR from deriveSafetyView's cbLevel); the LTV bar (LtvSafetyBar —
                                 # Safety's colour, the owner's trigger marked "↑N% your trigger", and 86%); the price
                                 # alerts (two rows: "Your trigger" — cbLtvTriggerPct at cbMetrics' trigger price, "Work
@@ -2207,6 +2213,9 @@ src/
                                 # read the retired cbMonthlyPayment, through runCoinbaseLoan), the typed 70% / 76% / 84%
                                 # alert rows and the "Emergency Protocol" card — a fourth crash-day answer — and
                                 # classifyLtv's colours
+      cbLoanCards.ts            # Sweep 2b, W2 — PURE: the AUTO-LIQ PRICE and DROP TO LIQ cards' value, line and colour
+                                # (cbLiqCards) — "—" with nothing owed (under the dust floor) or no collateral, muted; else the
+                                # price (fmtUSD) and the drop, as before. Tested in __tests__/cbLoanCards.test.ts (with its wiring)
       CoinbaseLoanMain.module.css # The plan of record's Run 4: 39 dead rules pruned (the projection's table and summary,
                                 # its status and LTV colour classes, the protocol list, the 76% / 84% badges);
                                 # + .consoleLink / .pathsLink
@@ -2265,7 +2274,8 @@ src/
       MonthlyLogOverlay.module.css
 
     Daily/
-      DailyModeView.tsx         # Daily Mode P4a — READ-ONLY day-level consumer view, presentation aligned to
+      DailyModeView.tsx         # Daily Mode — the day-level journal (P4a; its calendar, event sheets and month review since
+                                # P4b–P4c: the selected day drives the activity card; a long press or the + opens the sheet), presentation aligned to
                                 # mode-toggle-preview.html's visible Daily panel: header + <SafetyDashboard/> VERBATIM
                                 # (the plan of record's Run 4, D-R4-1: moveBringsCbWithin from Daily's own run) +
                                 # the compact trio (Strike collateral · balance · avail credit via strikeAvailableCredit).
@@ -2293,6 +2303,8 @@ src/
                                 # (fmtUSDCents, BL19 — it no longer imports fmtUSD); the month review's NDP seed is
                                 # planNdpEstimateUsd on planNdpBalance — the balance THIS MONTH's NDP card and Daily's NDP
                                 # check read too.
+                                # Sweep 2b, W3: Month's summed rollup names Coinbase's paydowns too ("Coinbase paydown", under its own
+                                # gate, BLOC paydown's green dot); __tests__/dailyWords.test.ts ⭐ W3.
                                 # Empty → dashed .empty. The standalone month indicator was dropped (month context lives in
                                 # act-when + pb-sub). P4b-1: a Daily-only orange .fab (bottom-right, --btc gradient, hidden
                                 # when viewerMode) → opens <EventSheet/> for ADD (setEditEvent(undefined)). P4b-2: each
@@ -2313,7 +2325,7 @@ src/
                                 # --green/--amber/--red/--text-*)
       dailyView.ts              # PURE display helpers (no store/UI/price dep): selectMonthEvents(dayLog, month,
                                 # advisorStartDate) (bucketEventToMonth filter + asc-by-ts sort) + describeDayEvent(ev)
-                                # → {icon,label,detail} for all 7 DayEvent kinds (buy shows usd when present; deposit/
+                                # → {icon,label,detail} for all 8 DayEvent kinds (buy shows usd when present; deposit/
                                 # withdraw carry target; balanceReading summarizes Strike + CB). Since the plan of record's
                                 # Run 2.1 every amount prints to the cent (fmtUSDCents) — Daily's log and MonthEventsModal
                                 # both print through it. Tested in __tests__/dailyView.test.ts
@@ -2328,9 +2340,11 @@ src/
                                 # date math UTC (new Date(iso)=UTC midnight; getUTCDay, not getDay → tz-safe). Tested in
                                 # __tests__/calendarModel.test.ts (every monthDateRange date buckets back to its month — load-bearing)
                                 # + __tests__/calendarModelHardening.test.ts (HJ-21, HJ-22 — Hardening 1: the minimum is balance-neutral; a withdraw-only day carries the logged pip)
-      Calendar.tsx              # Daily Mode P4c-1a — the Week|Month calendar. RENDER + SELECT only (does NOT yet drive the
-                                # activity card — P4c-1b). Props {dayLog,advisorStartDate,currentMonth,scope,selectedDay,
-                                # monthLabel,onScopeChange,onSelectDay}. .seg Week|Month toggle; .calcard title (Week→"This week",
+      Calendar.tsx              # Daily Mode P4c-1a — the Week|Month calendar: RENDER + SELECT + (P2) SWIPE-PAGE + LONG-PRESS-ADD;
+                                # the selected day drives the activity card (DailyModeView). Props {dayLog,advisorStartDate,
+                                # currentMonth,scope,selectedDay,monthLabel,onScopeChange,onSelectDay,onPrev/NextMonth,
+                                # canPrev/NextMonth,onPrev/NextWeek,canPrev/NextWeek,onLongPressDay}. .seg Week|Month toggle;
+                                # .calcard title (Week→"This week",
                                 # Month→monthLabel); Week=weekDates (7 cells w/ weekday letter), Month=monthDateRange + .wd-row
                                 # header + .grid with leadBlanks=first cell's weekday padding; cells=buildDayCells, each a
                                 # <button>→onSelectDay with .num + .ind pips (.mG logged / .mRing reading / .mCb=--btc
@@ -2444,6 +2458,9 @@ src/
                                 # edit's rebuild: id/date/ts kept, the dollars as given, to the cent — never re-priced).
                                 # + staleCbBalanceNote (the stale Coinbase-balance warning: the borrow, its fee, the paydown
                                 # and the suggested balance — to the cent since Run 2.1; tested in cbDebtSheet.test.ts).
+                                # + pastBalancesNote (Sweep 2b — the past-date note: "marked provisional" only when the month has no
+                                # reading and the month before has one to carry, and the move feeds the month — COLLATERAL_FEEDS_MONTH, v1.1:
+                                # never a Coinbase or cold move; dailyWords.test.ts ⭐ PAST NOTE).
                                 # + latestReadingForPrefill (Hotfix 1 — the today sheet's prefill: the latest reading by
                                 # date, then orderTs, never a backfilled or just-edited older one; journalOrder.test.ts).
                                 # + readingCollateralPolicy(isPastAdd,current,edited?) — N1: the edit case, as recorded (a

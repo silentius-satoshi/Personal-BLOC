@@ -10,7 +10,8 @@ import { NumberInput } from '../ui/NumberInput';
 import {
   readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, COLLATERAL_TARGET_RULES, collateralAvailableFor,
   totalHoldingsAfter, DEBT_TARGET_RULES, rebuildEditedFlow, staleCbBalanceNote, buyUsdGuess, impliedBtcPrice, rebuildEditedBuy,
-  rebuildEditedReading, latestReadingForPrefill, type SheetType, type SheetState, type CollateralTarget, type DebtTarget,
+  rebuildEditedReading, latestReadingForPrefill, pastBalancesNote, COLLATERAL_FEEDS_MONTH, type SheetType, type SheetState, type CollateralTarget,
+  type DebtTarget,
 } from './eventSheetModel';
 import { minPaymentStatus } from '../../simulation/simpleModePlan';
 import { fmtDayOrdinal } from '../Almanac/planMonthView';
@@ -764,9 +765,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
             </span>
             {/* A past Set balance IS the reading — it can't be skipped, so the "optional" note would be false there. */}
             {isPast && type !== 'setBalance' && (
-              <div className={styles.note}>
-                Past date — current balances optional. Skip if you don&apos;t have them; this month is marked provisional until a reading is logged.
-              </div>
+              <div className={styles.note}>{pastBalancesNote(dayLog, advisorStartDate, month, type !== 'collateral' || COLLATERAL_FEEDS_MONTH[effectiveTarget])}</div>
             )}
             <NumberInput label="Strike BLOC balance" value={strikeBal ?? 0} onChange={setStrikeBal} min={0} prefix="$" save="live" />
             <NumberInput label="Strike LTV" value={strikeLtv ?? 0} onChange={setStrikeLtv} min={0} suffix="%" save="live" />

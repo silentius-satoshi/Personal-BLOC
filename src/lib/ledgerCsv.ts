@@ -160,15 +160,34 @@ function num(value: number | undefined | null): string {
   return value === undefined || value === null ? '' : String(value);
 }
 
+/** Sweep 2b, F2 — a dollar cell to the cent and a coin cell to the satoshi, as a spreadsheet reads them: a "." whatever the
+ *  device's language, no grouping, no exponent, no trailing zeros, rounded half-up as the screen rounds. A sum of cents
+ *  that `String` printed `1334.6599999999999` reads `1334.66`; a coin figure it printed `5e-7` reads `0.0000005`. A −0 —
+ *  a tiny negative rounded away included — prints `0`. Empty for `undefined`/`null`, as `num`; a figure that isn't a
+ *  finite number (broken data only) prints as `num` prints it. */
+const CSV_USD = new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 2 });
+const CSV_BTC = new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 8 });
+function decimalCell(f: Intl.NumberFormat, value: number | undefined | null): string {
+  if (value === undefined || value === null || !Number.isFinite(value)) return num(value);
+  const s = f.format(value);
+  return s === '-0' ? '0' : s;
+}
+const usdCell = (v: number | undefined | null): string => decimalCell(CSV_USD, v);
+const btcCell = (v: number | undefined | null): string => decimalCell(CSV_BTC, v);
+/** The → Cold cell: a month whose moves net to float residue (|n| < COLD_EPS) reads empty, as the face's "—" (BL49's
+ *  follow-up); a quiet month has no figure, so it reads empty too. */
+const coldCell = (v: number | undefined): string => (v !== undefined && Math.abs(v) < COLD_EPS ? '' : btcCell(v));
+
 /**
  * Build the Ledger CSV. Columns mirror the visible table (plus an ISO `Date` column so spreadsheets get a
  * sortable calendar date alongside the integer `Mo`):
  *   Mo, Date, Income→BTC, Paydown, BTC bought, Strike bal, Strike col, [→ Cold iff hasColdColumn — none logged, or a
  *   month placed: BL49], Strike LTV
  *   [+ CB bal, CB LTV  iff hasCbLoan] [+ Mining sats iff showMining]
- * Raw decimals (no $/₿/% ornament); `strikeLtv`/`cbLtv` stay the stored decimal (0.1483). Missing optional
- * cells → empty (an unrecorded Strike col is empty, never 0). CRLF line endings, no trailing newline, NO totals row
- * (the totals live in the UI only).
+ * Decimals with no ornament ($/₿/%): dollars to the cent and coins to the satoshi (`usdCell`, `btcCell` — Sweep 2b,
+ * F2); `strikeLtv`/`cbLtv` stay the stored decimal (0.1483), and Mo and Mining sats as stored (`num`). Missing optional
+ * cells → empty (an unrecorded Strike col is empty, never 0), and so is a month whose cold moves net to float residue,
+ * as the face's "—". CRLF line endings, no trailing newline, NO totals row (the totals live in the UI only).
  */
 export function buildLedgerCsv(entries: MonthlyLogEntry[], opts: LedgerCsvOpts): string {
   const { hasCbLoan, showMining, coldByMonth } = opts;
@@ -187,15 +206,15 @@ export function buildLedgerCsv(entries: MonthlyLogEntry[], opts: LedgerCsvOpts):
     const cells = [
       num(e.month),
       e.date ?? '',
-      num(e.income),
-      num(e.paydown),
-      num(e.btcBought),
-      num(e.strikeBal),
-      num(e.btcHeld),
+      usdCell(e.income),
+      usdCell(e.paydown),
+      btcCell(e.btcBought),
+      usdCell(e.strikeBal),
+      btcCell(e.btcHeld),
     ];
-    if (showCold) cells.push(num(coldByMonth?.[e.month]));
+    if (showCold) cells.push(coldCell(coldByMonth?.[e.month]));
     cells.push(num(e.strikeLtv));
-    if (hasCbLoan) cells.push(num(e.cbBal), num(e.cbLtv));
+    if (hasCbLoan) cells.push(usdCell(e.cbBal), num(e.cbLtv));
     if (showMining) cells.push(num(e.miningSats));
     return cells;
   });

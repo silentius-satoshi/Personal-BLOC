@@ -2,6 +2,8 @@
 
 *Part 1: Plan · The Personal ₿LOC Book*
 
+> **Retired since this draft.** The plan of record (2026-10-19) replaced the Advisor this chapter describes: each month is planned by the support policy — THIS MONTH's card, which the full-mode Advisor tab shows too — and the Outlook became a link to the Almanac's Decision face; `runAdvisor` left the code with 5e. Read this chapter as history until its rewrite.
+
 The Smart BLOC method of Chapter 03 manages one loan. Real positions are often two: a Strike BLOC for monthly living, and a Coinbase loan (Morpho underneath) carrying a larger balance at a lower rate — and a much harder edge. Morpho liquidates at 86% LTV instantly, with no margin call, no grace, and a roughly 4.4% penalty. The Advisor is the engine that plans a year of income across both loans so that the hard edge stays far away.
 
 Every month, the Advisor answers one question: where does this month's income go? The answer comes from the Coinbase LTV, through one of two strategies.

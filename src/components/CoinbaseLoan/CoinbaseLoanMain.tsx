@@ -6,6 +6,7 @@ import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../sim
 import { isCrashDay, atTriggerLine, cbTabCrashDayLine, CONSOLE_LINK } from '../Tools/crashPlaybookView';
 import { PLAN_PATHS_LINK } from '../Almanac/planMonthView';
 import { LiquidationModeler } from './LiquidationModeler';
+import { cbLiqCards } from './cbLoanCards';
 import { fmtLtvPct, shownUsd } from '../../utils/format';
 import styles from './CoinbaseLoanMain.module.css';
 
@@ -78,7 +79,8 @@ export function CoinbaseLoanMain({ onOpenConsole, onOpenPlanPaths }: CoinbaseLoa
   const activeLiqPrice  = cbLiquidationPrice > 0
     ? accruedCbLiquidationPrice(cbLiquidationPrice, cbAprPct, cbLiquidationPriceAsOf)
     : m.liqPrice;
-  const dropToLiqPct    = Math.max(0, (1 - autoLiqPrice / btcPrice) * 100);
+  // Sweep 2b, W2 — the seizure price and the drop to it: "—" with nothing owed or no collateral (cbLoanCards).
+  const liqCards        = cbLiqCards(accruedBalance, cbCollateralBtc, autoLiqPrice, btcPrice);
   // Run 4 — today's level is Safety's (one classifier for today's Coinbase LTV: Safety, the Advisor tab and this tab).
   const safety          = deriveSafetyView(useStore(useShallow(selectSafetyViewInputs)));
   // The crash day is the console's (D13's one rule, the console's gate): at or past the trigger at today's price.
@@ -123,15 +125,15 @@ export function CoinbaseLoanMain({ onOpenConsole, onOpenPlanPaths }: CoinbaseLoa
         />
         <StatCard
           label="AUTO-LIQ PRICE"
-          value={`$${Math.round(autoLiqPrice).toLocaleString()}`}
-          valueColor="var(--text-primary)"
-          sub="at 86% LLTV"
+          value={liqCards.liq.value}
+          valueColor={liqCards.liq.color}
+          sub={liqCards.liq.sub}
         />
         <StatCard
           label="DROP TO LIQ"
-          value={`${dropToLiqPct.toFixed(1)}%`}
-          valueColor={dropToLiqPct < 25 ? 'var(--red)' : dropToLiqPct < 40 ? 'var(--orange)' : 'var(--green)'}
-          sub="price decline needed"
+          value={liqCards.drop.value}
+          valueColor={liqCards.drop.color}
+          sub={liqCards.drop.sub}
         />
         <StatCard
           label="MONTHLY INTEREST"
@@ -226,7 +228,7 @@ export function CoinbaseLoanMain({ onOpenConsole, onOpenPlanPaths }: CoinbaseLoa
             </thead>
             <tbody>
               {[
-                ['Liquidation threshold', '86% LLTV — instant',           '85% — after failed margin call'],
+                ['Liquidation threshold', '86% LLTV — instant',           '85% — at once, no cure window'],
                 ['Margin call / grace',   'None',                          '70% LTV — 72-hour cure window'],
                 ['Liquidation scope',     'Up to 100% of position',       'Only enough to restore 65% LTV'],
                 ['Liquidation penalty',   '4.38%',                        'None'],

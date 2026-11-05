@@ -1229,7 +1229,7 @@ goes red.)
     CATCH-UP · WHY · NOTE shows … stays dismissed) and `navigation.spec.ts` (the Decision smoke's first line).
   - ⚠ **Why five sweeps carry 60 s** (spec v1.7.1, §13.13): WORDS, STATUS (invariant 4), ROWS and AFTER (at support) in
     `planMonthView.test.ts`, and HOLD in `strikeHoldRule.test.ts`, end `}, 60_000);` with a one-line reason. On Node 26,
-    `Number.prototype.toLocaleString` — what `fmtUSD` calls for every dollar figure — is about 40× slower than on Node 22
+    `Number.prototype.toLocaleString` — what `fmtUSD` called for every dollar figure until Sweep 2b — is about 40× slower than on Node 22
     (27 µs a call against 0.7), and WORDS makes over 400,000 `expect` calls (419,287 over 147,763 sentences). Without the
     timeouts WORDS (9–10 s alone on Node 26, ~20 s in a loaded full suite) and ROWS (~6 s loaded) ran past vitest's 5 s
     default. HOLD (about 1 s on both Nodes) carries 60 s as headroom for a loaded suite. Measured in the build's two
@@ -2631,6 +2631,25 @@ goes red.)
   - `decisionWiring.test.ts` (+1): ⭐ AHEAD WIRED (the displayed run, never `baseSim`; the path by the dock's name, its
     stress; shown open only, under its label); `e2e/decisionSections.spec.ts` (+1): ALWAYS · AHEAD · PATH.
   - Moved on purpose: `decisionWiring.test.ts` ⭐ ONE CONTEXT — the sections read the look ahead too.
+- **Sweep 2b — words and formats (BL52, 2026-11-05)** (spec `pbloc-spec-sweep-2b-v1` v1.0; Light, the reviewer's
+  measured prototype, applied byte for byte; the suite 3,354 → 3,378 (+6 skipped), 238 → 242 files):
+  - `src/utils/__tests__/fmtWhole.test.ts` (5, new): ⭐ F1 — `fmtUSD`, `fmtMiningUSD` and `fmtMining`'s sats held to
+    their old `toLocaleString()` expressions over 20,000 values (NaN, ±∞, −0, the .5 boundaries, past 10¹⁵ and 2⁵³), and
+    `format.ts` with no `toLocaleString` and one `WHOLE`. Green on the old code by design — it pins that nothing moves —
+    but for the source check.
+  - `src/lib/__tests__/ledgerCsv.test.ts` (+6): ⭐ F2 — dollars to the cent, coins to the satoshi, no exponent, −0 → 0, a
+    cold residue month empty, the unchanged cells (LTVs, Mo, Mining sats, empty, non-finite), a 400-month sweep.
+  - `planMonthView.test.ts` (+1): ⭐ W1 METER (over, within, a two-decimal limit, the nearest tenth on the verdict's
+    side). Moved on purpose: ⭐ AFTER's "the meter read aloud" — BL29's words now, the verdict the engine's.
+  - `src/components/CoinbaseLoan/__tests__/cbLoanCards.test.ts` (5, new): ⭐ W2 (nothing owed; no collateral; a loan; the
+    drop's colours at 25% and 40%) · ⭐ W2 WIRED (the tab renders both cards from `cbLiqCards`).
+  - `src/components/Daily/__tests__/dailyWords.test.ts` (5, new): ⭐ W3 (Daily's month rollup names Coinbase's paydowns,
+    under their own gate) · ⭐ PAST NOTE (provisional only with no reading of its own, one in the month before, and a
+    move that feeds the month — v1.1: never a Coinbase or cold one) · ⭐ PAST NOTE WIRED (and `COLLATERAL_FEEDS_MONTH` held
+    to the store's `isMonthlyMeaningful`).
+  - `src/components/Almanac/__tests__/strikeTermsWords.test.ts` (2, new): ⭐ STRIKE 85 (BL53 — the Ownership face's
+    Strike LTV tile and disclaimer, and — v1.1 — the CB Loan tab's Strike-vs-Coinbase table and six lines of the book:
+    the 72-hour cure is the 70% call's; the liquidation LTV sells at once).
 - **Recorded Strike collateral (spec v3)** — `src/simulation/__tests__/recordedCollateral.test.ts` (pure): ⭐ each month records its OWN reading's `strikeCollateral`; ⭐ a reading without it leaves `btcHeld` ABSENT and the reroll bridge keeps the stored value (mutation `?? 0` → red); zero records 0 (truthiness mutation → red); carry-forward + provisional; ⭐ a cold-destined buy doesn't move `btcHeld`; grep guard `recomputeBtcHeld` absent from `src/` (non-vacuous walker); onboarding source-order guard (`emitBalanceReading` after `setAdvisorStartDate`, baseline write kept). `src/store/__tests__/recordedCollateralStore.test.ts` (real store): cold-destined buy; ⭐ B1 a Strike-only re-anchor records NOTHING, not 0; §9 onboarding anchor; ⭐ B2 a joining device's reconcile reopens no confirmed month (mutation: `btcHeld` in `ROLLUP_NUM_KEYS` → red); ⭐ A4 a `btcHeld`-less entry end to end (CSV → buildPlanBackup → validatePlanBackup → applyPlanBackup; mutation: `btcHeld` back in the validator's required list → red) + the validator both ways. `src/lib/__tests__/ledgerCold.test.ts` (`coldMovedByMonth`, `hasColdColumn`, the CSV column + empty Strike col). `src/components/Advisor/__tests__/monthlyLogForm.test.ts` (`strikeColFragment`: blank → omitted, "0" → 0). `viewerSync.test.ts` S4 + `sync.test.ts`: entries apply VERBATIM (recompute mutation → red). `dailyModeStore.test.ts`: a reading without `strikeCollateral` / a buy records no `btcHeld`
 - `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation). P2a: `deriveCbCollateral` (latest cbCollateral-bearing event by ts across both kinds; cache fallback; ignores readings w/o cbCollateral)
 - `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change; cb-only month creates NO entry / doesn't flip a manual month to daily; mixed cb+draw month is daily via the draw) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction. **P3:** `deleteDayEvent` writes a numeric `deletedDayEvents[id]` + removes the event; a journal-only `addDayEvent(cbCollateralReading)` sets `recordsDirty` + leaves `monthlyLog` empty (publish trigger for the no-month path); raw `setDayLog([cbColl@ts1, cbColl@ts2])` derives `cbCollateralBtc` to the newest (the fold) WITHOUT rerolling monthlyLog; `setDeletedDayEvents` raw-set; `partializeState` includes `deletedDayEvents`

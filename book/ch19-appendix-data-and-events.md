@@ -65,14 +65,14 @@ All encrypted channels are kind-30078 replaceable events, NIP-44 self-encrypted 
 |---|---|---|
 | `personal-bloc:plan-events:v1` | `{ events: PlanEvent[] }`, compacted | append-only · union-by-id (first-wins) · fold-to-state · no watermark (order-independent) |
 | `personal-bloc:settings:v1` | (was: the synced-settings object) | retired at 4e — nothing publishes or reads it; old copies on relays are inert |
-| `personal-bloc:records:v2:<YYYY-MM\|undated>[.N]` | a journal page, `{ v: 2, key, entries, dayLog }` — one calendar month's items, ≤ 32,768 B (a fuller month goes on to `.2`) | the journal since 5b · merge-based receive · tombstones beat older data · 90-day GC · held until the device has the plan (5c) |
+| `personal-bloc:records:v2:<YYYY-MM\|undated>[.N]` | a journal page, `{ v: 2, key, entries, dayLog }` — one calendar month's items, up to 32,768 B (a fuller month goes on to `.2`; an item bigger than that alone gets a page of its own) | the journal since 5b · merge-based receive · tombstones beat older data · 90-day GC · held until the device has the plan (5c) |
 | `personal-bloc:records:v2:manifest` | `{ v: 2, pages, deletions, dayLogDeletions }` — every page with its item count and fingerprint, plus the tombstones | published after its pages: the commit marker and the completeness check; the journal is pulled as one unit |
 | `personal-bloc:records:v1` | `{ entries, deletions, dayLog, dayLogDeletions }` while the journal's JSON is at most 40,960 B; past that, a stub pointing to the v2 manifest | the bridge for apps from before 5b; every pull still reads it |
 | `personal-bloc:prefs:v1` | `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` + `venueColors` once a device chooses colours | tiny whole-object LWW — device taste; a stale clobber is cosmetic |
 | `personal-bloc:viewer:v2:<pubkeyHex>` | per-viewer snapshot, encrypted **to that viewer** | safe (ratios only) or trusted (figures); revocation = tombstone on the same d-tag |
 | kind 10002 (NIP-65) | relay list, **plaintext** | user-chosen; defaults relay.damus.io · relay.primal.net · nos.lol |
 
-Transport doctrine, in brief: publishes are debounced (records 400 ms; plan, prefs 2 s) and count as delivered only on a quorum ack of `min(2, relays)`, with connection failures normalized to rejections — an ack means a real relay said OK. Pull takes latest-by-`created_at` per d-tag: plan-events (union + fold) and prefs, then the journal as one unit — `records:v1`, the v2 manifest and the pages it lists, merged. No first publish before the initial pull completes. Tombstone and compaction TTL is 90 days.
+Transport doctrine, in brief: publishes are debounced (records 400 ms; plan, prefs 2 s) and count as delivered only on a quorum ack of `min(2, relays)`, with connection failures normalized to rejections — an ack means a real relay said OK. Pull takes latest-by-`created_at` per d-tag: plan-events (union + fold) and prefs, then the journal as one unit — `records:v1`, the v2 manifest and the pages it lists, merged. Plan events and prefs never publish before the initial pull completes; the journal may publish `records:v1` first — a merging reader loses nothing from it — while its pages and manifest wait for the journal's pull. Tombstone and compaction TTL is 90 days.
 
 ## PlanEvent: the shape and the rules
 
@@ -116,7 +116,7 @@ The numbers the doctrine hangs on. LTVs are stored as decimals and converted onl
 |---|---|---|
 | `STRIKE_MAX_DRAW_LTV` | 0.50 | drawable to 50% LTV — available = min(line, collateral·price·0.50) − drawn |
 | `BLOC_OPERATING_CEILING` | 0.15 | the Smart BLOC method's steady-state Strike ceiling, defended with up to 100% of income |
-| Warning / margin call / partial liquidation | 0.65 / 0.70 / 0.85 | the 0.85 partial liquidation runs on a 72-hour window |
+| Warning / margin call / partial liquidation | 0.65 / 0.70 / 0.85 | the 0.70 margin call gives 72 hours to cure; the 0.85 partial liquidation sells at once |
 | Collateral tiers | min 15% / rec 5% / ideal 2% | year-one collateral sizing tiers |
 
 **Coinbase (Morpho):**

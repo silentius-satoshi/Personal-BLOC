@@ -31,7 +31,7 @@ const pct = (frac: number) => `${(frac * 100).toFixed(1)}%`;
 const TARGET_LABEL: Record<'strike' | 'cb' | 'cold', string> = { strike: 'Strike', cb: 'Coinbase', cold: 'cold storage' };
 
 /**
- * Map a DayEvent to a read-only display descriptor (icon · label · detail). PURE — covers all 7 kinds:
+ * Map a DayEvent to a read-only display descriptor (icon · label · detail). PURE — covers all 8 kinds:
  *  - flows: draw / buy (shows its dollars when present — what was spent, typed since 5d, so no "~") / paydown
  *  - collateral moves: deposit / withdraw (with target)
  *  - readings: balanceReading (Strike always, CB when present) / cbCollateralReading

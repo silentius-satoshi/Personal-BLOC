@@ -385,8 +385,11 @@ describe('⭐ AFTER — box 3: both loans at month-end, Coinbase at the month\'s
           expect(a.meter?.over, 'AFTER meter = the engine\'s headroom').toBe(over);
           expect(a.meter?.atSupport, 'AFTER meter at the row\'s support').toBeCloseTo(r.cbDebt / (r.cbCollateralBtc * run.supportPath[r.m]), 12);
           if (a.meter) {
-            expect(planMeterAria(a.meter), 'AFTER the meter read aloud').toBe(`Coinbase is at ${Math.round(a.meter.atSupport * 100)}% of its `
-              + `collateral's value at support; your limit is ${Math.round(a.meter.limit * 100)}%, and it seizes at ${Math.round(CB_LLTV * 100)}%.`);
+            // Sweep 2b, W1: read aloud in BL29's words — Safety's at-support line, the engine's verdict, the seizure line.
+            const aloud = planMeterAria(a.meter);
+            expect(aloud.startsWith('If BTC were at support: '), 'AFTER the meter read aloud — at support').toBe(true);
+            expect(aloud.includes(` LTV — ${over ? 'over' : 'within'} the plan's `), 'AFTER read aloud — the engine\'s verdict').toBe(true);
+            expect(aloud.endsWith(`; Coinbase seizes at ${Math.round(CB_LLTV * 100)}%.`), 'AFTER read aloud — the seizure line').toBe(true);
           }
           metered += 1;
         } else {
@@ -821,5 +824,25 @@ describe('⭐ LOG — Run 3: the month log\'s planned figures are the plan\'s ru
       n++;
     }
     expect(n, 'REANCHOR the sweep ran').toBe(2_000);
+  });
+});
+
+/**
+ * ⭐ W1 METER (Sweep 2b) — THIS MONTH's meter, read aloud in BL29's words: Safety's at-support line without a price
+ * (`cbAtSupportLine`), then the seizure line. Over or within is the engine's verdict, and the figure follows Run 4.1's
+ * nearest-tenth rule, so the word and the figure can't disagree. "of its collateral's value" is gone.
+ */
+describe('W1 — the meter read aloud in BL29\'s words (Sweep 2b)', () => {
+  const aloud = (atSupport: number, limit: number, over: boolean): string => planMeterAria({ atSupport, limit, seize: CB_LLTV, over });
+  it('⭐ W1 METER — over, within, a two-decimal limit, and the nearest tenth on the verdict\'s side', () => {
+    expect(aloud(0.46, 0.45, true), 'W1 over').toBe("If BTC were at support: 46.0% LTV — over the plan's 45% limit; Coinbase seizes at 86%.");
+    expect(aloud(0.40, 0.45, false), 'W1 within').toBe("If BTC were at support: 40.0% LTV — within the plan's 45% limit; Coinbase seizes at 86%.");
+    expect(aloud(0.4531, 0.4525, true), 'W1 a two-decimal limit')
+      .toBe("If BTC were at support: 45.3% LTV — over the plan's 45.25% limit; Coinbase seizes at 86%.");
+    expect(aloud(0.45004, 0.45, true), 'W1 over, never at the limit')
+      .toBe("If BTC were at support: 45.1% LTV — over the plan's 45% limit; Coinbase seizes at 86%.");
+    expect(aloud(0.4506, 0.45, false), 'W1 within, never past it')
+      .toBe("If BTC were at support: 45.0% LTV — within the plan's 45% limit; Coinbase seizes at 86%.");
+    expect(aloud(0.46, 0.45, true), 'W1 the old words gone').not.toContain("collateral's value");
   });
 });

@@ -239,9 +239,10 @@ persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
 - **`src/lib/ledgerCsv.ts`** (PURE, no React) — `ledgerFaceAvailable(monthlyLog)` + `buildLedgerCsv(entries,
   {hasCbLoan, showMining, coldByMonth?})`. CSV columns = the visible columns PLUS an ISO `Date` col:
   `Mo, Date, Income→BTC, Paydown, BTC bought, Strike bal, Strike col, [→ Cold iff hasColdColumn], Strike LTV [+ CB bal, CB LTV iff
-  hasCbLoan] [+ Mining sats iff showMining]`. `Mo`=`entry.month` (int), `Date`=`entry.date` (ISO). Raw
-  decimals (no $/₿/% ornament; `strikeLtv`/`cbLtv` stay the stored 0.1483 decimal). Missing optional cells →
-  empty. RFC-4180 `csvCell` escaping. **CRLF**, no trailing newline, **NO totals row**. Sort = single-key
+  hasCbLoan] [+ Mining sats iff showMining]`. `Mo`=`entry.month` (int), `Date`=`entry.date` (ISO). Decimals
+  with no ornament ($/₿/%): dollars to the cent and coins to the satoshi, a "." whatever the language, never an exponent
+  (Sweep 2b, F2); `strikeLtv`/`cbLtv` stay the stored 0.1483 decimal. Missing optional cells → empty, and so is a
+  month whose cold moves net to float residue (the face's "—"). RFC-4180 `csvCell` escaping. **CRLF**, no trailing newline, **NO totals row**. Sort = single-key
   `a.month - b.month` (the real monthlyLog convention; dayLog's `(ts,id)` two-key sort is unrelated).
 - **Spec v3 — "Strike col" is RECORDED + optional; "→ Cold" is COMPUTED.** An unrecorded `btcHeld` renders "—" (never
   0) and exports an empty CSV cell. `coldMovedByMonth(dayLog, advisorStartDate)` (ledgerCsv.ts) = net `target:'cold'`
@@ -300,7 +301,7 @@ persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
   `LEVEL_COLOR` (`{safe:--green, watch:--amber, act:--red}`) lifted from `SafetyDashboard.tsx` (module-private)
   into `safetyView.ts` and imported by BOTH `SafetyDashboard` and `LedgerFace` — one shared color source.
 - Tests: `src/lib/__tests__/ledgerCsv.test.ts` (column toggles, legacy-missing→empty, CRLF/no-totals,
-  sort + fixture roundtrip, `ledgerFaceAvailable`) + a `cbBarLevel` case in `cbMetrics.test.ts` (57%→green,
+  sort + fixture roundtrip, `ledgerFaceAvailable`; Sweep 2b's ⭐ F2 — the cells' decimals) + a `cbBarLevel` case in `cbMetrics.test.ts` (57%→green,
   band boundaries, regression pin against the extracted 0.93). No component-render harness in the repo, so
   the JSX (meters/zone colors/sticky column/motion) is covered by `tsc -b` + build + manual.
 
@@ -1722,8 +1723,8 @@ sign-offs and logged minimums keep their cents — never a number the plan compu
   - The half-cent rounding above (C12).
   - A buy's "~$X" became its dollars, "· $X.XX", when 5d merged in (BL13).
   - F14, the iPhone's offline white screen, stays parked (BL18).
-  - `fmtUSD`'s slowness on Node 26 (`toLocaleString`, in the backlog) is unchanged; `fmtUSDCents` avoids it by
-    construction.
+  - `fmtUSD`'s slowness on Node 26 (`toLocaleString`) ended with Sweep 2b's F1 — one formatter, built once;
+    `fmtUSDCents` avoided it by construction.
   - 5e's counting price prints through the chart's `money` prop (A5): to the cent on THIS MONTH and Daily, whole on
     the Dashboard (batch 1, build 1).
 - Tests: § Test Suite → "The plan of record (Run 2.1)".
