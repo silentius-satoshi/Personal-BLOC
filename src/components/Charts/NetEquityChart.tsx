@@ -25,14 +25,14 @@ export function NetEquityChart() {
           <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
           <XAxis
             dataKey="month"
-            tick={{ fontSize: 9, fill: 'var(--text-ghost)' }}
+            tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
             tickLine={false}
             axisLine={false}
             ticks={[0, 12, 24, 36, 48, 60]}
             tickFormatter={(v: number) => `M${v}`}
           />
           <YAxis
-            tick={{ fontSize: 9, fill: 'var(--text-ghost)' }}
+            tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => v >= 1_000_000 ? '$' + (v / 1_000_000).toFixed(1) + 'M' : v >= 1_000 ? '$' + Math.round(v / 1_000) + 'k' : '$' + v}

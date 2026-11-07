@@ -239,11 +239,11 @@ Read first, for what you touch: `docs/claude/ui.md`, `docs/claude/screens.md`.
 
 ### Amended at BL52 (Sweep 2a)
 
-In `.claude/rules/ui.md` — the masked-field grep — the two gates it named are deleted, and a grep that sees a ternary `type` finds NostrAuthGate's recovery-key paste field, a known violation; FIRE's dock, and its pin. The rows as they read now:
+In `.claude/rules/ui.md` — the masked-field grep — the two gates it named are deleted, and a grep that sees a ternary `type` finds NostrAuthGate's recovery-key paste field, a known violation (Sweep 2c moved it onto PassphraseInput); FIRE's dock, and its pin. The rows as they read now:
 
 | Constraint | Rule |
 |---|---|
-| Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`: a grep of `src` for `'password'` or `"password"` finds `PassphraseInput.tsx` alone — but for `NostrAuthGate.tsx`'s recovery-key paste field (`type={reveal ? 'text' : 'password'}`), a known violation, logged. The widget keeps the four iOS suppressions and its toggle's `onPointerDown`+`preventDefault` focus guard. PINs use it too, passing `inputMode="numeric"` |
+| Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`: a grep of `src` for `'password'` or `"password"` finds `PassphraseInput.tsx` alone — since Sweep 2c moved the sign-in's recovery-key paste field onto it. The widget keeps the four iOS suppressions and its toggle's `onPointerDown`+`preventDefault` focus guard. PINs use it too, passing `inputMode="numeric"` |
 | Never `position: fixed` under EdgeBackGesture's `.page`, and never a body `scroll-padding` | Pin to the window's edge with `position: sticky` as the face's LAST child, as `ControlDock` is on the four engine faces (Decision, Cycling, Ownership — after its two-column `.shell` — and Strategy) and FIRE. In full mode a sticky element needs an ancestor that is no scroll container: `[data-active-tab="almanac"] .main`. Known, logged violations: the Settings overlays NostrAuthGate, ViewerLoginFlow, RecoveryKeyCeremony and RestoreBackupFlow, in simple mode. Pinned by `controlDockWiring.test.ts` (PREMISE, STICKY-CSS, ONE-DOCK, DOUBLED, P-ONE-DOCK, P-DOUBLED), `e2e/controlDock.spec.ts`, `fireWiring.test.ts` (DOCK LAST) |
 
 ## `charts.md` — Rules — charts and chart zoom

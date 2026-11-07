@@ -169,7 +169,7 @@ export default function CycleDial({ height, mode, emphasis = 'halving', children
           <>
             <line x1={cut1.x} y1={cut1.y} x2={cut2.x} y2={cut2.y} stroke="var(--btc)" strokeWidth={2} strokeLinecap="round" opacity={0.3} />
             <circle cx={cutDot.x} cy={cutDot.y} r={3.5} fill="var(--btc)" opacity={0.4} />
-            <text className={styles.lab} x={cutLabel.x} y={cutLabel.y - 2} fill="var(--text-faint)" textAnchor="middle">
+            <text className={styles.lab} x={cutLabel.x} y={cutLabel.y - 2} fill="var(--text-muted)" textAnchor="middle">
               halving
             </text>
           </>

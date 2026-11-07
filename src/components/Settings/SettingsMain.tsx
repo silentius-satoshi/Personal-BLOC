@@ -46,7 +46,7 @@ import { biometricLabel } from '../../lib/biometricLabel';
 import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { ALL_IN, ALL_IN_CAPS, fmtUSD, todayLocalISO } from '../../utils/format';
 import { coldMovesSinceAnchor } from '../../simulation/logUtils';
 import styles from './SettingsMain.module.css';
 import YourPlanSection from './YourPlanSection';
@@ -889,12 +889,12 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                   <>
                     <span className={styles.fieldHint}>
                       Morpho cbBTC/USDC (Base) market rate: {morphoRate.borrowApy.toFixed(2)}% (live) ·
-                      {' '}all-in {cbNetApr(morphoRate.borrowApy)!.toFixed(2)}% with Coinbase's
-                      {' '}{CB_PLATFORM_FEE_PCT}% platform fee. Enter the ALL-IN figure here.
+                      {' '}{ALL_IN} {cbNetApr(morphoRate.borrowApy)!.toFixed(2)}% with Coinbase's
+                      {' '}{CB_PLATFORM_FEE_PCT}% platform fee. Enter the {ALL_IN_CAPS} figure here.
                     </span>
                     {/* Same fix as SafetyDashboard: compare to the all-in rate, or this fires forever. */}
                     {Math.abs(cbNetApr(morphoRate.borrowApy)! - cbAprPct) > 1 && (
-                      <span className={styles.fieldHint}>Your APR differs from the live all-in rate.</span>
+                      <span className={styles.fieldHint}>Your APR differs from the live {ALL_IN} rate.</span>
                     )}
                   </>
                 ) : (

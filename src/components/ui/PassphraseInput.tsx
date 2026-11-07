@@ -10,7 +10,7 @@ import styles from './PassphraseInput.module.css';
  *
  * ⚠ THE FOUR iOS SUPPRESSIONS ARE BAKED IN, not props. iOS silently autocapitalizes/autocorrects an unsuppressed
  * field, which would mangle a passphrase so the encrypt and decrypt sides permanently disagree. Every call site
- * needs them, so they are the default rather than 16 chances to forget one.
+ * needs them, so they are the default rather than one chance per call site to forget one.
  *
  * ⚠ FOCUS GUARD: the toggle is `onPointerDown` + `preventDefault()` (the WordGrid suggestion-strip idiom). Without
  * it the tap blurs the field first — on iOS the keyboard collapses and the caret is lost mid-passphrase.
@@ -28,6 +28,9 @@ export interface PassphraseInputProps {
   autoFocus?: boolean;
   /** PIN fields pass 'numeric' so the numeric keypad survives BOTH the masked and revealed states. */
   inputMode?: 'numeric';
+  /** What the toggle shows and hides, for its accessible name — "Show passphrase" by default; the sign-in's
+   *  recovery-key paste field passes "recovery key" (Sweep 2c). */
+  revealNoun?: string;
   'aria-label'?: string;
 }
 
@@ -40,6 +43,7 @@ export function PassphraseInput({
   disabled,
   autoFocus,
   inputMode,
+  revealNoun = 'passphrase',
   'aria-label': ariaLabel,
 }: PassphraseInputProps) {
   const [revealed, setRevealed] = useState(false);
@@ -76,9 +80,9 @@ export function PassphraseInput({
         onPointerDown={(e) => e.preventDefault()}
         onClick={() => setRevealed((r) => !r)}
         disabled={disabled}
-        // Text, not an emoji glyph: matches this app's existing reveal vocabulary (NostrAuthGate's Show/Hide on the
-        // recovery-key field, SecretKeyCard's "Tap to reveal") and renders identically on every platform.
-        aria-label={revealed ? 'Hide passphrase' : 'Show passphrase'}
+        // Text, not an emoji glyph: the app's reveal vocabulary (SecretKeyCard's "Tap to reveal"), identical on every
+        // platform. Its accessible name says what it shows — `revealNoun`.
+        aria-label={`${revealed ? 'Hide' : 'Show'} ${revealNoun}`}
         aria-pressed={revealed}
       >
         {revealed ? 'Hide' : 'Show'}

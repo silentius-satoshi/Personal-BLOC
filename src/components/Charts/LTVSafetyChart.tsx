@@ -24,14 +24,14 @@ export function LTVSafetyChart() {
           <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
           <XAxis
             dataKey="month"
-            tick={{ fontSize: 9, fill: 'var(--text-ghost)' }}
+            tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
             tickLine={false}
             axisLine={false}
             ticks={[0, 12, 24, 36, 48, 60]}
             tickFormatter={(v: number) => `M${v}`}
           />
           <YAxis
-            tick={{ fontSize: 9, fill: 'var(--text-ghost)' }}
+            tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => `${v.toFixed(0)}%`}

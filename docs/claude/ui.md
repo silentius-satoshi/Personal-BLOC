@@ -139,7 +139,8 @@ composition bar reads as a risk verdict it doesn't have).
 approximations, Safari 17.2+) belong on anything that *moved under a finger* (sheets, swiped rows); beziers
 (`--ease-standard`/`--ease-decelerate`) on anything that merely *appears* (fades, scrim). `transform`/`opacity`
 only — no layout property is animated. A global `@media (prefers-reduced-motion: reduce)` block in `global.css`
-collapses all CSS transitions to 80ms cross-fades (was 1-of-78 modules; now one global policy); the JS side reads
+collapses all CSS transitions to 80ms cross-fades of opacity alone (was 1-of-78 modules; now one global policy; Sweep
+2c, M1: `transition-property: opacity`, so a transform, a colour or a size changes at once); the JS side reads
 `useReducedMotion` to snap finger-tracking motion between rest states. Gestures still FUNCTION under reduced motion.
 
 **The web font — IBM Plex Mono, self-hosted (5e, E1, called A):** `src/styles/fonts.css`, imported by `global.css`, holds
@@ -338,8 +339,9 @@ lines beside it — three or four below about 375px, Z25), and Zoom / Pan are to
   Both wake events are Continuous-priority in React 18, so `setQuiet(false)` and recharts' own update land in ONE render
   — the tooltip's first frame is at the finger.
 - **No slide (Z23):** each Tooltip carries `isAnimationActive={false}` (recharts' default glides the box 400ms from its
-  last place) AND `wrapperStyle={{ transitionProperty: 'none' }}` — under Reduce Motion the global rule gives every
-  element an 80ms transition on `all`, which would still slide it.
+  last place) AND `wrapperStyle={{ transitionProperty: 'none' }}` — under Reduce Motion the global rule gave every
+  element an 80ms transition on `all`, which slid it. Since Sweep 2c (M1) that rule moves opacity only, and its
+  `!important` outranks this guard, kept in case the rule ever widens again.
 - "Double-click to zoom back out" / "Double-tap…" shows ONCE per app session (a module flag), then fades. Once the view
   leaves home (a zoom out or a pan past it — `leavesHome`) it says "…to reset the view" instead: a double-tap then zooms
   back IN.

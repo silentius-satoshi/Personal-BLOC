@@ -33,7 +33,7 @@
 .framing {
   margin-top: 4px;
   font-size: 12.5px;
-  color: var(--text-faint);
+  color: var(--text-muted);   /* Sweep 2c (L2, C1): every face's subtitle, about 5:1 — faint was about 2.5:1 */
 }
 
 .seedRow {

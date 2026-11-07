@@ -53,7 +53,7 @@ import FuturesCard from './FuturesCard';
 import { FUTURES_COUNT } from '../../simulation/pricePaths';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { ALL_IN, fmtUSD, todayLocalISO } from '../../utils/format';
 import { planCbCollateralOf, planCbLoanBalanceOf } from './planRun';
 import styles from './UnifiedFace.module.css';
 
@@ -468,7 +468,7 @@ export default function UnifiedFace() {
     // (v1.1 #5) — the colour and the number then agree.
     ['Net equity', fmtK(selRow.equity),
       !atEnd ? `at month ${monthIdx}` : mode === 'hold' ? 'hold is the baseline'
-        : verdict.allIn ? `all-in vs never-draw: ${verdict.kind === 'even' ? 'even' : fmtSignedK(verdict.equityDelta)}`
+        : verdict.allIn ? `${ALL_IN} vs never-draw: ${verdict.kind === 'even' ? 'even' : fmtSignedK(verdict.equityDelta)}`
           : `never-draw: ${fmtK(sim.baselineEquity)}`,
       // BL14 — a tie (with a goal only) wins nothing and loses nothing: the plain text colour.
       atEnd && mode !== 'hold'
@@ -829,8 +829,8 @@ export default function UnifiedFace() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartRows} margin={{ top: 4, right: 12, bottom: 2, left: 4 }}>
                     <CartesianGrid stroke="var(--line-2)" vertical={false} />
-                    <XAxis dataKey="m" tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" />
-                    <YAxis tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" width={44}
+                    <XAxis dataKey="m" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" />
+                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" width={44}
                       tickFormatter={(x) => `${x.toFixed(1)}₿`} />
                     <Tooltip content={<ChartTip kind="btc" />} />
                     <Legend wrapperStyle={{ fontSize: 10.5, color: 'var(--text-muted)' }} />
@@ -848,8 +848,8 @@ export default function UnifiedFace() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartRows} margin={{ top: 4, right: 12, bottom: 2, left: 4 }}>
                     <CartesianGrid stroke="var(--line-2)" vertical={false} />
-                    <XAxis dataKey="m" tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" />
-                    <YAxis tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" width={40}
+                    <XAxis dataKey="m" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" />
+                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" width={40}
                       domain={[0, 95]} tickFormatter={(x) => `${x}%`} />
                     <Tooltip content={<ChartTip />} />
                     <ReferenceLine y={CB_LLTV * 100} stroke="var(--red)" strokeDasharray="4 4"
@@ -875,8 +875,8 @@ export default function UnifiedFace() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartRows} margin={{ top: 4, right: 12, bottom: 2, left: 4 }}>
                     <CartesianGrid stroke="var(--line-2)" vertical={false} />
-                    <XAxis dataKey="m" tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" />
-                    <YAxis tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" width={48}
+                    <XAxis dataKey="m" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" />
+                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" width={48}
                       tickFormatter={(x) => `$${Math.round(x / 1000)}k`} />
                     <Tooltip content={<ChartTip kind="money" />} />
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />

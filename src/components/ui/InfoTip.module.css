@@ -54,8 +54,9 @@
   text-transform: none;
   box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
   white-space: normal;
-  /* The nudge must land before paint. The global reduced-motion rule gives every element an 80ms transition, and a
-     re-place after a resize would otherwise measure one that has only just started, and settle in the wrong place. */
+  /* The nudge must land before paint. The global reduced-motion rule gave every element an 80ms transition, and a
+     re-place after a resize measured one that had only just started, and settled in the wrong place. Since Sweep 2c
+     (M1) that rule moves opacity only and outranks this; the guard stays in case it ever widens again. */
   transition-property: none;
 }
 .panel p { margin: 0 0 7px; }

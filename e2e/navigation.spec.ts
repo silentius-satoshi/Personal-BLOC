@@ -708,8 +708,9 @@ test.describe('Sats face — the rates under the converter', () => {
 // ESCAPE, OUTSIDE, HOVER, HOVER-AWAY, CLICK-KEEPS, AWAY-KEEPS, CLICK-CLOSES), so each named mutation fails at its own.
 test.describe('InfoTip — one tap, on screen', () => {
   test('the Support policy ⓘ on Decision: one tap opens it inside the gutters at 390, 375 and 481; the tap, Escape, outside and mouse rules', async ({ page }) => {
-    // Reduced motion is the harder case: the global rule gives every element an 80ms transition, and without the
-    // panel's `transition-property: none` a re-place after a resize measures a transition that has only just started.
+    // Reduced motion was the harder case: the global rule gave every element an 80ms transition, and without the
+    // panel's `transition-property: none` a re-place after a resize measured one that had only just started. Since
+    // Sweep 2c (M1) that rule moves opacity only; the test keeps Reduce Motion on to hold that.
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.route(/blockchain\.info/, (r) => r.fulfill({
       contentType: 'application/json',

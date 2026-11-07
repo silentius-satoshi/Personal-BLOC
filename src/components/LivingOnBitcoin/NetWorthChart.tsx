@@ -121,7 +121,7 @@ export function NetWorthChart({ noBtcResult, sellToLive, smartBloc, maxLeverage,
             dataKey="month"
             tickFormatter={xTickFormatter}
             interval={xInterval}
-            tick={{ fontSize: 9, fill: '#555555' }}
+            tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
             axisLine={false}
             tickLine={false}
           />
@@ -129,7 +129,7 @@ export function NetWorthChart({ noBtcResult, sellToLive, smartBloc, maxLeverage,
             ticks={yTicks}
             domain={[yTicks[0], yTicks[yTicks.length - 1]]}
             tickFormatter={(v: number) => '$' + Math.round(v).toLocaleString()}
-            tick={{ fontSize: 9, fill: '#555555' }}
+            tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
             axisLine={false}
             tickLine={false}
             width={80}

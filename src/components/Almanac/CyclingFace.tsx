@@ -50,7 +50,7 @@ import { futuresCardLine } from './futuresView';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
 import { useMorphoRateOnDemand, CB_REALIZED_NET_APR } from '../../hooks/useMorphoRate';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { ALL_IN, ALL_IN_CAPS, fmtUSD, todayLocalISO } from '../../utils/format';
 import { planCbCollateralOf, planCbLoanBalanceOf } from './planRun';
 import styles from './CyclingFace.module.css';
 
@@ -539,7 +539,7 @@ export default function CyclingFace() {
     // (v1.1 #5) — the colour and the number then agree.
     ['Net equity', fmtK(selRow.equity),
       !atEnd ? `at month ${monthIdx}`
-        : verdict.allIn ? `all-in vs never-draw: ${verdict.kind === 'even' ? 'even' : fmtSignedK(verdict.equityDelta)}`
+        : verdict.allIn ? `${ALL_IN} vs never-draw: ${verdict.kind === 'even' ? 'even' : fmtSignedK(verdict.equityDelta)}`
           : `never-draw: ${fmtK(sim.baselineEquity)}`,
       // BL14 — a tie (with a goal only) wins nothing and loses nothing: the plain text colour.
       atEnd ? (verdict.kind === 'even' ? 'var(--text-primary)' : wins ? 'var(--green)' : 'var(--amber)')
@@ -947,8 +947,8 @@ export default function CyclingFace() {
         <ResponsiveContainer width="100%" height={210}>
           <LineChart data={chartRows} margin={{ top: 10, right: 8, left: -14, bottom: 0 }}>
             <CartesianGrid stroke="var(--line-2)" strokeDasharray="2 4" />
-            <XAxis dataKey="year" stroke="var(--text-faint)" tick={{ fontSize: 9 }} interval={tickEvery} />
-            <YAxis stroke="var(--text-faint)" tick={{ fontSize: 9 }} domain={[0, 100]} />
+            <XAxis dataKey="year" stroke="var(--text-faint)" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} interval={tickEvery} />
+            <YAxis stroke="var(--text-faint)" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} domain={[0, 100]} />
             <Tooltip content={<ChartTip />} />
             <ReferenceLine y={CB_LLTV * 100} stroke="var(--red)" strokeDasharray="4 3"
               label={{ value: `LIQ ${(CB_LLTV * 100).toFixed(0)}%`, fill: 'var(--red)', fontSize: 9, position: 'insideTopRight' }} />
@@ -981,8 +981,8 @@ export default function CyclingFace() {
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={chartRows} margin={{ top: 10, right: 8, left: -14, bottom: 0 }}>
               <CartesianGrid stroke="var(--line-2)" strokeDasharray="2 4" />
-              <XAxis dataKey="year" stroke="var(--text-faint)" tick={{ fontSize: 9 }} interval={tickEvery} />
-              <YAxis stroke="var(--text-faint)" tick={{ fontSize: 9 }} tickFormatter={fmtK} width={52} />
+              <XAxis dataKey="year" stroke="var(--text-faint)" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} interval={tickEvery} />
+              <YAxis stroke="var(--text-faint)" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} tickFormatter={fmtK} width={52} />
               <Tooltip content={<ChartTip money />} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
               <Line type="monotone" dataKey="price" name="BTC" isAnimationActive={false} dot={false}
@@ -1001,8 +1001,8 @@ export default function CyclingFace() {
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={chartRows} margin={{ top: 10, right: 8, left: -14, bottom: 0 }}>
               <CartesianGrid stroke="var(--line-2)" strokeDasharray="2 4" />
-              <XAxis dataKey="year" stroke="var(--text-faint)" tick={{ fontSize: 9 }} interval={tickEvery} />
-              <YAxis stroke="var(--text-faint)" tick={{ fontSize: 9 }} tickFormatter={fmtK} width={52} />
+              <XAxis dataKey="year" stroke="var(--text-faint)" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} interval={tickEvery} />
+              <YAxis stroke="var(--text-faint)" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} tickFormatter={fmtK} width={52} />
               <Tooltip content={<ChartTip money />} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
               <Line type="monotone" dataKey="collateral" name="Collateral" stroke="var(--green)"
@@ -1162,9 +1162,9 @@ export default function CyclingFace() {
           {liveApy !== null
             ? `Morpho cbBTC/USDC (Base) is ${liveApy.toFixed(2)}% right now — ${(liveApy + CB_PLATFORM_FEE_PCT).toFixed(2)}% once Coinbase's ${CB_PLATFORM_FEE_PCT}% platform fee is on top, which is what you actually pay. `
             : morpho.error ? 'Morpho market rate unavailable. ' : ''}
-          The Coinbase APR here is ALL-IN: Morpho's market rate plus Coinbase's {CB_PLATFORM_FEE_PCT}%
+          The Coinbase APR here is {ALL_IN_CAPS}: Morpho's market rate plus Coinbase's {CB_PLATFORM_FEE_PCT}%
           platform fee, which is billed onto the balance monthly.
-          This loan has cost {CB_REALIZED_NET_APR.p10}–{CB_REALIZED_NET_APR.p90}% all-in over{' '}
+          This loan has cost {CB_REALIZED_NET_APR.p10}–{CB_REALIZED_NET_APR.p90}% {ALL_IN} over{' '}
           {CB_REALIZED_NET_APR.months} months since {CB_REALIZED_NET_APR.since} (max {CB_REALIZED_NET_APR.max}%) —
           one cycle, so it says what has happened, not what can.{' '}{rateStopNote(applied)}
           {' '}Each sweep to Coinbase also pays their origination fee — {CB_FEE_TIER1_PCT * 100}% under{' '}

@@ -101,3 +101,10 @@ export function fmtLtvPct(fraction: number, decimals = 1): string {
   if (!Number.isFinite(fraction)) return fraction > 0 ? '∞' : '—';
   return `${(fraction * 100).toFixed(decimals)}%`;
 }
+
+/** Sweep 2c (L5) — "all-in" on screen, held together: a word joiner (U+2060) after the hyphen, so a line never breaks
+ *  after "all-". Not U+2011 (the non-breaking hyphen): IBM Plex Mono has no glyph for it, and a fallback font's would
+ *  show. The joiner has no glyph of its own, so the word looks exactly as before. Every on-screen "all-in" uses it. */
+export const ALL_IN = 'all-\u2060in';
+/** ALL_IN in capitals, the joiner kept ("The Coinbase APR here is ALL-IN"). */
+export const ALL_IN_CAPS = 'ALL-\u2060IN';

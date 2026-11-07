@@ -68,12 +68,15 @@ table {
 
 /* Gesture & Motion System — P0. Global reduced-motion policy: collapse all CSS transitions/animations
    to brief opacity cross-fades. Gestures still FUNCTION (the JS side reads useReducedMotion to snap
-   between rest states) — only the continuous rendering of motion is stripped. */
+   between rest states) — only the continuous rendering of motion is stripped. Sweep 2c (M1): `transition-property`
+   is opacity alone, so only opacity cross-fades; a transform, a colour or a size changes at once — with the default
+   `all`, everything glided for the 80 ms. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 80ms !important;
+    transition-property: opacity !important;
     scroll-behavior: auto !important;
   }
 }

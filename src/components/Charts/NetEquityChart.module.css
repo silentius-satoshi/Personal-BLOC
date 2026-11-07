@@ -16,6 +16,6 @@
 
 .sub {
   font-size: 9px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   margin-bottom: 8px;
 }

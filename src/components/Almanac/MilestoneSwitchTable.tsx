@@ -106,7 +106,7 @@ export default function MilestoneSwitchTable({ rows, views, label, switchLabel, 
                   return (
                     <td key={c} className={styles.td}>
                       {x && (x.name ? (
-                        <span className={styles.value} role="img" aria-label={x.name} title={x.name}
+                        <span className={styles.value} role="img" aria-label={x.name}
                           style={x.color ? { color: x.color } : undefined}>{x.value}</span>
                       ) : (
                         <span className={styles.value} style={x.color ? { color: x.color } : undefined}>{x.value}</span>

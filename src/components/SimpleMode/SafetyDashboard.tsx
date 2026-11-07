@@ -10,7 +10,7 @@ import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
-import { fmtUSDCents, fmtLtvPct, todayLocalISO } from '../../utils/format';
+import { ALL_IN, fmtUSDCents, fmtLtvPct, todayLocalISO } from '../../utils/format';
 import styles from './SafetyDashboard.module.css';
 
 interface SafetyDashboardProps {
@@ -310,7 +310,7 @@ export function SafetyDashboard({ moveBringsCbWithin = false }: SafetyDashboardP
               <>
                 <span className={styles.editHint}>
                   Morpho cbBTC/USDC (Base) market rate: {morphoRate.borrowApy.toFixed(2)}% (live) ·
-                  {' '}all-in {cbNetApr(morphoRate.borrowApy)!.toFixed(2)}% with Coinbase's
+                  {' '}{ALL_IN} {cbNetApr(morphoRate.borrowApy)!.toFixed(2)}% with Coinbase's
                   {' '}{CB_PLATFORM_FEE_PCT}% platform fee
                 </span>
                 {/* ⚠ Compare against the ALL-IN rate, not the market rate. Comparing the raw Morpho
@@ -320,7 +320,7 @@ export function SafetyDashboard({ moveBringsCbWithin = false }: SafetyDashboardP
                     was guessing at exactly this fee; it is now named and applied. */}
                 {Math.abs(cbNetApr(morphoRate.borrowApy)! - cbAprPct) > 1 && (
                   <span className={styles.editHint}>
-                    Your APR differs from the live all-in rate.{' '}
+                    Your APR differs from the live {ALL_IN} rate.{' '}
                     <button
                       className={styles.editLink}
                       onClick={() => setCbAprPct(Number(cbNetApr(morphoRate.borrowApy)!.toFixed(2)))}

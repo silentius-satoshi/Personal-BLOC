@@ -19,7 +19,7 @@ Each rule's full text — its mechanism, measures and history — is in `docs/cl
 
 | Constraint | Rule |
 |---|---|
-| Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`: a grep of `src` for `'password'` or `"password"` finds `PassphraseInput.tsx` alone — but for `NostrAuthGate.tsx`'s recovery-key paste field (`type={reveal ? 'text' : 'password'}`), a known violation, logged. The widget keeps the four iOS suppressions and its toggle's `onPointerDown`+`preventDefault` focus guard. PINs use it too, passing `inputMode="numeric"` |
+| Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`: a grep of `src` for `'password'` or `"password"` finds `PassphraseInput.tsx` alone — since Sweep 2c moved the sign-in's recovery-key paste field onto it. The widget keeps the four iOS suppressions and its toggle's `onPointerDown`+`preventDefault` focus guard. PINs use it too, passing `inputMode="numeric"` |
 | `SummaryBar fmtUSD` | Local sign-preserving — NEVER replace with shared version |
 | Mining electricity | Fiat overhead — 100% sats kept, never deducted |
 | Mining strategy cards | Fixed presets — independent of per-device `soloMining` |

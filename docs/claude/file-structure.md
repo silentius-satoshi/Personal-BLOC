@@ -897,6 +897,9 @@ src/
 
   utils/
     format.ts                   # fmtUSD, fmtMining (sats-aware) + DUST_USD / shownUsd — THE one $0.50 dust floor
+                                # + ALL_IN (Sweep 2c, L5): "all-" U+2060 "in" — every on-screen "all-in", never broken
+                                # after the hyphen (IBM Plex Mono has no U+2011; the word joiner has no glyph); and
+                                # ALL_IN_CAPS, "ALL-" U+2060 "IN", for the capitals
                                 # (Sweep 2b, F1: fmtUSD and fmtMining's whole figures through WHOLE, ONE Intl.NumberFormat built once —
                                 # toLocaleString()'s output, byte for byte, held by __tests__/fmtWhole.test.ts)
                                 # (W1 moved it here from supportPolicyView, which re-exports it, because
@@ -1591,23 +1594,24 @@ src/
                                 # disabled) or 'failed' ("Try again"), else nothing. Its button is the one tap,
                                 # applyUpdate. __tests__/appUpdateViews.test.tsx
       PassphraseInput.tsx       # R2c-7a-2-polish — THE masked-entry widget (+ .module.css). A controlled input +
-                                # focus-guarded Show/Hide toggle, adopted at ALL 18 RENDERED masked fields:
-                                # NostrAuthGate (remediation encrypt · saved-key PIN unlock · ncryptsec unlock · PIN · Confirm PIN),
+                                # focus-guarded Show/Hide toggle, adopted at ALL 19 RENDERED masked fields:
+                                # NostrAuthGate (recovery-key paste — Sweep 2c · remediation encrypt · saved-key PIN unlock · ncryptsec unlock
+                                # · PIN · Confirm PIN),
                                 # RecoveryKeyCeremony (PIN unlock · encrypt · verify re-entry), ViewerLoginFlow
                                 # (token pass · PIN ×2), OwnerKeySetup (PIN ×2), ViewerUnlockGate (PIN ×2),
                                 # RevealRecoveryKey (PIN), SharingPage (PIN), LocalUnlockGate (PIN). The two unrendered
                                 # at-rest gates that hand-rolled their own were deleted (BL52), so
-                                # `grep type="password" src` shows nothing — but NostrAuthGate's recovery-key paste
-                                # field hand-rolls a ternary `type` (`type={reveal ? 'text' : 'password'}`), a known
-                                # violation (ui.md).
+                                # `grep type="password" src` shows nothing, and a grep for `'password'` finds this file
+                                # alone — Sweep 2c moved NostrAuthGate's recovery-key paste field onto it (ui.md).
                                 # ⚠ THE FOUR iOS SUPPRESSIONS ARE BAKED IN (autoComplete/autoCorrect/autoCapitalize/
                                 # spellCheck), not props — iOS autocapitalizes an unsuppressed field, which would make
-                                # the encrypt and decrypt sides permanently disagree. One default beats 18 chances to
+                                # the encrypt and decrypt sides permanently disagree. One default beats one chance per call site to
                                 # forget one. ⚠ FOCUS GUARD: the toggle is `onPointerDown` + `preventDefault()` (the
                                 # WordGrid suggestion-strip idiom) + tabIndex={-1} — an onClick-only toggle blurs the
                                 # field first, and on iOS the keyboard collapses and the caret is lost mid-passphrase.
-                                # Show/Hide TEXT, not an emoji glyph (matches NostrAuthGate's own recovery-key
-                                # Show/Hide + SecretKeyCard's "Tap to reveal"; renders identically everywhere).
+                                # Show/Hide TEXT, not an emoji glyph (SecretKeyCard's "Tap to reveal" vocabulary; renders
+                                # identically everywhere); its accessible name says what it shows — `revealNoun`, default
+                                # "passphrase" ("Show recovery key" on the sign-in's paste field, Sweep 2c).
                                 # `className` passthrough is REQUIRED — hosts use 3 different input classes
                                 # (.input/.pinInput/.dateInput) and each keeps its exact look. `inputMode="numeric"`
                                 # passthrough keeps the PIN keypad in BOTH masked and revealed states. ⚠ `.wrap` is

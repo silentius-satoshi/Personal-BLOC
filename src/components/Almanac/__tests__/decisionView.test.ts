@@ -685,7 +685,12 @@ describe('⭐ G5 — the breaker line has a LOADING reading', () => {
     const l = keyed({ breaker: 'loading' }, 'breaker')!;
     expect(l.text).toBe(BREAKER_LOADING_LINE);
     expect(BREAKER_LOADING_LINE)
-      .toBe("Loading price history — until it arrives, this run assumes the model isn't treated as broken.");
+      .toBe("While price history is loading, the model isn't treated as broken.");
+    // Sweep 2c (L3): as long as the plain reading and ending alike, so the card wraps both the same at every width.
+    const plain = keyed({ breaker: { broken: false, monthsAtOrAbove: 0, monthsBelow: 0, lastMonthEndLabel: '31 May 2026' } },
+      'breaker')!.text;
+    expect(BREAKER_LOADING_LINE.length, 'G5 as long as the plain reading').toBe(plain.length);
+    expect(BREAKER_LOADING_LINE.slice(-35), 'G5 the same ending').toBe(plain.slice(-35));
     expect(l.tone).toBe('plain');
     expect(l.text).not.toContain("didn't load");
   });
@@ -839,7 +844,7 @@ describe('the schedule header, the outcome tiles, the file name and the manual-p
     )).toEqual([
       { key: 'cold', label: 'In cold storage', value: '1.250 ₿', sub: 'at month 60', tone: 'good' },
       { key: 'yours', label: 'Yours', value: '3.500 ₿', sub: 'held less debt, at month 60', tone: 'plain' },
-      { key: 'vsNeverDraw', label: 'vs never drawing', value: '+$12,345', sub: 'all-in equity', tone: 'good' },
+      { key: 'vsNeverDraw', label: 'vs never drawing', value: '+$12,345', sub: 'all-\u2060in equity', tone: 'good' },
       { key: 'liquidation', label: 'Coinbase liquidation', value: 'none', sub: 'through month 60', tone: 'good' },
     ]);
   });
@@ -852,7 +857,7 @@ describe('the schedule header, the outcome tiles, the file name and the manual-p
     expect(t.map((x) => [x.key, x.value, x.sub, x.tone])).toEqual([
       ['cold', 'none', 'at month 60', 'plain'],
       ['yours', '−0.250 ₿', 'held less debt, at month 60', 'warn'],
-      ['vsNeverDraw', '−$5,000', 'all-in equity, after unpaid bills', 'bad'],
+      ['vsNeverDraw', '−$5,000', 'all-\u2060in equity, after unpaid bills', 'bad'],
       ['liquidation', 'month 14', 'Morpho seizes at 86%', 'bad'],
     ]);
   });

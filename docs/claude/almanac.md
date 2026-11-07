@@ -119,7 +119,9 @@ container; `min-width: 0` keeps the grid item able to shrink (a scroll container
 own bottom padding is the page's end, so `.main`'s 20px would lift the bar there. Measured before and after on all 12
 faces at 1440 and 390 px: nothing overflows `.main` sideways. The `powerlaw` rules are untouched (`powerLawWiring`
 pins them). Since the Milestones on a phone (spec pbloc-spec-milestones-phone-v1, R3) it adds a fourth rule,
-`[data-active-tab="almanac"] .main { --dock-bleed: 20px; }` — `.main`'s own padding, which is 20px at every width. Under
+`[data-active-tab="almanac"] .main { --dock-bleed: 20px; }` — `.main`'s own padding, 20px (since Sweep 2c, L4: under
+768 px both go to 0 in one rule, so a phone's face keeps its own 16 px gutters alone and the dock still bleeds edge to
+edge). Under
 1024 px the control dock's margin is `12px calc(-16px - var(--dock-bleed, 0px)) 0`, so in full mode it also bleeds
 across `.main`'s padding. Inside it the dock was inset 20px a side: every tab was 8px narrower ("Flywheel" cut at every
 phone width measured) and the page showed beside it (M6). Simple mode's Almanac has no `[data-active-tab]`, so its dock
@@ -2248,8 +2250,8 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   toolbar, right-aligned — min-height 32px, because the label beside the toolbar wraps to two 15.75px lines, 31.5px, Z22)
   sits above the box, which is 280px on every device (Z18; it was 316 on touch, the toolbar row inside it). The Tooltip,
   its cursor and every series' active dot stay quiet through a gesture and after it (Z17), and the box snaps to the
-  pointer — `isAnimationActive={false}` plus `wrapperStyle={{ transitionProperty: 'none' }}`, so even Reduce Motion's
-  global 80ms transition can't slide it (Z23). Its
+  pointer — `isAnimationActive={false}` plus `wrapperStyle={{ transitionProperty: 'none' }}`, so nothing slides it
+  (Z23; since Sweep 2c, M1, Reduce Motion's global rule moves opacity only). Its
   tick labels are `--text-muted`, like the Power Law chart's (P6), and `DecisionTip` prices through `fmtTooltipUsd` —
   the ONE tooltip price formatter, so a sub-dollar 2010 price never reads "$0" (Power Law polish P1). History
   is a gradient `Area` whose id comes from `useId()` (PriceChart's `priceFill` is document-global); the displayed

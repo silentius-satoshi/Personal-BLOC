@@ -448,14 +448,14 @@ describe('⭐ GOAL VERDICT — the never-draw verdict at the goal: a tie is a ti
     expect(cy).toMatch(/\{verdict\.kind === 'even' \? \(\s*<>\{neverDrawTieHead\('Cycling'\)\}\{verdictBasisClause\(sim\)\}<\/>/);
     expect(cy).toContain(": verdict.kind === 'even' ? '' : wins ? styles.verdictGood : styles.verdictWarn");
     expect(cy).toContain("atEnd ? (verdict.kind === 'even' ? 'var(--text-primary)' : wins ? 'var(--green)' : 'var(--amber)')");
-    expect(cy).toContain("`all-in vs never-draw: ${verdict.kind === 'even' ? 'even' : fmtSignedK(verdict.equityDelta)}`");
+    expect(cy).toContain("`${ALL_IN} vs never-draw: ${verdict.kind === 'even' ? 'even' : fmtSignedK(verdict.equityDelta)}`");
     // A tie's coin gap rounds to 0.0000 ₿ and its sign is residue: the sub-line names the two figures only.
     expect(cy).toMatch(/\{fmtBtc\(last\.btcHeld\)\} vs \{fmtBtc\(sim\.baselineBtc\)\}\{verdict\.kind === 'even' \? ''\s*: ` \(\$\{verdict\.btcDelta >= 0 \? '\+' : '−'\}\$\{Math\.abs\(verdict\.btcDelta\)\.toFixed\(4\)\} ₿\)`\}/);
     const un = src('UnifiedFace.tsx');
     expect(un).toMatch(/\{verdict\.kind === 'even' \? \(\s*<>\{neverDrawTieHead\(modeLabel\)\}\{verdictBasisClause\(sim\)\}<\/>/);
     expect(un).toContain(": verdict.kind === 'even' ? '' : verdict.kind === 'wins' ? styles.verdictGood : styles.verdictWarn");
     expect(un).toContain("(verdict.kind === 'even' ? 'var(--text-primary)' : verdict.wins ? 'var(--green)' : 'var(--amber)')");
-    expect(un).toContain("`all-in vs never-draw: ${verdict.kind === 'even' ? 'even' : fmtSignedK(verdict.equityDelta)}`");
+    expect(un).toContain("`${ALL_IN} vs never-draw: ${verdict.kind === 'even' ? 'even' : fmtSignedK(verdict.equityDelta)}`");
     expect(un).toMatch(/\{fmtBtc\(last\.btcHeld\)\} vs \{fmtBtc\(sim\.baselineBtc\)\}\{verdict\.kind === 'even' \? ''\s*: ` \(\$\{verdict\.btcDelta >= 0 \? '\+' : '−'\}\$\{Math\.abs\(verdict\.btcDelta\)\.toFixed\(4\)\} ₿\)`\}/);
   });
 
@@ -466,8 +466,8 @@ describe('⭐ GOAL VERDICT — the never-draw verdict at the goal: a tie is a ti
       startISO: '2026-10-20', countsSeizures: true,
     };
     const beats = (x: FuturesSummary) => futuresReadout(x).rows.find((r) => r.label === 'Beats never borrowing')!;
-    expect([beats(s).value, beats(s).sub]).toEqual(['15%', 'of the simulations, all-in · 80% tie']);
-    expect(beats({ ...s, tiesNeverDraw: 0 }).sub).toBe('of the simulations, all-in');
+    expect([beats(s).value, beats(s).sub]).toEqual(['15%', 'of the simulations, all-\u2060in · 80% tie']);
+    expect(beats({ ...s, tiesNeverDraw: 0 }).sub).toBe('of the simulations, all-\u2060in');
   });
 });
 

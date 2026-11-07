@@ -68,7 +68,6 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const [recoveryTab, setRecoveryTab]     = useState<'words' | 'key'>('words');   // R2b-3: default to the word grid
   const [gridValues, setGridValues]       = useState<string[]>(() => Array(12).fill(''));   // R2b-3 words tab — ⚠ transient secret
   const [recoveryInput, setRecoveryInput] = useState('');   // the "Recovery key" tab's field — an nsec OR an ncryptsec (R2c-7a)
-  const [reveal, setReveal]               = useState(false);   // proofread a typed key (masked by default)
   const [localMethod, setLocalMethod]     = useState<WrapMethod | null>(null);
   const [pin, setPin]                     = useState('');
   const [pinConfirm, setPinConfirm]       = useState('');
@@ -178,7 +177,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     setKeyPassphrase('');                // R2c-7a — ⚠ transient secrets, same scrub site
     setDebouncedPassphrase('');
     setDecryptState({ sk: null, checking: false, error: null });
-    setReveal(false);
+    // The paste field's Show/Hide lives in PassphraseInput (Sweep 2c): masked on every mount, and this opens on Words.
     setLocalMethod(null);
     setPin('');
     setPinConfirm('');
@@ -740,28 +739,17 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
               </>
             ) : (
               <>
-                <input
+                {/* Sweep 2c — through PassphraseInput, like every masked field: its four iOS suppressions (an nsec must
+                    never be autocapitalized), its focus guard (the toggle never blurs the field) and its toggle's
+                    state, named "Show recovery key". */}
+                <PassphraseInput
                   className={styles.input}
-                  type={reveal ? 'text' : 'password'}
                   placeholder="Paste your recovery key — nsec or encrypted"
                   value={recoveryInput}
-                  onChange={(e) => setRecoveryInput(e.target.value)}
+                  onChange={setRecoveryInput}
                   disabled={loading}
-                  // ⚠ LOAD-BEARING: iOS silently autocapitalizes/autocorrects, which would mangle an nsec.
-                  // Same discipline as ViewerLoginFlow's passphrase field. autoComplete off keeps the secret
-                  // out of browser autofill.
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
+                  revealNoun="recovery key"
                 />
-                <button
-                  className={styles.ghostBtn}
-                  onClick={() => setReveal((v) => !v)}
-                  disabled={loading}
-                >
-                  {reveal ? 'Hide' : 'Show'}
-                </button>
 
                 {/* R2c-7a-fix — KEY-FIELD errors, in strict precedence. Each is mutually exclusive, and each
                     suppresses the passphrase field: a payload we can't even parse must never be blamed on the

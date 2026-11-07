@@ -159,7 +159,7 @@ export function futuresReadout(s: FuturesSummary): FuturesReadout {
       // BL14 — with a goal, a future that reaches it early ties; the sub-line says how many, so a low share never reads
       // as losses (0 ties with no goal: the line is unchanged).
       { label: 'Beats never borrowing', value: shareText(s.beatsNeverDraw, s.count),
-        sub: s.tiesNeverDraw > 0 ? `of the simulations, all-in · ${shareText(s.tiesNeverDraw, s.count)} tie` : 'of the simulations, all-in' },
+        sub: s.tiesNeverDraw > 0 ? `of the simulations, all-\u2060in · ${shareText(s.tiesNeverDraw, s.count)} tie` : 'of the simulations, all-\u2060in' },
       seized,
     ],
     note: null,

@@ -452,11 +452,13 @@ users. Spec `pbloc-spec-infotip-fit-v1` (v1.1).
     - full-mode `.main` spans the viewport.
 
     A future InfoTip inside a narrower overflow box would need that box instead.
-  - ⚠ **`.panel` has `transition-property: none`.** The global reduced-motion rule gives every element an 80ms
-    transition. Without the guard, under Reduce Motion:
-    - the panel slides in from its off-screen spot;
-    - after a resize, the re-place measures a transition that has only just started, so the panel settles in the wrong
+  - ⚠ **`.panel` has `transition-property: none`.** The global reduced-motion rule gave every element an 80ms
+    transition on `all`. Without the guard, under Reduce Motion:
+    - the panel slid in from its off-screen spot;
+    - after a resize, the re-place measured a transition that had only just started, so the panel settled in the wrong
       place (123..466 at 375).
+    Since Sweep 2c (M1) that rule moves opacity only (the panel has none) and its `!important` outranks the guard,
+    kept in case the rule ever widens again.
 - **Opening — `nextTipState`: closed / hover / pinned (I3, I4).**
   - Hover opens it only for a mouse (`pointerType === 'mouse'`).
   - A tap or click pins it, until a second tap or click on the ⓘ, Escape, or a tap or click outside.

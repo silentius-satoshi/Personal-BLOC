@@ -20,7 +20,7 @@ import { netCoinsBtc, atGoalOf } from '../../simulation/goal';
 import type { PlacementInput } from '../../simulation/placement';
 import { fmtTurnDate, type NeverDrawVerdict } from './cyclingFaceView';
 import type { BreakerSeed } from './supportPolicyInputs';
-import { fmtUSD } from '../../utils/format';
+import { ALL_IN, fmtUSD } from '../../utils/format';
 import { deriveVenueSplit } from '../../simulation/viewerVenue';
 import type { Venue } from '../../lib/venueColors';
 import { monthYear } from './futuresView';
@@ -369,9 +369,12 @@ export const DECISION_FRAMING =
 export const PATH_INVARIANT_LINE =
   "This move is measured at today's support and today's price, so switching paths below doesn't change it.";
 
-/** G5 — the price history is still in flight. `[]` until it lands is NOT "didn't load". */
-export const BREAKER_LOADING_LINE =
-  "Loading price history — until it arrives, this run assumes the model isn't treated as broken.";
+/** G5 — the price history is still in flight. `[]` until it lands is NOT "didn't load". Sweep 2c (L3): exactly as long
+ *  as the plain reading ("Month-ends through DD Mon YYYY: the model isn't treated as broken.", 66 characters) and
+ *  ending in the same 35, so in the card's monospace face it wraps as the plain reading does at every width — THE MOVE
+ *  card keeps its height and the chart under it holds still when the history lands. Measured at every screen from 300
+ *  to 1440 px; a line one character shorter took one line fewer at 511–517 px. */
+export const BREAKER_LOADING_LINE = "While price history is loading, the model isn't treated as broken.";
 
 /** §4.7 (Run 2) — the card IS the plan of record's move: THIS MONTH and Daily show the same one. */
 export const PLAN_OF_RECORD_LINE = "This is your plan of record's move this month — the support policy, with your settings.";
@@ -1179,7 +1182,7 @@ export function outcomeTiles(
     {
       key: 'vsNeverDraw', label: 'vs never drawing',
       value: shownUsd(Math.abs(delta)) ? `${delta >= 0 ? '+' : '−'}${fmtUSD(Math.abs(delta))}` : 'even',
-      sub: `all-in equity${basisClause}`,
+      sub: `${ALL_IN} equity${basisClause}`,
       // BL14 — a tie (with a goal only) is neither good nor bad.
       tone: verdict.kind === 'liquidated' ? 'bad' : verdict.kind === 'even' ? 'plain' : verdict.wins ? 'good' : 'warn',
     },

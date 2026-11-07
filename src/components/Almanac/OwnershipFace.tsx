@@ -54,7 +54,7 @@ import { futuresCardLine } from './futuresView';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
 import { useMorphoRateOnDemand, CB_REALIZED_NET_APR } from '../../hooks/useMorphoRate';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { ALL_IN, ALL_IN_CAPS, fmtUSD, todayLocalISO } from '../../utils/format';
 import { planCbCollateralOf, planCbLoanBalanceOf } from './planRun';
 import styles from './OwnershipFace.module.css';
 
@@ -893,8 +893,8 @@ export default function OwnershipFace() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartRows} margin={{ top: 4, right: 12, bottom: 2, left: 4 }}>
                     <CartesianGrid stroke="var(--line-2)" vertical={false} />
-                    <XAxis dataKey="m" tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" />
-                    <YAxis tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" width={44}
+                    <XAxis dataKey="m" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" />
+                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" width={44}
                       tickFormatter={(x) => `${x.toFixed(1)}₿`} />
                     <Tooltip content={<ChartTip kind="btc" />} />
                     <Legend wrapperStyle={{ fontSize: 10.5, color: 'var(--text-muted)' }} />
@@ -916,8 +916,8 @@ export default function OwnershipFace() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartRows} margin={{ top: 4, right: 12, bottom: 2, left: 4 }}>
                     <CartesianGrid stroke="var(--line-2)" vertical={false} />
-                    <XAxis dataKey="m" tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" />
-                    <YAxis tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" width={40}
+                    <XAxis dataKey="m" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" />
+                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" width={40}
                       domain={[0, 95]} tickFormatter={(x) => `${x}%`} />
                     <Tooltip content={<ChartTip />} />
                     <ReferenceLine y={86} stroke="var(--red)" strokeDasharray="4 4"
@@ -940,8 +940,8 @@ export default function OwnershipFace() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartRows} margin={{ top: 4, right: 12, bottom: 2, left: 4 }}>
                     <CartesianGrid stroke="var(--line-2)" vertical={false} />
-                    <XAxis dataKey="m" tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" />
-                    <YAxis tick={{ fill: 'var(--text-faint)', fontSize: 10 }} stroke="var(--line-2)" width={48}
+                    <XAxis dataKey="m" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" />
+                    <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" width={48}
                       tickFormatter={(x) => `$${Math.round(x / 1000)}k`} />
                     <Tooltip content={<ChartTip kind="money" />} />
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />
@@ -1130,9 +1130,9 @@ export default function OwnershipFace() {
               {liveApy !== null
                 ? `Morpho cbBTC/USDC (Base) is ${liveApy.toFixed(2)}% right now — ${(liveApy + CB_PLATFORM_FEE_PCT).toFixed(2)}% once Coinbase's ${CB_PLATFORM_FEE_PCT}% platform fee is on top, which is what you actually pay. `
                 : morpho.error ? 'Morpho market rate unavailable. ' : ''}
-              The Coinbase APR here is ALL-IN: Morpho's market rate plus Coinbase's {CB_PLATFORM_FEE_PCT}%
+              The Coinbase APR here is {ALL_IN_CAPS}: Morpho's market rate plus Coinbase's {CB_PLATFORM_FEE_PCT}%
               platform fee, which is billed onto the balance monthly.
-              This loan has cost {CB_REALIZED_NET_APR.p10}–{CB_REALIZED_NET_APR.p90}% all-in over{' '}
+              This loan has cost {CB_REALIZED_NET_APR.p10}–{CB_REALIZED_NET_APR.p90}% {ALL_IN} over{' '}
               {CB_REALIZED_NET_APR.months} months since {CB_REALIZED_NET_APR.since} (max {CB_REALIZED_NET_APR.max}%) —
               one cycle, so it says what has happened, not what can.{' '}{rateStopNote(applied)}
               {' '}Each sweep to Coinbase also pays their origination fee — {CB_FEE_TIER1_PCT * 100}% under{' '}
