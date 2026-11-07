@@ -252,6 +252,15 @@ src/
                                 # baselineAllInEquity, each only above 0 — and the ONE verdict rule, `neverDrawTie` /
                                 # `beatsNeverDraw` (`NEVER_DRAW_TIE_USD` = DUST_USD; a tie only with a goal). See
                                 # engines.md § The plan's goal amount
+                                # BL42/BL55 (the borrow lane, build 1): `livingOnCredit?: { spendingInflation,
+                                # reserveMonthlyFactor, stepOffsetMonths? }` — a REAL input (the FIRE face's borrow lane),
+                                # policy- and cycle-only, no goal; absent or junk ⇒ byte-identical (⭐ LANE OFF's golden).
+                                # The bill steps yearly (`billAt`); the line pays it in every zone but the breaker's, Strike a
+                                # conduit (step 6 refinances the lane's balance in every zone it draws in; below support
+                                # `laneS` reads Coinbase's stop at today's price); coins come back from cold to the plan's
+                                # keep first, the fee included (joining coldRetrievedBtc); then the reserve (openingCashUsd,
+                                # grown monthly). Result `livingOnCredit` { endMonth, endReason, coldBackBtc } only when on
+                                # (LANE_UNPAID_EPS_USD). See engines.md § The borrow lane
                                 # BL32 (build 2b): THE STAND-DOWN — goalStandsDown read ONCE a month at step 5, after
                                 # the pay-down; steps 5 and 9 read that flag and keep nothing (both keeps told so), in
                                 # any zone, past a seizure too; Strike's release goes STRAIGHT to cold. Row

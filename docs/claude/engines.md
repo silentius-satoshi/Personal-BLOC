@@ -769,6 +769,35 @@ the words: `almanac.md` § BL14 and § BL32; the Dashboard tile: `viewer.md` § 
 
 ---
 
+## The borrow lane — `livingOnCredit` (BL42, BL55; the borrow lane's build 1; no store, no screen)
+
+Spec `pbloc-spec-borrow-lane-v1` v0.3 — the owner's calls, BL55. The FIRE face's second lane, living on credit with no
+income, is the plan's own engine with one opt-in input, `CyclingInputs.livingOnCredit` — REAL, never test-only:
+- **Absent, junk, or a run that can't host it** (the policy off, a mode other than `cycle`, a goal set — `validLane`):
+  the run is the shipped engine's, byte for byte, and the result gains no key. ⭐ LANE OFF pins a golden over 309 runs,
+  on STORED paths (`goldens/livingOnCreditLaneOff.golden.json` — the builders use Math.pow); 9 of them open in pay-down
+  with a balance on Strike, where only the lane refinances.
+- **The bill** (`billAt`): `expenses`, stepped × (1 + spendingInflation) every 12 months on the calendar
+  `stepOffsetMonths` sets — the stop month mod 12, so it is the sell lane's bill. Month 0 is the opening, as always: the
+  first bill is month 1. The face passes `income` 0 and the spending less retirement income, and starts the run at the
+  stop month (L5) — no income path.
+- **Who pays, in order:** the line, in EVERY zone (BL42) within the plan's stops (L1) — nothing while the hard breaker is
+  tripped, whose re-arm applies (L3); before it draws, coins come back from cold to Coinbase up to the plan's keep for
+  the debt after the bill and the refinance's fee (L2 — `cbKeepCollateralBtc`, joining `coldRetrievedBtc`); then the
+  cash reserve (`supportPolicy.openingCashUsd`, × reserveMonthlyFactor each month after the first — L6).
+- **Strike stays a conduit:** the line draws only what Coinbase can take, and step 6's refinance moves Strike's balance
+  to Coinbase in EVERY zone the lane draws in (the plan's own refinance runs in accumulate and hold only — with no
+  income nothing retires Strike, and kept there the bills would fill the line and spend the defense's reservoir).
+  ⚠ Below support (paused) the lane reads Coinbase's stop at TODAY's price (`laneS` = min(support, price)) in its cold
+  step, its draw and its refinance — so moving its debt onto Coinbase there never takes its LTV at today's price past
+  the stop (the reason the plan doesn't refinance there). Measured: no lane ends unpaid with coins left in cold
+  outside the breaker, and fewer seizures than reading the stop at support (spec §9).
+- **The end:** the first bill none of them pays (by `LANE_UNPAID_EPS_USD`, half a cent) or Coinbase's seizure, whichever
+  comes first, a tie the seizure — `CyclingResult.livingOnCredit` { endMonth, endReason, coldBackBtc }. The run goes on
+  to its horizon; nothing is dropped and no coin is sold for a bill (L4, BL42).
+
+---
+
 ## The FIRE engine — the sell lane (`fire.ts`, `fireBreakEven.ts`, `taxes.ts`, `cycleReplays.ts`; batch 1 build 3; no store, no screen)
 
 Spec `pbloc-spec-batch-1-v1` v0.28 §2.3 and the FIRE plan `pbloc-spec-fire-face-v1` v0.2 (its Appendix D and the batch

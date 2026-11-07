@@ -358,6 +358,21 @@ export interface CyclingInputs {
   /** Strategy (S1): `cycle` is today's behaviour byte-identical; the others never draw and never
    *  refinance — surplus retires the named leg(s) first, then buys into the Coinbase pool. */
   mode?: CyclingMode;
+  /** BL42/BL55 — OPT-IN: the FIRE face's borrow lane, living on credit with no income. Absent ⇒ every run byte for byte
+   *  as before (⭐ LANE OFF pins a golden). Valid only with the policy on, `mode` 'cycle' and no goal, else IGNORED (junk
+   *  reads as absent, as for the breaker's re-arm). The face passes `income` 0, `expenses` = the month's spending less
+   *  retirement income at the stop month's step, and starts the run at the stop month (L5). Every month:
+   *   · the bill steps × (1 + spendingInflation) every 12 months on the calendar `stepOffsetMonths` sets (the stop month
+   *     mod 12), so it is the sell lane's bill;
+   *   · the line pays it in EVERY zone (BL42), within the plan's stops (L1) — read at support, and below support at
+   *     today's price — and draws nothing while the hard breaker is tripped (L3 — its own re-arm applies). Strike stays a
+   *     conduit: step 6 refinances the lane's balance to Coinbase in every zone the lane draws in;
+   *   · before the draw, coins come back from cold to Coinbase up to the plan's keep for the debt after the bill and the
+   *     refinance's fee (L2);
+   *   · then the cash reserve (`supportPolicy.openingCashUsd` — the face's other assets), × reserveMonthlyFactor each
+   *     month after the first (L6);
+   *   · the first bill none of them pays ends the lane, never dropped (BL42) — `CyclingResult.livingOnCredit`. */
+  livingOnCredit?: { spendingInflation: number; reserveMonthlyFactor: number; stepOffsetMonths?: number };
 }
 
 export type CyclingMode = 'cycle' | 'hold' | 'clearStrike' | 'clearBoth';
@@ -509,6 +524,30 @@ export interface CyclingRow {
   goalStandDown: boolean;
 }
 
+/** BL42/BL55 — how the borrow lane ended. */
+export interface LivingOnCreditResult {
+  /** The lane's last month: its first bill the line, cold and the reserve left unpaid by at least
+   *  `LANE_UNPAID_EPS_USD`, or Coinbase's seizure, whichever comes first; null = it lasts the run. */
+  endMonth: number | null;
+  endReason: 'unpaid' | 'seized' | null;
+  /** Coins the lane moved back from cold to Coinbase (L2), in all — they join `totalColdRetrievedBtc` too. */
+  coldBackBtc: number;
+}
+
+/** BL42/BL55 — a bill short by less than half a cent is paid (float dust from the line's arithmetic). */
+export const LANE_UNPAID_EPS_USD = 0.005;
+
+/** BL42/BL55 — the lane's input when the run can host it, else null (absent, junk, the policy off, another mode, a goal). */
+function validLane(v: CyclingInputs['livingOnCredit'], policyOn: boolean, cycleMode: boolean, goalSet: boolean) {
+  if (v === undefined || v === null || typeof v !== 'object' || !policyOn || !cycleMode || goalSet) return null;
+  const { spendingInflation: i, reserveMonthlyFactor: f } = v;
+  const off = v.stepOffsetMonths ?? 0;
+  if (typeof i !== 'number' || !Number.isFinite(i) || i < 0) return null;
+  if (typeof f !== 'number' || !Number.isFinite(f) || f <= 0) return null;
+  if (typeof off !== 'number' || !Number.isInteger(off) || off < 0 || off > 11) return null;
+  return { spendingInflation: i, reserveMonthlyFactor: f, stepOffsetMonths: off };
+}
+
 export interface CyclingResult {
   rows: CyclingRow[];
   last: CyclingRow;
@@ -558,6 +597,8 @@ export interface CyclingResult {
    *  it happened (null if never). True in every mode; the faces' notice is cycle-only (C1 covers the rest). */
   totalUnfundedUsd: number;
   firstUnfundedMonth: number | null;
+  /** BL42/BL55 — present only when the run hosted the borrow lane (`CyclingInputs.livingOnCredit`). */
+  livingOnCredit?: LivingOnCreditResult;
   /** CASH moved from Strike to Coinbase across every refinance (the fee brackets key off this basis).
    *  `totalCbFees / totalRefinancedUsd` is the run's realized blended origination-fee fraction. */
   totalRefinancedUsd: number;
@@ -966,6 +1007,20 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   // BL14 — the plan's goal: policy-only and cycle-only, like the rest of the policy's rules; anything but a finite positive
   // number is no goal (`goalOf` — THE MOVE's rule too, BL32), so the engine without one is byte-identical.
   const goal: number | null = policy !== null && mode === 'cycle' ? goalOf(inputs.goalNetBtc) : null;
+  // BL42/BL55 — the borrow lane (absent ⇒ null, and every line below that reads it is the shipped engine's).
+  const lane = validLane(inputs.livingOnCredit, policy !== null, mode === 'cycle', goal !== null);
+  const laneBills: number[] | null = lane === null ? null : [];
+  if (lane !== null && laneBills !== null) {
+    let step = 1;
+    for (let k = 0; k <= months; k++) {
+      if (k > 0 && (k + lane.stepOffsetMonths) % 12 === 0) step *= 1 + lane.spendingInflation;
+      laneBills.push(expenses * step);
+    }
+  }
+  /** The month's bill: `expenses`, or the lane's stepped bill. */
+  const billAt = (k: number): number => (laneBills === null ? expenses : laneBills[k]);
+  let laneUnpaidMonth: number | null = null;
+  let laneColdBackBtc = 0;
   // Policy v2 — Morpho seizes on the way down: ADOPTED, default ON under the policy (`false` = the month-end reading,
   // TEST-ONLY). Policy-only like the rest, so the policy-off engine never reaches it.
   const seizeOnWay = policy !== null && inputs.seizeOnTheWayDown !== false;
@@ -1033,6 +1088,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   for (let m = 0; m <= months; m++) {
     const price = pricePath[m];
     const inc = incomeAt(m);
+    const bill = billAt(m);   // BL42/BL55 — `expenses` unless the lane steps it
+    if (lane !== null && m > 0) cashReserve *= lane.reserveMonthlyFactor;   // L6 — grows as the sell lane's other assets do
     let strikeDrawn = 0;
     let strikeShortfall = 0;
     let btcBoughtUsd = 0;
@@ -1086,6 +1143,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         if (state === 'payDown' && firstPayDownMonth === null) firstPayDownMonth = m;
       }
     }
+    // BL42/BL55 — where the lane reads Coinbase's stop: at support, but below support (paused) at today's price, so the
+    // lane's debt moving onto Coinbase there never takes its LTV at today's price past the plan's stop. The lane's cold
+    // step, its draw and its refinance all read it; without the lane it is `S`.
+    const laneS = lane !== null && state === 'paused' ? Math.min(S, price) : S;
     let restoreUsd = 0;
     let payDownUsd = 0;
     let strikeRepaidUsd = 0;
@@ -1139,8 +1200,19 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // The two causes of a short draw stay separate (v1.1 #1), and both are silent once Coinbase is liquidated
         // (v1.2 #9 — at HEAD a credit exhaustion needed a drawing month, which already required that).
         let policyAvailable = 0;
-        if (policy !== null && state === 'accumulate' && !atGoal) {   // BL14 — at the goal the plan borrows nothing
-          const cbRoom = Math.min(ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop), cap * cbColl * price - cbDebt);
+        // BL42/BL55 (L2) — the lane first brings coins back from cold to Coinbase, up to the plan's keep for the debt
+        // after this month's bill (Strike's balance moves to Coinbase at the next refinance), and only while it may draw.
+        // 🔴 Joins the one retrieval counter, or the cold ledger breaks.
+        if (lane !== null && policy !== null && state !== 'broken' && liqMonth === null && price > 0 && coldBtc > 0) {
+          // The debt Coinbase will carry once this bill is refinanced, its fee included (step 6 pays it on the move).
+          const owed = cbDebt + strikeBal + bill + cbBorrowFee(strikeBal + bill, cbDebt);
+          const keep = cbKeepCollateralBtc(owed, policy.bufferUsd, laneS, policy.cbStop, cap, price, false);
+          const back = Math.min(Math.max(0, keep - cbColl), coldBtc);
+          if (back > 0) { coldBtc -= back; cbColl += back; coldRetrievedBtc += back; laneColdBackBtc += back; }
+        }
+        // BL14 — at the goal the plan borrows nothing. BL42/BL55 — the lane draws in every zone but the breaker's (L3).
+        if (policy !== null && (lane !== null ? state !== 'broken' : state === 'accumulate' && !atGoal)) {
+          const cbRoom = Math.min(ceilingHeadroomUsd(cbDebt, cbColl, laneS, policy.cbStop), cap * cbColl * price - cbDebt);
           const cbAbsorb = Math.max(0, cbMaxDrawForHeadroom(cbRoom, cbDebt) - strikeBal);
           const skRoom = Math.min(strikeCreditLine, strikeColl * price * strikeMaxDrawLtv) - strikeBal;
           const skCeil = ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop);
@@ -1148,8 +1220,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           const policyCap = Math.max(0, Math.min(skCeil, cbAbsorb));   // what the policy allows
           policyAvailable = Math.min(strikeCap, policyCap);
           if (liqMonth === null) {
-            if (strikeCap < expenses && creditExhaustedMonth === null) creditExhaustedMonth = m;
-            if (policyCap < Math.min(strikeCap, expenses) && firstCeilingThrottleMonth === null) firstCeilingThrottleMonth = m;
+            if (strikeCap < bill && creditExhaustedMonth === null) creditExhaustedMonth = m;
+            if (policyCap < Math.min(strikeCap, bill) && firstCeilingThrottleMonth === null) firstCeilingThrottleMonth = m;
           }
         }
         // The cap is a COINBASE threshold — test it against CB LTV, never a blended figure. (Under the policy the
@@ -1170,8 +1242,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           const available = policy !== null
             ? policyAvailable
             : Math.max(0, Math.min(strikeCreditLine, strikeColl * price * strikeMaxDrawLtv) - strikeBal);
-          strikeDrawn = Math.min(expenses, available);
-          strikeShortfall = expenses - strikeDrawn;
+          strikeDrawn = Math.min(bill, available);
+          strikeShortfall = bill - strikeDrawn;
           // Under the policy the cause was recorded at the decision: a policy-cut draw is NOT "credit exhausted".
           if (policy === null && strikeShortfall > 0 && creditExhaustedMonth === null) creditExhaustedMonth = m;
 
@@ -1205,13 +1277,13 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           totalStrikeInterest += si;
           strikeInterestUsd += si;
           // Bills: income → cash → unfunded.
-          unfundedUsd = Math.max(0, expenses - inc);
+          unfundedUsd = Math.max(0, bill - inc);
           if (unfundedUsd > 0) {
             cashToBillsUsd = Math.min(cashReserve, unfundedUsd);
             cashReserve -= cashToBillsUsd;
             unfundedUsd -= cashToBillsUsd;
           }
-          let surplus = Math.max(0, inc - expenses);
+          let surplus = Math.max(0, inc - bill);
           // Strike's minimum, from what the bills left (paid from income) — before the restore, the pay-down or a buy.
           const minPaid = minFromIncome ? Math.min(si, surplus) : 0;
           strikeBal += si - minPaid;
@@ -1283,13 +1355,13 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           strikeInterestUsd += si;
           // Not drawing: income pays the bill itself, so only the surplus is left to buy (less the minimum, when
           // income pays it).
-          const afterBills = Math.max(0, inc - expenses);
+          const afterBills = Math.max(0, inc - bill);
           const minPaid = minFromIncome ? Math.min(si, afterBills) : 0;
           strikeBal += si - minPaid;
           strikeMinPaidUsd += minPaid;
           btcBoughtUsd = afterBills - minPaid;
           // Bills above income with the draw halted: nothing pays the difference.
-          unfundedUsd = Math.max(0, expenses - inc);
+          unfundedUsd = Math.max(0, bill - inc);
           if (price > 0) cbColl += btcBoughtUsd / price;
         }
 
@@ -1370,10 +1442,13 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // Strike; a refinance there pays a 2% fee on debt about to be repaid) or paused (the support ceiling can
         // still show room below support, and moving debt onto Coinbase there raises its LTV at today's price
         // exactly when Coinbase is most exposed).
+        // BL42/BL55 — the lane's Strike stays a conduit in every zone the lane draws in: there its balance moves to
+        // Coinbase too, under the same caps with the stop read at `laneS` (with no income nothing retires it, and kept on
+        // Strike it would fill the line and spend the defense's reservoir); never while the breaker is tripped.
         if (liqMonth === null && m % cycle === 0 && strikeBal > 0 && !atGoal   // BL14 — never at the goal (the pay-down's rule)
-          && (policy === null || state === 'accumulate' || state === 'hold')) {
+          && (policy === null || state === 'accumulate' || state === 'hold' || (lane !== null && state !== 'broken'))) {
           const headroom = policy !== null
-            ? Math.max(0, Math.min(ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop), cap * cbColl * price - cbDebt))
+            ? Math.max(0, Math.min(ceilingHeadroomUsd(cbDebt, cbColl, laneS, policy.cbStop), cap * cbColl * price - cbDebt))
             : defend
               ? Math.max(0, cap * cbColl * price - cbDebt)
               : Number.POSITIVE_INFINITY;
@@ -1631,13 +1706,13 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         totalStrikeInterest += si;
         strikeInterestUsd += si;
 
-        let cash = Math.max(0, inc - expenses);
+        let cash = Math.max(0, inc - bill);
         const minPaid = minFromIncome ? Math.min(si, cash) : 0;
         strikeBal += si - minPaid;
         strikeMinPaidUsd += minPaid;
         cash -= minPaid;
         // Only the surplus is ever funded here too, so a deficit goes unpaid (C1's deficitMode notice).
-        unfundedUsd = Math.max(0, expenses - inc);
+        unfundedUsd = Math.max(0, bill - inc);
         if (mode === 'clearStrike' || mode === 'clearBoth') {
           const pay = Math.min(cash, strikeBal);
           strikeBal -= pay;
@@ -1708,6 +1783,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     if (unfundedUsd > 0) {
       totalUnfundedUsd += unfundedUsd;
       if (firstUnfundedMonth === null) firstUnfundedMonth = m;
+      if (lane !== null && laneUnpaidMonth === null && unfundedUsd >= LANE_UNPAID_EPS_USD) laneUnpaidMonth = m;
     }
     totalRestoreUsd += restoreUsd;
     totalPayDownUsd += payDownUsd;
@@ -1778,7 +1854,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   for (let m = 1; m <= months; m++) {
     baseCbDebt *= 1 + cmr;
     // The same income path as the strategy (absent ⇒ the constant surplus, byte-identical).
-    const monthSurplus = incomePath === undefined ? surplus : Math.max(0, incomeAt(m) - expenses);
+    const monthSurplus = incomePath === undefined && lane === null ? surplus : Math.max(0, incomeAt(m) - billAt(m));
     // Strike's minimum under the SAME rule as the run (`strikeMinFromIncome`): the never-draw world still owes Strike
     // its interest. Paid from income, it comes out of the surplus first and only an unpaid part capitalises; rolled in
     // (absent ⇒ byte-identical), it all capitalises and the whole surplus buys. Otherwise the verdict compares two
@@ -1808,10 +1884,15 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     }
     if (pricePath[m] > 0) baseBtc += baseBuyUsd / pricePath[m];
     // The baseline's own gap: the part of the bill its income can't cover, with nothing else to pay it.
-    baselineUnfundedUsd += Math.max(0, expenses - incomeAt(m));
+    baselineUnfundedUsd += Math.max(0, billAt(m) - incomeAt(m));
   }
   const last = rows[rows.length - 1];
   const baselineEquity = baseBtc * last.price - (baseCbDebt + baseStrikeBal);
+  // BL42/BL55 — the lane's end: its first unpaid bill or Coinbase's seizure, whichever comes first (a tie is the seizure).
+  const laneEndMonth = laneUnpaidMonth === null ? liqMonth
+    : liqMonth === null ? laneUnpaidMonth : Math.min(laneUnpaidMonth, liqMonth);
+  const laneEndReason: LivingOnCreditResult['endReason'] = laneEndMonth === null ? null
+    : liqMonth !== null && liqMonth === laneEndMonth ? 'seized' : 'unpaid';
 
   return {
     rows, last,
@@ -1833,5 +1914,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     totalStrikeLiquidatedBtc, firstStrikeLiquidationMonth, totalRestoreUsd, totalPayDownUsd,
     openingCashUsd, cashLeftUsd: cashReserve, totalCashToBillsUsd, totalCashToCureUsd, totalStrikeCureColdBtc,
     coldRetrievedAboveSupportBtc,
+    ...(lane !== null
+      ? { livingOnCredit: { endMonth: laneEndMonth, endReason: laneEndReason, coldBackBtc: laneColdBackBtc } }
+      : {}),
   };
 }
