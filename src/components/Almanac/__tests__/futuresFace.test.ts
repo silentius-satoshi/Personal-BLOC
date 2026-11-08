@@ -316,7 +316,7 @@ describe('the wiring', () => {
   it('WALL — futuresRun is the only module that imports both the futures and the batch runner', () => {
     // A face importing pricePaths' futures and the runner itself turns this red
     const both = ['futuresRun.ts', 'UnifiedFace.tsx', 'CyclingFace.tsx', 'OwnershipFace.tsx', 'DecisionFace.tsx',
-      'futuresClient.ts', 'useFutures.ts', 'futuresView.ts', 'FuturesCard.tsx', 'futures.worker.ts']
+      'futuresClient.ts', 'useFutures.ts', 'futuresView.ts', 'FuturesCard.tsx', 'futures.worker.ts', 'FireFace.tsx', 'fireLane.ts']
       .filter((f) => { const s = read(f); return /from '[^']*pricePaths'/.test(s) && /from '[^']*monteCarlo'/.test(s); });
     expect(both, 'WALL').toEqual(['futuresRun.ts']);
   });

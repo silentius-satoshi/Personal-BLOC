@@ -7,9 +7,15 @@ import {
   anchoredLine, stressLine, dollarsNote, fireScale, fireMilestoneMonths, fireMilestoneRows, firePathName, firePathHead,
   UNDERWATER_LINE, NONE, MS_VIEWS_FIRE, MS_COLS_FIRE, STOP_CARD, MODEL_RULES, MODEL_LIMITS, MODEL_CREDITS, FIRE_DISCLAIMER,
   FIRE_TITLE, FIRE_FRAMING, REPLAYS_TITLE, REPLAYS_INFO, CHART_TITLE, CHART_OWNED, CHART_NEEDED, CHART_EMPTY, CHART_GAP_NOTE,
-  TILE_LABEL, spendHint, NOTHING_OWNED, LESS_THAN_A_MONTH, FIRE_LINES,
+  TILE_LABEL, spendHint, NOTHING_OWNED, LESS_THAN_A_MONTH, FIRE_LINES, CHART_BORROWED, BORROW_TITLE, BORROW_LEAD, BORROW_INFO,
+  BORROW_INFO_LABEL, borrowCard, laneEndMarker, lastMonthOf,
   type FireFacts, type FireRun, type HistoryState, type ReplayPathReading, type ReplayRun,
 } from '../fireFaceView';
+import { fireLaneOn, fireLaneFigures, type FireLaneFigures, type FireLaneFutures, type FireLanePlan, type FireLaneRan } from '../fireLane';
+import { buildSupportPath } from '../supportPolicyInputs';
+import { shareText, FUTURES_RUNNING } from '../futuresView';
+import { PLAN_POLICY_DEFAULTS } from '../../../lib/planPolicy';
+import type { RearmableBreakerState } from '../../../simulation/supportPolicy';
 import { FIRE_INPUT_DEFAULTS, type FireFaceInputs } from '../../../lib/fireInputs';
 import { fireTimeline, withdrawalCapacity } from '../../../simulation/fire';
 import { CAPITAL_GAINS_TAX_RATE } from '../../../simulation/taxes';
@@ -545,10 +551,165 @@ describe('⭐ the chart, the scale and the Milestones', () => {
   });
 });
 
+// ── the borrowing card — living on credit instead (BL42/BL55/BL57, build 2) ─────────────────────────────────────
+
+/** The lane's support path for START — through Math.pow, so a lane figure is only ever compared with the lane's own. */
+const SUPPORT: Record<number, number[]> = {};
+const supportFor = (n: number): number[] => (SUPPORT[n] ??= buildSupportPath(new Date(START), n));
+/** k × support: a path the lane's zones follow by construction. */
+const alongS = (k: number, n = 240): number[] => supportFor(n).slice(0, n).map((v) => v * k);
+const LANE_PLAN: FireLanePlan = {
+  plan: { ...PLAN_POLICY_DEFAULTS }, creditLine: 40_000, blocApr: 13, cbAprPct: 6, strikeLiquidationLtvPct: 85, breakerToday: null,
+};
+const laneRun = (run: FireRun, path: number[], lp: FireLanePlan = LANE_PLAN) => {
+  const lane = fireLaneOn(run.result, run.x, path, supportFor(path.length), lp, START);
+  return { lane, figures: lane.ran ? fireLaneFigures(lane, run.result, run.x, path) : null };
+};
+const NO_FUTURES = { summary: null, running: true };
+const summaryOf = (stop: number, o: Partial<FireLaneFutures> = {}): FireLaneFutures => ({
+  count: 1000, lasts: 357, unpaid: 640, seized: 3, ran: 1000, startISO: START, months: 240, stop, ...o,
+});
+/** The household the card is read on: ₿5 of its own, $5,000 a month, stopping now. */
+const LANE_FACTS: Partial<FireFacts> = { openingBtc: 5, coldBtc: 0, incomeUsd: 0, expensesUsd: 5000, inflationPct: 2 };
+const btc3 = (v: number): string => `₿${v.toFixed(3)}`;
+
+describe('⭐ the borrowing card (BL57)', () => {
+  it('⭐ BORROW WORDS — it lasts: the outcome, what you\'d own against selling, the repayment\'s tax, cold storage', () => {
+    const path = alongS(2.5);
+    const run = runOn(path, LANE_FACTS, { stopChoice: 'now' });
+    const { lane, figures } = laneRun(run, path);
+    const f = figures!;
+    expect(f.endMonth, 'BORROW WORDS premise: it lasts').toBeNull();
+    const card = borrowCard({ lane, figures: f, sell: run.result, startISO: START, futures: NO_FUTURES });
+    const at = fireMonthYear(START, 239);
+    const last = f.last!;
+    expect(card.outcome, 'BORROW WORDS lasts').toBe(`On this path, living on credit lasts through ${lastMonthOf(START, 240)}.`);
+    expect(card.tone, 'BORROW WORDS no tone for lasting').toBe('plain');
+    expect(card.lines, 'BORROW WORDS the lines').toEqual([
+      `In ${at} you'd own ${btc3(last.yoursBtc)} borrowing, against ${btc3(last.sellBtc!)} selling — ${btc3(last.yoursBtc - last.sellBtc!)} more.`,
+      `Repaying the ${btc3(last.debtBtc)} you'd owe then, by selling coins, would owe about ${btc3(last.repayTaxBtc)} in tax on this path.`,
+      `In cold storage: ${btc3(f.cold!.openBtc)} when you stop, ${btc3(f.cold!.lastBtc)} in ${at}.`,
+    ]);
+    expect(last.yoursBtc > last.sellBtc! && last.repayTaxBtc > 0.001, 'BORROW WORDS premise: more kept, a tax owed').toBe(true);
+    expect(card.share, 'BORROW WORDS the simulations, running').toBe(FUTURES_RUNNING);
+  });
+
+  it('⭐ BORROW WORDS — it ends: credit runs out (with the breaker\'s words when it holds), or Coinbase seizes; toned as a risk', () => {
+    const fall = (low: number, from: number, len: number) => alongS(1.2).map((v, m) => (m >= from && m < from + len ? (v / 1.2) * low : v));
+    const tripped: RearmableBreakerState = { monthsBelow: 3, monthsAtOrAbove: 0, broken: true, brokenMonth: -1 };
+    const cases: [string, number[], FireLanePlan, string][] = [
+      ['unpaid', fall(0.5, 24, 30), LANE_PLAN,
+        `On this path, credit runs out in ${fireMonthYear(START, 24)}: even with coins brought back from cold, your plan's limits leave no room to borrow that month's spending, and your other assets can't cover it.`],
+      ['seized', fall(0.35, 36, 12), LANE_PLAN,
+        `On this path, Coinbase seizes the coins in ${fireMonthYear(START, 36)}: the price falls through its loan's liquidation price.`],
+      ['breaker', alongS(2.5), { ...LANE_PLAN, breakerToday: tripped },
+        `On this path, credit runs out in ${fireMonthYear(START, 0)}: after a deep fall below support your plan's breaker stops new borrowing, and your other assets can't cover that month's spending.`],
+    ];
+    for (const [name, path, lp, words] of cases) {
+      const run = runOn(path, LANE_FACTS, { stopChoice: 'now' });
+      const { lane, figures } = laneRun(run, path, lp);
+      const card = borrowCard({ lane, figures, sell: run.result, startISO: START, futures: NO_FUTURES });
+      expect(card.outcome, `BORROW WORDS ${name}`).toBe(words);
+      expect([card.tone, card.lines], `BORROW WORDS ${name}: red, no kept figure after an end`).toEqual(['bad', []]);
+    }
+  });
+
+  it('⭐ BORROW WORDS — no lane, and why', () => {
+    const words = (path: number[], f: Partial<FireFacts>, i: Partial<FireFaceInputs>, lp: FireLanePlan = LANE_PLAN): string => {
+      const run = runOn(path, f, i);
+      const { lane, figures } = laneRun(run, path, lp);
+      const card = borrowCard({ lane, figures, sell: run.result, startISO: START, futures: NO_FUTURES });
+      expect([card.lines, card.share], 'BORROW WORDS no lane: nothing else').toEqual([[], null]);
+      return card.outcome;
+    };
+    const end = lastMonthOf(START, 240);
+    expect(words(flat(100_000), { ...LANE_FACTS, expensesUsd: 90_000 }, {}), 'BORROW WORDS no FI').toBe(
+      `No stop month on this path — FI doesn't come by ${end} — so there's nothing to live on yet.`);
+    expect(words(flat(100_000, 30), LANE_FACTS, { stopChoice: 'years', stopYears: 3 }), 'BORROW WORDS after the horizon').toBe(
+      `You'd stop in ${fireMonthYear(START, 36)}, after this horizon ends.`);
+    expect(words(alongS(2.5), { ...LANE_FACTS, expensesUsd: 0 }, { stopChoice: 'now' }), 'BORROW WORDS no spending').toBe('No spending to fund, so nothing to borrow.');
+    expect(words(alongS(2.5), LANE_FACTS, { stopChoice: 'now', retirementIncomeUsd: 6000 }), 'BORROW WORDS covered').toBe(
+      'Retirement income covers your spending — nothing to borrow.');
+    expect(words(alongS(2.5), { ...LANE_FACTS, openingBtc: 0 }, { stopChoice: 'now' }), 'BORROW WORDS nothing owned').toBe(
+      'No bitcoin of your own at the stop month to borrow against.');
+    expect(words(alongS(2.5), { ...LANE_FACTS, openingBtc: 1, incomeUsd: 0, expensesUsd: 30_000 }, { stopChoice: 'years', stopYears: 5, spendUsd: 5000 }),
+      'BORROW WORDS the working gap').toBe('Your savings gap runs your bitcoin out before you stop — nothing left to borrow against.');
+    expect(words(alongS(2.5), LANE_FACTS, { stopChoice: 'now' }, { ...LANE_PLAN, creditLine: 0 }), 'BORROW WORDS no line').toBe(
+      'Living on credit borrows through your Strike line, as your plan does — with no credit line set, there\'s nothing to borrow through.');
+    expect(words([100_000, 0], LANE_FACTS, { stopChoice: 'now' }), 'BORROW WORDS junk').toBe('No bitcoin price to use yet.');
+  });
+
+  it('⭐ SHARE — the simulations: how often it lasts, runs out of credit, is seized — side by side, from the held stop', () => {
+    const path = alongS(2.5);
+    const run = runOn(path, LANE_FACTS, { stopChoice: 'now' });
+    const { lane, figures } = laneRun(run, path);
+    const shareOf = (summary: FireLaneFutures | null, running = false): string | null =>
+      borrowCard({ lane, figures, sell: run.result, startISO: START, futures: { summary, running } }).share;
+    const end = lastMonthOf(START, 240);
+    expect(shareOf(summaryOf(0)), 'SHARE').toBe(
+      `Across 1,000 simulations of the price, stopping in ${fireMonthYear(START, 0)}: living on credit lasts through ${end} in `
+      + `${shareText(357, 1000)} of them, credit runs out first in ${shareText(640, 1000)}, and Coinbase seizes the coins in ${shareText(3, 1000)}.`);
+    expect(shareOf(summaryOf(0, { lasts: 1000, unpaid: 0, seized: 0 })), 'SHARE none and all').toBe(
+      `Across 1,000 simulations of the price, stopping in ${fireMonthYear(START, 0)}: living on credit lasts through ${end} in all of them, `
+      + 'credit runs out first in none, and Coinbase seizes the coins in none.');
+    expect(shareOf(summaryOf(0, { lasts: 300, unpaid: 600, seized: 0, ran: 900 })), 'SHARE no coins left at the stop').toMatch(
+      / In 10%, your savings gap runs your bitcoin out before you stop\.$/);
+    expect(shareOf(summaryOf(0), true), 'SHARE held while a newer run goes, for the same stop').toBe(shareOf(summaryOf(0)));
+    expect(shareOf(summaryOf(12)), 'SHARE another stop month\'s: running').toBe(FUTURES_RUNNING);
+    expect(shareOf(summaryOf(0, { months: 120 })), 'SHARE another horizon\'s: running').toBe(FUTURES_RUNNING);
+    expect(shareOf(null), 'SHARE none yet: running').toBe(FUTURES_RUNNING);
+  });
+
+  it('⭐ SELLING RUNS OUT — the kept line names the month selling runs out, and what borrowing still holds', () => {
+    const path = alongS(2.5);
+    const run = runOn(path, LANE_FACTS, { stopChoice: 'now' });
+    const { lane, figures } = laneRun(run, path);
+    const f: FireLaneFigures = { ...figures!, last: { ...figures!.last!, sellBtc: null } };
+    const sell = { ...run.result, runOutMonth: 150 };
+    expect(borrowCard({ lane, figures: f, sell, startISO: START, futures: NO_FUTURES }).lines[0], 'SELLING RUNS OUT').toBe(
+      `Selling runs out in ${fireMonthYear(START, 150)}; living on credit, you'd still own ${btc3(f.last!.yoursBtc)} in ${fireMonthYear(START, 239)}.`);
+    const fewer: FireLaneFigures = { ...figures!, last: { ...figures!.last!, sellBtc: figures!.last!.yoursBtc + 0.5 } };
+    expect(borrowCard({ lane, figures: fewer, sell: run.result, startISO: START, futures: NO_FUTURES }).lines[0], 'SELLING RUNS OUT fewer').toMatch(
+      /— ₿0\.500 fewer\.$/);
+  });
+
+  it('⭐ THIRD LINE — ₿ owned, borrowing: its definition, its points, the axis and the hover box; the end\'s marker (B2)', () => {
+    expect(FIRE_LINES.borrowed, 'THIRD LINE solid, the text\'s colour').toStrictEqual({ name: CHART_BORROWED, color: 'var(--text-primary)', dash: undefined });
+    const path = alongS(1.2).map((v, m) => (m >= 24 && m < 54 ? (v / 1.2) * 0.5 : v));
+    const run = runOn(path, LANE_FACTS, { stopChoice: 'years', stopYears: 1 });
+    const { lane, figures } = laneRun(run, path);
+    const f = figures!;
+    const end = f.endMonth ?? -1;
+    expect(end > 12 && end < 239, 'THIRD LINE premise: it ends inside the horizon, after the stop').toBe(true);
+    const pts = fireChartPoints(run.result, START, f.owned);
+    pts.forEach((p, m) => expect(p.borrowed, `THIRD LINE month ${m}`).toBe(m >= 12 && m <= end ? f.owned[m] : null));
+    expect(pts.filter((p) => p.borrowed !== null).length, 'THIRD LINE non-vacuous: drawn from the stop to the end').toBe(end - 12 + 1);
+    expect(fireChartPoints(run.result, START).every((p) => p.borrowed === null), 'THIRD LINE none without a lane').toBe(true);
+    const only = { ...pts[0], owned: null, needed: null, borrowed: 3 };
+    expect(fireChartDomain([only]), 'THIRD LINE on the axis').toEqual([3 * 0.8, 3 * 1.25]);
+    const rows = fireTooltipLines(pts[12], true);
+    expect(rows.map((r) => r.name), 'THIRD LINE the hover box').toEqual([CHART_OWNED, CHART_BORROWED, CHART_NEEDED, 'Portfolio, today\'s dollars', 'Price, today\'s dollars']);
+    expect(rows[1], 'THIRD LINE its row').toEqual({ name: CHART_BORROWED, value: `₿${f.owned[12]!.toFixed(3)}`, line: FIRE_LINES.borrowed });
+    expect(fireTooltipLines(pts[0], true)[1].value, 'THIRD LINE before the stop: —').toBe(NONE);
+    expect(fireTooltipLines(pts[12]).map((r) => r.name), 'THIRD LINE no row without a lane').toEqual([CHART_OWNED, CHART_NEEDED, 'Portfolio, today\'s dollars', 'Price, today\'s dollars']);
+    expect(laneEndMarker(f, 240), 'THIRD LINE the end\'s marker, its words right of the line early on').toEqual(
+      { label: 'Credit runs out', position: 'insideBottomLeft' });
+    expect(laneEndMarker({ endMonth: 200, endReason: 'seized' }, 240), 'THIRD LINE seized, late: left of the line').toEqual(
+      { label: 'Coinbase seizes', position: 'insideBottomRight' });
+    expect(laneEndMarker({ endMonth: 119, endReason: 'unpaid' }, 240)?.position, 'THIRD LINE the first half').toBe('insideBottomLeft');
+    expect(laneEndMarker({ endMonth: 120, endReason: 'unpaid' }, 240)?.position, 'THIRD LINE the second half').toBe('insideBottomRight');
+    expect([laneEndMarker(null, 240), laneEndMarker({ endMonth: null, endReason: null }, 240)], 'THIRD LINE no marker').toEqual([null, null]);
+    expect(lane.ran, 'THIRD LINE premise: a lane').toBe(true);
+    void (lane as FireLaneRan);
+  });
+});
+
 describe('⭐ the model card', () => {
-  it('⭐ LIMITS — what it leaves out says your savings and retirement income rise with inflation (the follow-ups\' F-3)', () => {
+  it('⭐ LIMITS — what it leaves out says your savings and retirement income rise with inflation (the follow-ups\' F-3), and that a repayment\'s tax uses your coins\' cost as of today (B3)', () => {
     expect(MODEL_LIMITS, 'LIMITS the incomes rise with inflation').toContain(
       'Your savings while you work, and your retirement income, rise with inflation as your spending does; a pension without cost-of-living raises would cover less each year.');
+    expect(MODEL_LIMITS, 'LIMITS the repayment\'s tax at today\'s cost').toContain(
+      'A repayment\'s tax uses your coins\' cost as of today — your own cost, or today\'s price — and leaves out what your savings buy later, which selling counts: savings that buy above that cost make it read a little high, below it a little low.');
   });
 });
 
@@ -559,6 +720,9 @@ const BANNED: [string, RegExp][] = [
   ['need to', /\bneed to\b/i], ['$0', /\$0(?![\d.,])/], ['$0.00', /\$0\.00(?!\d)/], ['₿0', /₿0(?![\d.])/],
   ['₿0.000', /₿0\.000(?!\d)/], ['0.0 years', /(?<![\d.])0\.0 years/], ['NaN', /NaN/], ['Infinity', /Infinity/],
   ['undefined', /undefined/], ['all N years', /all \d+ years/i],
+  // BL57 — the borrow lane reports the model; it never recommends borrowing or promises an outcome.
+  ['recommends', /\brecommend(s|ed|ing)?\b/i], ['better', /\bbetter\b/i], ['best', /\bbest\b/i], ['never sell', /never sell/i],
+  ['will last', /will last/i], ['risk-free', /risk[- ]free/i],
 ];
 
 describe('⭐ BANNED — no sentence or cell says what the face never says, or prints a zero', () => {
@@ -569,7 +733,9 @@ describe('⭐ BANNED — no sentence or cell says what the face never says, or p
       ...MODEL_RULES, ...MODEL_LIMITS, ...MODEL_CREDITS.map((c) => c.text), FIRE_DISCLAIMER.lead, FIRE_DISCLAIMER.body,
       spendHint(0, false), spendHint(4000, false), spendHint(4000, true), dollarsNote(0), dollarsNote(2.5),
       anchoredLine(100_000, 101_000, 0.01, true) ?? '', stressLine(0.7, 12, START) ?? '', stressLine(1.3, 0, START) ?? '',
+      BORROW_TITLE, BORROW_LEAD, BORROW_INFO, BORROW_INFO_LABEL, CHART_BORROWED, FUTURES_RUNNING,
     ];
+    let lanesRan = 0;
     const zeroCols = new Map<string, number>();
     const cells: string[] = [];
     const households: Partial<FireFacts>[] = [
@@ -619,6 +785,20 @@ describe('⭐ BANNED — no sentence or cell says what the face never says, or p
             if (scale) texts.push(scale.caption, scale.ariaLabel, ...scale.marks.map((m) => m.label), scale.you?.label ?? '');
             for (let m = 0; m < run.result.rows.length; m += 7) texts.push(inspectedLine(run.result, m, START) ?? '');
             for (const p of fireChartPoints(run.result, START)) texts.push(...fireTooltipLines(p).map((l) => `${l.name} ${l.value}`));
+            // BL57 — the borrow lane on the same path: the card, the share at the edges, the end's marker, the third line.
+            const { lane, figures } = laneRun(run, path);
+            if (lane.ran) lanesRan += 1;
+            for (const summary of lane.ran ? [null, summaryOf(lane.stop, { months: path.length }),
+              summaryOf(lane.stop, { months: path.length, lasts: 0, unpaid: 1000, seized: 0 }),
+              summaryOf(lane.stop, { months: path.length, lasts: 1000, unpaid: 0, seized: 0 }),
+              summaryOf(lane.stop, { months: path.length, ran: 950, lasts: 900, unpaid: 49, seized: 1 })] : [null]) {
+              const card = borrowCard({ lane, figures, sell: run.result, startISO: START, futures: { summary, running: false } });
+              texts.push(card.outcome, ...card.lines, card.share ?? '');
+            }
+            texts.push(laneEndMarker(figures, path.length)?.label ?? '');
+            if (figures !== null) {
+              for (const p of fireChartPoints(run.result, START, figures.owned)) texts.push(...fireTooltipLines(p, true).map((l) => `${l.name} ${l.value}`));
+            }
             for (const r of fireMilestoneRows(run.result, START)) {
               texts.push(r.year, r.turn ?? '', ...r.flags.map((x) => x.text));
               for (const cell of r.cells) {
@@ -640,6 +820,7 @@ describe('⭐ BANNED — no sentence or cell says what the face never says, or p
       expect(zeroCols.get(col) ?? 0, `BANNED reaches a zero in ${col}`).toBeGreaterThan(0);
     }
     expect(texts.length, 'BANNED non-vacuous').toBeGreaterThan(10_000);
+    expect(lanesRan, 'BANNED non-vacuous: lanes ran in the sweep').toBeGreaterThan(20);
     // F-1 — the sweep reaches the cut state: its words are among the texts it checked.
     for (const w of [CUT_TILE, CUT_CARD, `${CUT_LINE}.`]) expect(texts.some((t) => t.includes(w)), `BANNED reaches the cut state: "${w}"`).toBe(true);
   }, 60_000);

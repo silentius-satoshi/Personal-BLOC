@@ -7,6 +7,8 @@ import { fmtUSD, shownUsd } from '../../utils/format';
 import { fireTaxRateOf, FIRE_TAX_PCT_DEFAULT, type FireFaceInputs } from '../../lib/fireInputs';
 import { msYearLabel, type MsView } from './cyclingFaceView';
 import { shownBtc } from './supportPolicyView';
+import { shareText, FUTURES_RUNNING } from './futuresView';
+import type { FireLaneFigures, FireLaneFutures, FireLaneOutcome } from './fireLane';
 
 /**
  * The FIRE face's words, figures and tones (batch 1 build 4 — the FIRE plan's Run 2, the sell lane). Pure: no React, no
@@ -22,7 +24,11 @@ import { shownBtc } from './supportPolicyView';
  *    displayed path. The capacity shown is the LOWEST of the three replays', only when all three replayed and each
  *    reached its low inside the horizon (the follow-ups' F-1), in the owner's own spending (÷ the buffer, which stays on
  *    top), "at least" when the search's top binds (C7).
- * ⚠ D1 A′: no simulation sets or shows a figure here — the four Paths, the replays and the break-even only.
+ * 🔴 The borrow lane (BL42/BL55/BL57 — build 2) is fireLane's run of the plan's engine; this module only words its
+ *    figures. Its card never recommends borrowing and never promises an outcome: it reports what the model does on the
+ *    path, and on the simulations how often it lasts, runs out of credit, or is seized — side by side.
+ * ⚠ D1 A′: no simulation sets or shows a SELL-LANE figure — the four Paths, the replays and the break-even only. The
+ *    simulations show only the borrow lane's outcomes (its card's last line), from the held stop month.
  */
 
 // ── formatting: one month table, the display floors, today's dollars ─────────────────────────────────────────────
@@ -199,7 +205,8 @@ export function capacityOf(
 // ── the words ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export const FIRE_TITLE = 'FIRE';
-export const FIRE_FRAMING = 'How many years of spending your bitcoin covers if you sell it to live, on the price path you pick.';
+export const FIRE_FRAMING =
+  'How many years of spending your bitcoin covers if you sell it to live — or borrow against it instead — on the price path you pick.';
 
 /** The path's name, with the band's label handed in as data (this module imports no belief). */
 export function firePathName(p: { label: string; onTheLine: boolean; revertMonths: number }): string {
@@ -455,26 +462,138 @@ export function breakEvenLine(be: FireBreakEven, end: string): string | null {
   return null;
 }
 
+// ── the borrowing card — living on credit instead (BL42/BL55/BL57, build 2) ────────────────────────────────────────
+
+export const BORROW_TITLE = 'Living on credit instead';
+export const BORROW_INFO_LABEL = 'About living on credit';
+export const BORROW_LEAD =
+  'Instead of selling, your plan borrows each month\'s spending against the same coins from the month you stop, within '
+  + 'its own limits; your other assets pay only when it can\'t.';
+export const BORROW_INFO =
+  'From the month you stop, the same coins as selling — net of today\'s loans — are placed as your plan\'s move places '
+  + 'them, with fresh loans. Each month your plan borrows that month\'s spending through your Strike line and moves it onto '
+  + 'Coinbase, within its limits at support — read at the day\'s price below support — and borrows nothing new while its '
+  + 'breaker holds after a deep fall. When the line needs room, coins come back from cold storage. Your other assets pay '
+  + 'only when the line can\'t, and grow as they do when you sell. It ends at the first month\'s spending none of them can '
+  + 'pay, or when Coinbase seizes the coins. What you own is your coins less what you owe, at the month\'s price, untaxed — '
+  + 'as on every face.';
+
+export interface BorrowCardView {
+  /** The lane on this path, or why there's none — one sentence. */
+  outcome: string;
+  /** 'bad' when credit runs out or Coinbase seizes; never 'good' — the card tones a risk, never an outcome to aim for. */
+  tone: 'plain' | 'bad';
+  /** When it lasts: what you'd own against selling, the tax a repayment would owe (B3), cold storage. */
+  lines: string[];
+  /** The simulations — running, or how often it lasts, runs out of credit and is seized; null with no lane. */
+  share: string | null;
+}
+
+/** A count with thousands commas — plain string arithmetic, never ICU (the face's rule for every figure it prints). */
+const fmtCount = (n: number): string => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+function laneNoneWords(why: Exclude<FireLaneOutcome, { ran: true }>['why'], r: FireResult, startISO: string): string {
+  const end = lastMonthOf(startISO, r.months);
+  switch (why) {
+    case 'noStop':
+      return r.stopMonth === null
+        ? `No stop month on this path — FI doesn't come by ${end} — so there's nothing to live on yet.`
+        : `You'd stop in ${fireMonthYear(startISO, r.stopMonth)}, after this horizon ends.`;
+    case 'noSpending': return 'No spending to fund, so nothing to borrow.';
+    case 'covered': return 'Retirement income covers your spending — nothing to borrow.';
+    case 'nothingOwned':
+      return r.runsOutWhileWorking
+        ? 'Your savings gap runs your bitcoin out before you stop — nothing left to borrow against.'
+        : 'No bitcoin of your own at the stop month to borrow against.';
+    case 'noLine':
+      return 'Living on credit borrows through your Strike line, as your plan does — with no credit line set, there\'s '
+        + 'nothing to borrow through.';
+    default: return invalidWords(r.invalidReason);
+  }
+}
+
+/** The card's words: the outcome on the displayed path, the lines when it lasts, and the simulations' line. */
+export function borrowCard(a: {
+  lane: FireLaneOutcome; figures: FireLaneFigures | null; sell: FireResult; startISO: string;
+  futures: { summary: FireLaneFutures | null; running: boolean };
+}): BorrowCardView {
+  const r = a.sell;
+  const end = lastMonthOf(a.startISO, r.months);
+  if (!a.lane.ran) return { outcome: laneNoneWords(a.lane.why, r, a.startISO), tone: 'plain', lines: [], share: null };
+  const f = a.figures;
+  if (f === null) return { outcome: invalidWords(null), tone: 'plain', lines: [], share: null };
+  const when = f.endMonth === null ? null : fireMonthYear(a.startISO, f.endMonth);
+  const outcome = when === null ? `On this path, living on credit lasts through ${end}.`
+    : f.endReason === 'seized' ? `On this path, Coinbase seizes the coins in ${when}: the price falls through its loan's liquidation price.`
+      : f.endInBreaker
+        ? `On this path, credit runs out in ${when}: after a deep fall below support your plan's breaker stops new borrowing, `
+          + 'and your other assets can\'t cover that month\'s spending.'
+        : `On this path, credit runs out in ${when}: even with coins brought back from cold, your plan's limits leave no room `
+          + 'to borrow that month\'s spending, and your other assets can\'t cover it.';
+  const lines: string[] = [];
+  if (f.last !== null) {
+    const at = fireMonthYear(a.startISO, f.last.m);
+    const yours = btcOrNull(f.last.yoursBtc);
+    if (f.last.sellBtc === null) {
+      const out = r.runOutMonth === null ? null : fireMonthYear(a.startISO, r.runOutMonth);
+      lines.push(`${out === null ? 'Selling runs out' : `Selling runs out in ${out}`}; living on credit, you'd still own `
+        + `${yours ?? 'no bitcoin of your own'} in ${at}.`);
+    } else {
+      const sold = btcOrNull(f.last.sellBtc);
+      const gap = btcOrNull(Math.abs(f.last.yoursBtc - f.last.sellBtc));
+      lines.push(`In ${at} you'd own ${yours ?? 'no bitcoin of your own'} borrowing, against `
+        + `${sold === null ? 'none left' : sold} selling — ${gap === null ? 'about the same' : `${gap} ${f.last.yoursBtc > f.last.sellBtc ? 'more' : 'fewer'}`}.`);
+    }
+    const owed = btcOrNull(f.last.debtBtc);
+    if (owed !== null) {
+      const tax = btcOrNull(f.last.repayTaxBtc);
+      lines.push(tax === null
+        ? `Repaying the ${owed} you'd owe then, by selling coins, would owe no tax on this path: the price is at or under your cost.`
+        : `Repaying the ${owed} you'd owe then, by selling coins, would owe about ${tax} in tax on this path.`);
+    }
+  }
+  if (f.cold !== null && f.last !== null) {
+    const open = btcOrNull(f.cold.openBtc), last = btcOrNull(f.cold.lastBtc);
+    const at = fireMonthYear(a.startISO, f.last.m);
+    if (open !== null || last !== null) lines.push(`In cold storage: ${open ?? 'none'} when you stop, ${last === null ? `none by ${at}` : `${last} in ${at}`}.`);
+  }
+  const s = a.futures.summary;
+  let share: string;
+  if (s === null || s.stop !== f.stop || s.months !== r.months || !(s.count > 0)) {
+    share = FUTURES_RUNNING;
+  } else {
+    const n = s.count;
+    share = `Across ${fmtCount(n)} simulations of the price, stopping in ${fireMonthYear(a.startISO, s.stop)}: living on credit `
+      + `lasts through ${end} in ${shareText(s.lasts, n)} of them, credit runs out first in ${shareText(s.unpaid, n)}, and `
+      + `Coinbase seizes the coins in ${shareText(s.seized, n)}.`
+      + (s.ran < n ? ` In ${shareText(n - s.ran, n)}, your savings gap runs your bitcoin out before you stop.` : '');
+  }
+  return { outcome, tone: f.endMonth === null ? 'plain' : 'bad', lines, share };
+}
+
 // ── the chart ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export const CHART_TITLE = '₿ you own and ₿ you\'d need';
 export const CHART_OWNED = '₿ owned, selling';
 export const CHART_NEEDED = '₿ needed';
+export const CHART_BORROWED = '₿ owned, borrowing';
 export const CHART_EMPTY = 'Nothing to draw on this path.';
 export const CHART_GAP_NOTE =
   'Where a line breaks there is nothing to draw: no bitcoin owned, or none needed because your other assets cover the need.';
 
-/** One of the chart's two lines: its name, its colour and its SVG dash (`undefined` — a solid line). */
+/** One of the chart's lines: its name, its colour and its SVG dash (`undefined` — a solid line). */
 export interface FireLine { name: string; color: string; dash: string | undefined }
 /**
- * The chart's two lines, by their point's field — ONE definition of each one's colour and dash, which the chart's `<Line>`s,
+ * The chart's lines, by their point's field — ONE definition of each one's colour and dash, which the chart's `<Line>`s,
  * the legend above it, the hover box and the Milestones' ₿ owned cell all read, so they can never disagree (the Power Law
  * chart's PL_SERIES; batch 1 build 4b — BL41). ₿ needed's colour is the hover box's own text colour, so there its dashed
- * mark is what tells it apart.
+ * mark is what tells it apart. The borrow lane's (build 2) is the text's own colour, solid and as heavy as ₿ owned's — a
+ * colour that means neither bitcoin nor a venue, and no tone: the chart compares the two lanes and favours neither.
  */
-export const FIRE_LINES: Readonly<Record<'owned' | 'needed', FireLine>> = {
+export const FIRE_LINES: Readonly<Record<'owned' | 'needed' | 'borrowed', FireLine>> = {
   owned: { name: CHART_OWNED, color: 'var(--btc)', dash: undefined },
   needed: { name: CHART_NEEDED, color: 'var(--text-secondary)', dash: '5 4' },
+  borrowed: { name: CHART_BORROWED, color: 'var(--text-primary)', dash: undefined },
 };
 
 export interface FirePoint {
@@ -483,28 +602,34 @@ export interface FirePoint {
   /** null = a gap, never 0 — a zero would draw to the floor of the log axis. */
   owned: number | null;
   needed: number | null;
+  /** ₿ owned, borrowing — null before the stop month, after the lane's end (B2), with no lane, or under the floor. */
+  borrowed: number | null;
   /** The tooltip's other lines, today's dollars. */
   portfolio: string;
   price: string;
 }
 
-/** One point a month; a value under the display floor is a gap (the Decision chart's rule). */
-export function fireChartPoints(r: FireResult, startISO: string): FirePoint[] {
+/** One point a month; a value under the display floor is a gap (the Decision chart's rule). `borrowed` is the lane's
+ *  ₿ owned at each month (`FireLaneFigures.owned`), or null with no lane. */
+export function fireChartPoints(r: FireResult, startISO: string, borrowed: readonly (number | null)[] | null = null): FirePoint[] {
   return r.rows.map((row) => ({
     m: row.m,
     label: fireMonthYear(startISO, row.m),
     owned: shownBtc(row.btc) ? row.btc : null,
     needed: shownBtc(row.needBtc) ? row.needBtc : null,
+    borrowed: borrowed === null ? null : laneValue(borrowed[row.m]),
     portfolio: usdOrNull(todayUsd(row.portfolioUsd, row.inflationStep)) ?? NONE,
     price: usdOrNull(todayUsd(row.priceUsd, row.inflationStep)) ?? NONE,
   }));
 }
 
+const laneValue = (v: number | null | undefined): number | null => (v !== null && v !== undefined && shownBtc(v) ? v : null);
+
 /** The log axis's domain: every plotted value, 20% below the lowest and 25% above the highest; null with nothing to draw. */
 export function fireChartDomain(points: readonly FirePoint[]): [number, number] | null {
   let lo = Number.POSITIVE_INFINITY, hi = 0;
   for (const p of points) {
-    for (const v of [p.owned, p.needed]) {
+    for (const v of [p.owned, p.needed, p.borrowed]) {
       if (v === null) continue;
       if (v < lo) lo = v;
       if (v > hi) hi = v;
@@ -513,14 +638,16 @@ export function fireChartDomain(points: readonly FirePoint[]): [number, number] 
   return Number.isFinite(lo) && hi > 0 ? [lo * 0.8, hi * 1.25] : null;
 }
 
-/** True when either line has a gap inside the horizon — the gap note shows. */
+/** True when either of the two sell-lane lines has a gap inside the horizon — the gap note shows. The borrow lane's line
+ *  starts at the stop month and stops at its end by design (B2): never a gap. */
 export const chartHasGap = (points: readonly FirePoint[]): boolean => points.some((p) => p.owned === null || p.needed === null);
 
-/** The tooltip's lines for one point — "—" for a zero. The two ₿ rows are the chart's lines and say which, for their
- *  colour and their mark; the two dollar rows are no line. */
-export function fireTooltipLines(p: FirePoint): { name: string; value: string; line: FireLine | null }[] {
+/** The tooltip's lines for one point — "—" for a zero. The ₿ rows are the chart's lines and say which, for their colour
+ *  and their mark; the two dollar rows are no line. With a lane, its row follows ₿ owned, selling ("—" outside it). */
+export function fireTooltipLines(p: FirePoint, withLane = false): { name: string; value: string; line: FireLine | null }[] {
   return [
     { name: FIRE_LINES.owned.name, value: p.owned === null ? NONE : `₿${p.owned.toFixed(3)}`, line: FIRE_LINES.owned },
+    ...(withLane ? [{ name: FIRE_LINES.borrowed.name, value: p.borrowed === null ? NONE : `₿${p.borrowed.toFixed(3)}`, line: FIRE_LINES.borrowed }] : []),
     { name: FIRE_LINES.needed.name, value: p.needed === null ? NONE : `₿${p.needed.toFixed(3)}`, line: FIRE_LINES.needed },
     { name: 'Portfolio, today\'s dollars', value: p.portfolio, line: null },
     { name: 'Price, today\'s dollars', value: p.price, line: null },
@@ -529,6 +656,19 @@ export function fireTooltipLines(p: FirePoint): { name: string; value: string; l
 
 /** The stop month's marker on the chart. */
 export const stopMarkerLabel = (stop: number | null, months: number): string | null => (stop !== null && stop < months ? 'Stop' : null);
+
+/** B2 — the borrow lane's end on the chart, where its line stops: its words, set on the side of the line with the room
+ *  (right of it in the horizon's first half, left of it in the second), so they never run off the plot; null when it
+ *  lasts the horizon. */
+export function laneEndMarker(
+  f: Pick<FireLaneFigures, 'endMonth' | 'endReason'> | null, months: number,
+): { label: string; position: 'insideBottomLeft' | 'insideBottomRight' } | null {
+  if (f === null || f.endMonth === null) return null;
+  return {
+    label: f.endReason === 'seized' ? 'Coinbase seizes' : 'Credit runs out',
+    position: f.endMonth < months / 2 ? 'insideBottomLeft' : 'insideBottomRight',
+  };
+}
 
 /** The time axis: a tick every few years, from month 0 — at most seven. */
 export function fireYearTicks(months: number): number[] {
@@ -753,6 +893,9 @@ export const MODEL_RULES: readonly string[] = [
   'Inflation steps your spending and the need up once a year; every dollar here is shown in today\'s dollars.',
   'A replay follows a past bear\'s fall from its top, month by month, from the day you stop working, then the trend from wherever it ended.',
   'The break-even is the lowest steady yearly growth that still lasts the horizon — a yardstick for the belief behind a withdrawal rate, never a path.',
+  'Living on credit starts at the month you stop, from the same coins as selling: your plan places them as its move does, with fresh loans, borrows each month\'s spending within its limits at support — read at the day\'s price below support — and borrows nothing new while its breaker holds after a deep fall. Coins come back from cold storage when the line needs room; your other assets pay only after that.',
+  'It ends at the first month\'s spending none of these can pay, or when Coinbase seizes the coins, and its line stops there. ₿ owned, borrowing, is your coins less what you owe at each month\'s price, untaxed; the card names the tax a repayment by selling would owe.',
+  'The simulations run living on credit from the same stop month on 1,000 simulated prices — harsher than the four paths, on purpose — and count how often it lasts, runs out of credit, or is seized. They set no figure for selling.',
 ];
 export const MODEL_LIMITS: readonly string[] = [
   'The tax is on bitcoin sold only — other assets are drawn untaxed.',
@@ -761,6 +904,8 @@ export const MODEL_LIMITS: readonly string[] = [
   'Retirement income beyond your spending isn\'t invested.',
   'Your savings while you work, and your retirement income, rise with inflation as your spending does; a pension without cost-of-living raises would cover less each year.',
   'If your loans outweigh your coins, any debt your other assets can\'t cover is left out.',
+  'Living on credit keeps today\'s interest rates and your Strike line for the whole run, and opens its loans fresh; its plan\'s breaker starts fresh too, unless you stop now.',
+  'A repayment\'s tax uses your coins\' cost as of today — your own cost, or today\'s price — and leaves out what your savings buy later, which selling counts: savings that buy above that cost make it read a little high, below it a little low.',
 ];
 export const MODEL_CREDITS = [
   { text: 'The approach follows FIRE BTC\'s Compass', href: 'https://calc.firebtc.io/' },

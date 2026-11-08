@@ -17,11 +17,10 @@ the landing as its front door, and moves the origin-destructive sandbox to its O
 
 Unset flags → dead branches, tree-shaken. `vercel.json` rewrites every path to index.html.
 
-**The FIRE face is off the public deploy and the sandbox** (batch 1 build 4b — BL42): its tile (its pill before the grid,
-BL45) shows only where neither
-`VITE_LANDING` nor `VITE_DEMO` is '1' — the owner's deploy and dev — until its borrow lane ships, so the public app never
-sees a sell-only face (F6). One pure rule, `fireFaceOnDeploy` (`src/lib/fireDeploy.ts`), read once in `AlmanacView.tsx`
-(`almanac.md` § FIRE face). Hidden and unreachable there, not tree-shaken: the face's code stays in every bundle.
+**The FIRE face is on every deploy** since its borrow lane's build 2 (B4, BL57): the public app and the sandbox get it
+with living on credit beside selling. Build 4b's gate (BL42 — one pure rule, `fireFaceOnDeploy` in `src/lib/fireDeploy.ts`,
+read once in `AlmanacView.tsx`) kept the sell lane alone off them until then, so the public app never saw a sell-only face
+(F6); it is gone, and no deploy reads a flag for this face (`almanac.md` § FIRE face). A viewer still has none (BL48).
 
 **Landing gating (`App.tsx`).** `VITE_LANDING === '1' && pathname === '/' && !onboarded` → `LandingPage`, else
 `AppShell`. `onboarded` is read DIRECTLY from the standalone GATE key `localStorage['personal-bloc-onboarded'] === '1'`

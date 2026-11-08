@@ -779,13 +779,6 @@ src/
                                 # fireTaxRateOf. ⚠ The face memoises the read on the stored object, never once a render.
                                 # See store.md § FIRE's own inputs. Tested in src/lib/__tests__/fireInputs.test.ts
                                 # (DEFAULTS, READ RULE) and src/store/__tests__/fireInputsStore.test.ts
-    fireDeploy.ts               # Batch 1 build 4b (BL42) — where the FIRE face shows: PURE, ZERO imports.
-                                # fireFaceOnDeploy({ VITE_LANDING, VITE_DEMO }) — true only where neither flag is '1': the
-                                # owner's deploy and dev, never the public deploy or the sandbox, until the borrow lane
-                                # ships (F6). The hub reads the two flags once, at module scope, into FIRE_ON_THIS_DEPLOY;
-                                # the rule takes them as data, so it is tested without Vite. See almanac.md § FIRE face.
-                                # Tested in src/lib/__tests__/fireDeploy.test.ts (DEPLOY RULE) and
-                                # src/components/Almanac/__tests__/fireWiring.test.ts (DEPLOY GATE)
     appUpdate.ts                # BL51 — app updates (spec pbloc-spec-app-updates-v1): which build is live, asked of
                                 # /version.json (the build's stamp, { sha, time } — vite.config.ts's versionFile();
                                 # never precached) against the bundle's own (ownStamp: __BUILD_SHA__, __BUILD_TIME__) —
@@ -1044,8 +1037,9 @@ src/
     Almanac/                    # (the faces are documented in § Almanac / CycleClock; listed here: Run 2's files)
       almanacGrid.ts            # BL45 — the grid's ONE catalogue (pure, no store, no env): FACE_TILES (key, name, group,
                                 # gate) in the grid's order, FACE_GROUPS ("Your plan", "Bitcoin"), faceShown, gridGroups,
-                                # and the Face union. The hub passes its four gates in (§ The Almanac grid; BL48 adds
-                                # `viewer` — FIRE's tile is `ownerOnly` — and VIEWER_WHAT_IF_NOTE / viewerWhatIfNoteShown,
+                                # and the Face union. The hub passes its three gates in (§ The Almanac grid; BL48 adds
+                                # `viewer` — FIRE's tile is `ownerOnly`; BL57 B4 drops build 4b's FIRE deploy gate — and
+                                # VIEWER_WHAT_IF_NOTE / viewerWhatIfNoteShown,
                                 # the note a viewer reads over a plan face). BL46's A:
                                 # ALMANAC_LIST ('(min-width: 1200px)' — from there the hub draws the same groups as a
                                 # list beside the open face) and firstListFace (the face the list opens on: the last open
@@ -1127,8 +1121,9 @@ src/
                                 # column is, Z12) · ON_SUPPORT_NOTE (the legend note). Policy v2 Run B: the cliff line
                                 # takes the dust floor (no "$0") and fmtBelowPct (F11), and a private alertLine follows it
                                 # (B3: the price alert at the owner's trigger, or "at or past your t% trigger"; never on
-                                # a sliver — R11) · seedsFromMove(seeded, PolicyRunContext) (B4 — the face's seeding
-                                # gate; asks supportPolicyResolution)
+                                # a sliver — R11) · seedsFromMove — re-exported from planRun.ts, where it lives since the
+                                # borrow lane's build 2 (BL57: the futures worker composes through planRun and never loads
+                                # this module)
                                 # The plan of record (Run 2, §4.7): PLAN_OF_RECORD_LINE ("This is your plan of record's
                                 # move this month — the support policy, with your settings.") / PLAN_WHAT_IF_LINE ("A
                                 # what-if — your plan is unchanged.") / planOfRecordLine(whatIf) — MoveCardContext gains
@@ -1179,11 +1174,16 @@ src/
                                 # + pathOnSupport(path, support, months) — the legend note's test: sameSeries over
                                 # months 1…horizon, bit for bit (month 0 is spot), never a tolerance
       FireFace.tsx              # Batch 1 build 4 — the THIRTEENTH face, FIRE (its tile last in Your plan since BL45; ◎
-                                # FIRE, its pill appended last, before) — on the owner's deploy and
-                                # in dev only (build 4b: the hub's FIRE_ON_THIS_DEPLOY, lib/fireDeploy) (+ .module.css:
-                                # composes CyclingFace's classes only, plus the doubled .faceDocked pair): selling to live.
-                                # The chart's two <Line>s, the legend and FireTip read FIRE_LINES (LineMark — a line's
-                                # mark, composed .lineMark / .lineMarkDash; build 4b, BL41).
+                                # FIRE, its pill appended last, before) — on every deploy since the borrow lane's build 2
+                                # (B4, BL57; build 4b's gate is gone) (+ .module.css: composes CyclingFace's classes only,
+                                # plus the doubled .faceDocked pair): selling to live — or borrowing against it instead.
+                                # The chart's three <Line>s, the legend (each item one line — .legendItem) and FireTip read
+                                # FIRE_LINES (LineMark — a line's mark, composed .lineMark / .lineMarkDash; build 4b, BL41).
+                                # The borrow lane (build 2): usePlanPolicy, the store's blocApr / cbAprPct / creditLine /
+                                # strikeLiquidationLtvPct, buildSupportPath(startDate, months), today's breaker
+                                # (breakerFromHistory) → fireLaneOn on the displayed path → fireLaneFigures (the third
+                                # line, its end's marker) → borrowCard ("Living on credit instead", after the replays); its
+                                # ONE useFutures( run — a FireLaneFuturesJob, the stop month held, the anchor on the grid.
                                 # The four faces' position reads and the plan's income / expenses; the path from the held
                                 # anchor, .slice(0, months); the inputs read ONCE a change (useMemo on s.fireInputs); the
                                 # history from usePowerLawData as it is. The chart, six tiles, "Stop working" (eleven
@@ -1204,7 +1204,25 @@ src/
                                 # fireTooltipLines, each row's `line` or null; build 4b) · fireScale · the Milestones
                                 # (fireMilestoneMonths: m < n over the rows' own count; MS_VIEWS_FIRE) · the model card ·
                                 # fireMonthYear (one fixed month table, never ICU). ⚠ Zero is never printed: usdOrNull /
-                                # btcOrNull / yearsOrNull → "—". Tested in __tests__/fireFaceView.test.ts (BANNED sweeps it)
+                                # btcOrNull / yearsOrNull → "—". The borrow lane's words (build 2, BL57): FIRE_LINES.borrowed
+                                # (solid --text-primary), fireChartPoints' `borrowed`, the hover box's row (withLane),
+                                # laneEndMarker ("Credit runs out" / "Coinbase seizes", on the side with room) and
+                                # borrowCard — BORROW_TITLE / LEAD / INFO, the outcome (red when it ends, never green), the
+                                # kept, tax and cold lines when it lasts, the simulations' line (futuresView's shareText;
+                                # fmtCount, never ICU). Tested in __tests__/fireFaceView.test.ts (BANNED sweeps it)
+      fireLane.ts               # The borrow lane, build 2 (BL42/BL55/BL57) — PURE (no React, no store, no clock, no belief
+                                # but buildSupportPath): ONE run of the plan's engine with build 1's livingOnCredit, at the
+                                # sell lane's stop month. fireLaneInputs (the sell lane's ₿ at the stop month's start through
+                                # THE MOVE — placementInputOf / placementPlan / seedsFromMove / engineInputsOf — fresh loans;
+                                # B1: the stop month repeated at the front, lane month k ↔ face month stop + k − 1
+                                # (faceMonthOfLane), the base bill the month before's, stepOffsetMonths (stop − 1) mod 12; the
+                                # sell lane's other assets as openingCashUsd; the owner's plan and terms; today's breaker
+                                # only at stop 0) or FireLaneNone · fireLaneOn → the engine's livingOnCredit end ·
+                                # fireLaneFigures (₿ owned, borrowing a month — three-argument deriveOwnership on the row
+                                # carried in, null before the stop and after the end (B2); at the last month ₿ yours vs the
+                                # sell lane's, the debt, the repayment's tax by sellToNet (B3); cold; endInBreaker) ·
+                                # fireLaneFutures(spec, paths) — each future's sell lane then lane, the stop held: lasts /
+                                # unpaid / seized / ran. Tested in __tests__/fireLane.test.ts
       fireReplays.ts            # Batch 1 build 4 (D-3) — the replays' one belief crossing (imports cycleReplays):
                                 # fireReplayReadings (= deriveReplays) · replayPathsAt(path, startDate, stop, readings) —
                                 # each replay spliced at the face's own stop, with its low (troughMonth, months after the
@@ -1244,24 +1262,30 @@ src/
                                 # pricePaths AND monteCarlo, and a source test (W WALL) pins that nothing else does.
                                 # FuturesJob { inputs (the face's engineInputs, no path), anchorPrice, startISO, months,
                                 # count?, seed? } — plain data, it crosses postMessage as is. futuresFor(job) = runFutures over
-                                # priceFutures, with the job's startISO (Run 2). A ONE-ENTRY CACHE of the drawn futures,
+                                # priceFutures, with the job's startISO (Run 2). BL57: FireLaneFuturesJob (kind 'fireLane' —
+                                # the FIRE face's borrow lane, fireLane's spec) beside it; AnyFuturesJob / AnyFuturesResult /
+                                # FuturesResultOf; futuresFor dispatches by kind (overloads) to fireLaneFutures on the SAME
+                                # drawn futures. A ONE-ENTRY CACHE of the drawn futures,
                                 # keyed by anchor · start · horizon · count · seed and NEVER by the inputs: a setting re-runs
                                 # the engine on the SAME futures (L-I6;
                                 # the worker at 240 months: 128–140 ms for a setting vs 161–184 for new futures).
                                 # futuresAnchor(price) = the face's anchor on a 1% grid in log price (≤ 0.501% off; junk
                                 # passes) — R4: a live quote moves the futures only at a grid line (measured on all four faces:
                                 # one run per crossing; 8 runs over 9 quotes 0.15% apart without the grid)
-      futures.worker.ts         # The futures worker: futuresFor off the main thread. The crypto worker's pattern — `declare
+      futures.worker.ts         # The futures worker: futuresFor off the main thread, either kind of job (AnyFuturesJob —
+                                # BL57). The crypto worker's pattern — `declare
                                 # const self: DedicatedWorkerGlobalScope`, a local message contract, compiled by
                                 # tsconfig.worker.json and excluded from tsconfig.app.json; a precache entry (14 at c7f709e)
-      futuresClient.ts          # runFuturesJob(job) → Promise<FuturesSummary | null> (null = superseded). The crypto client's
+      futuresClient.ts          # runFuturesJob(job) → Promise<FuturesResultOf<job> | null> (null = superseded; either kind —
+                                # BL57). The crypto client's
                                 # pattern: one lazy module worker, `new Worker(new URL('./futures.worker.ts',
                                 # import.meta.url), { type: 'module' })` (precache-safe); a `typeof Worker` check; a worker
                                 # error / message error / 20 s timeout → in-thread for the session, through the SAME
                                 # futuresFor (worst case: slower, never missing or different — L-I7). LATEST ONLY (R6): one
                                 # job in the worker, one waiting; a newer request replaces the waiting one, which settles
                                 # null. resetFuturesClientForTests(factory?)
-      useFutures.ts             # useFutures(job | null) → { summary, running }. ⚠ Keyed by the job's CONTENT (JSON.stringify),
+      useFutures.ts             # useFutures(job | null) → { summary, running } — the summary of the job's kind (BL57: the FIRE
+                                # face's lane job too). ⚠ Keyed by the job's CONTENT (JSON.stringify),
                                 # never its identity: a face rebuilds the job on every price tick (its anchor is a dep), and
                                 # an identity key re-ran the futures on each one (measured: 8 runs instead of 1 over 9 live
                                 # quotes). Runs after FUTURES_DEBOUNCE_MS (300) of stillness; a stale result is dropped; the
@@ -1342,7 +1366,10 @@ src/
                                 # engine constants — was the Decision face's ENGINE_CONTEXT) + PLAN_COLD_BUFFER_PCT 30 /
                                 # PLAN_CYCLE_MONTHS 1 / PLAN_RUN_MONTHS 12 · placementInputOf / engineInputsOf — THE MOVE's
                                 # input and the engine's inputs; the Decision face and planMonthRun build through BOTH, so
-                                # the face and THIS MONTH can't disagree (one copy, not two compared — invariant 2) ·
+                                # the face and THIS MONTH can't disagree (one copy, not two compared — invariant 2) — and
+                                # the FIRE face's borrow lane (fireLane.ts, BL57) · seedsFromMove(seeded, PolicyRunContext)
+                                # (THE MOVE's seeding gate; asks supportPolicyResolution — moved here from decisionView.ts,
+                                # which re-exports it, so the futures worker never loads the Decision view) ·
                                 # planCbCollateralOf / planCbLoanBalanceOf (D-R2-4 — Coinbase as every plan screen reads it:
                                 # the owner's only with the loan switched on; off, none — never the seed's $60,000 on
                                 # 1.48 ₿; the ONLY deriveCbCollateral caller under Almanac / SimpleMode / Daily — GATE) ·

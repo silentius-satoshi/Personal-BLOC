@@ -2418,21 +2418,18 @@ spending the owner's bitcoin and other assets fund if the owner sells to live, o
 the batch spec's §1 answers override its body); the plan `Claude outputs/batch-1/build-4-plan.md`, with the go and the
 fix-up (v0.35) appended. Build 4b — the deploy gate and the hover box (v0.39–v0.40 §2.3, BL42 and BL41): the plan
 `Claude outputs/batch-1/build-4b-plan.md`, with the go appended.
-It reads build 3's engine as built (`docs/claude/engines.md` § The FIRE engine — no engine module changed). The sell lane
-only: the borrow lane is its own item after Batch 1 (BL42) — its engine change first, since today's engine drops a bill
-income can't pay outside the buy zone (spec v0.38) — and until it ships the face is hidden on the public deploy and the
-sandbox (F6; Identity, below). No simulation (D1 A′), no chart zoom, no committed price series. Its inputs are one
-device-local key (`docs/claude/store.md` § FIRE's own inputs).
+It reads build 3's engine as built (`docs/claude/engines.md` § The FIRE engine — no engine module changed). The sell lane,
+and beside it — since the borrow lane's build 2 (BL42/BL55/BL57; spec `pbloc-spec-borrow-lane-v1` §11 and §13) — living
+on credit instead: the plan's own engine with build 1's `livingOnCredit` on, composed in `fireLane.ts` (§ The borrow
+lane, below). On every deploy since build 2 (B4; Identity, below). No simulation sets a sell-lane figure (D1 A′): the
+simulations show only the borrow lane's outcomes, in the face's one futures run. No chart zoom, no committed price
+series. Its inputs are one device-local key (`docs/claude/store.md` § FIRE's own inputs).
 
 - **Identity.** Key `fire`, its tile **last in Your plan** (BL45; before the grid, its pill appended LAST, after
-  Decision's) — **on the owner's deploy and in dev only** (build 4b, BL42): the tile shows only where neither `VITE_LANDING` nor `VITE_DEMO` is
-  '1', so never on the public deploy or the sandbox (`commercialization.md`'s table), and dev — so the e2e — keeps it.
-  One pure rule, `fireFaceOnDeploy` (`src/lib/fireDeploy.ts`, zero imports); the hub reads the two flags once, at module
-  scope, into `FIRE_ON_THIS_DEPLOY`, which it passes to `almanacGrid.ts`'s rule — the FIRE tile's gate is `'fireDeploy'`,
-  never `hasCbLoan` — and the hub's one fallback effect (`faceShown`) reads it too, so the face is unreachable where its
-  tile is hidden. The face's code still ships
-  in every bundle: hidden, not tree-shaken (the C8 branch below is unconditional). Never lift the gate before the
-  borrow lane ships.
+  Decision's) — **on every deploy** since the borrow lane's build 2 (B4, BL57): the owner's, the public app and the
+  sandbox, like every other face. Build 4b's deploy gate (BL42 — `lib/fireDeploy.ts`'s `fireFaceOnDeploy`, the hub's
+  `FIRE_ON_THIS_DEPLOY` and the tile's `'fireDeploy'` gate) kept the sell lane alone off the public app and the sandbox
+  until the lane shipped (F6); it is gone, and the hub reads no env. A viewer still has none (BL48 — `ownerOnly`).
   ⚠ `renderFace` has an explicit `if (f === 'fire')` branch ABOVE the Converter fallback (the C8 trap); the hub's
   header counts THIRTEEN faces.
 - **The files.** `FireFace.tsx` composes: every word, figure and tone comes from `fireFaceView.ts`, and the face writes
@@ -2464,8 +2461,8 @@ device-local key (`docs/claude/store.md` § FIRE's own inputs).
     `powerLaw` nor `controlDockView`.
   - **The history** — `usePowerLawData()` as it is: one fetch a visit, no copy kept.
 - **Top to bottom.**
-  - The head ("FIRE" · "How many years of spending your bitcoin covers if you sell it to live, on the price path you
-    pick."), the path line ("On Support, on the line · Oct 2026 – Sep 2046") and the position in words — or the
+  - The head ("FIRE" · "How many years of spending your bitcoin covers if you sell it to live — or borrow against it
+    instead — on the price path you pick."), the path line ("On Support, on the line · Oct 2026 – Sep 2046") and the position in words — or the
     underwater line.
   - **The chart** — "₿ you own and ₿ you'd need": ₿ owned, selling (`rows[m].btc`) and ₿ needed (`rows[m].needBtc`), a
     point a month on a log axis with an explicit domain (`fireChartDomain`, × 0.8 / × 1.25; nothing to draw → "Nothing to
@@ -2474,9 +2471,16 @@ device-local key (`docs/claude/store.md` § FIRE's own inputs).
     month, both ₿ figures, and the portfolio and price in today's dollars. Each ₿ row is a line (build 4b, BL41): its
     name in the line's colour, after a short mark drawn like it — ₿ owned, selling: solid `--btc`; ₿ needed: dashed
     `--text-secondary`, the box's own text colour, so its mark is what tells it apart — and the dollar rows, which are no
-    line, stay plain. The legend line above the chart takes the same marks. One definition of the two lines, `FIRE_LINES`
-    (`fireFaceView.ts`: name, colour, dash), is read by the two `<Line>`s, the legend, `fireTooltipLines` (each row's
-    `line`, or null) and the Milestones' ₿ owned cell. Under the chart, the scrubber's notes: the
+    line, stay plain. The legend line above the chart takes the same marks. One definition of the lines, `FIRE_LINES`
+    (`fireFaceView.ts`: name, colour, dash), is read by the `<Line>`s, the legend, `fireTooltipLines` (each row's
+    `line`, or null) and the Milestones' ₿ owned cell. **The third line (build 2 — BL57): ₿ owned, borrowing** —
+    solid `--text-primary`, as heavy as ₿ owned (a colour that means neither bitcoin nor a venue, and no tone), from the
+    stop month to the lane's end (B2: `FireLaneFigures.owned`, null before and after), its row in the hover box after ₿
+    owned, selling ("—" outside the lane), its legend item after ₿ needed — each legend item kept on one line
+    (`.legendItem`, `white-space: nowrap`, composed from `CyclingFace.module.css`), so on a phone the legend wraps
+    between items. Where the lane ends, a dotted reference line in its colour, labelled "Credit runs out" or "Coinbase
+    seizes" (`laneEndMarker` — the words right of the line in the horizon's first half, left of it in the second, so
+    they never leave the plot). Under the chart, the scrubber's notes: the
     inspected month, "Anchored $X · spot $Y ±Z%" while the anchor is held, the stress, and — once on the face — "Dollars
     here are today's: each month's figure ÷ inflation since today (2% a year, stepped yearly)."
   - **Six tiles**: Years of spending funded today · You'd need · FI, on this path · From your stop, on this path ·
@@ -2500,6 +2504,25 @@ device-local key (`docs/claude/store.md` § FIRE's own inputs).
     (the follow-ups' F-1); a cycle that didn't replay is named (`'noPeak'`, `'gap'`), never filled. Then the capacity, the
     break-even line and an ⓘ, whose last words are (b′)'s correction, pinned by WORDS: "…a replay can read a little
     milder or a little harsher than on daily prices, and the month it runs out can move by several months."
+  - **"Living on credit instead"** (build 2 — BL57; after the replays, before the Milestones; an ⓘ, "About living on
+    credit") — the lead ("Instead of selling, your plan borrows each month's spending against the same coins from the
+    month you stop, within its own limits; your other assets pay only when it can't."), then the lane on the displayed
+    path: "On this path, living on credit lasts through Sep 2046." — or "credit runs out in ⟨month⟩: even with coins
+    brought back from cold, your plan's limits leave no room to borrow that month's spending, and your other assets
+    can't cover it." (the breaker's own words when it holds: "after a deep fall below support your plan's breaker stops
+    new borrowing…"), or "Coinbase seizes the coins in ⟨month⟩: the price falls through its loan's liquidation price." —
+    in red (`TONE.bad`) when it ends, never green when it lasts. When it lasts, three lines: what you'd own at the last
+    month borrowing against selling ("In Sep 2046 you'd own ₿2.144 borrowing, against ₿1.852 selling — ₿0.292 more."; or
+    "Selling runs out in ⟨month⟩; living on credit, you'd still own ₿x in ⟨month⟩."), the tax a repayment would owe (B3:
+    "Repaying the ₿0.167 you'd owe then, by selling coins, would owe about ₿0.070 in tax on this path."), and cold storage
+    when you stop and at the last month. Last, the simulations' line: "Across 1,000 simulations of the price, stopping in
+    Dec 2035: living on credit lasts through Sep 2046 in 54% of them, credit runs out first in 46%, and Coinbase seizes
+    the coins in none." (`shareText`, the lenses' shares; when a savings gap runs the coins out before the stop in some
+    of them, one more sentence — "In 10%, your savings gap runs your bitcoin out before you stop." — since neither lane
+    starts there: the one count the line takes from the sell lane's run, in the months before the stop that both lanes
+    share, D1 A′'s one exception), or "Running the simulations…" until a run for this stop month
+    and horizon lands. With no lane, one line says why: no stop month on the path, a stop after the horizon, no spending,
+    retirement income covers it, no bitcoin of your own at the stop month (or a working gap ran it out), no Strike line.
   - **The Milestones** — a row every 12 months strictly inside the horizon, its last month, and the stop, FI and run-out
     months, flagged "stop", "FI", "runs out". Year · Price · ₿ owned · Other assets · Portfolio · Years funded · ₿ needed
     — "Other assets" (D-2) shows the draw order. The table from 768 px; under it `MilestoneSwitchTable` with
@@ -2553,8 +2576,52 @@ device-local key (`docs/claude/store.md` § FIRE's own inputs).
   with no bitcoin of your own, the excess repaid from your other assets." BANNED sweeps every word function over
   households that reach zeros in Other assets, ₿ owned, Portfolio and Years funded.
 - **The words** — dates from one fixed month table (`fireMonthYear`, never ICU; pinned equal to `futuresView`'s
-  `monthYear`, which the view can't import — NO SIM reads the sources' import lines); dollars nominal ÷ the row's
-  `inflationStep`; no sentence says "safe", "you can retire", "guaranteed", "should" or "need to".
+  `monthYear`); counts with plain-string commas, never ICU (`fmtCount`); since build 2 the view imports `futuresView`'s
+  words for the lane's simulations (`shareText`, `FUTURES_RUNNING`) and nothing else of the futures (NO SIM ON SELLING
+  reads the import lines); dollars nominal ÷ the row's `inflationStep`; no sentence says "safe", "you can retire",
+  "guaranteed", "should" or "need to" — nor, since build 2, "recommend(s/ed/ing)", "better", "best", "never sell", "will
+  last" or "risk-free" (BANNED sweeps the lane's card over the same households).
+- **The borrow lane (build 2 — BL42, BL55, BL56, BL57).** `fireLane.ts` — pure: no React, no store, no clock — composes
+  ONE run of the plan's engine from the sell lane's own run on a path, and reads back only what the engine reports.
+  - **The split (L5).** Both lanes work alike until the stop month and split there holding the SAME coins: the sell
+    lane's ₿ at that month's start (`rows[stop].btc` — already net of today's loans, F4), all of them handed to THE MOVE
+    at the stop month's price and support (`placementInputOf` → `placementPlan` → `seedsFromMove`, planRun's builders,
+    with `runLine` = the owner's Strike line and no debt) and opened with fresh loans (`engineInputsOf`: income 0, no
+    goal, no hold, Strike's minimum never from income).
+  - **B1 — the first bill lined up.** The engine's month 0 opens the loans with no bill, so the lane's price and
+    support paths repeat the stop month at the front (`[P[stop], ...P.slice(stop)]`): lane month k pays face month
+    stop + k − 1's bill (`faceMonthOfLane`). Its base bill is the bill of the month before the stop month — funded
+    spending × the stop row's inflation step, ÷ (1 + inflation) when the stop month opens a year — stepped on the face's
+    calendar (`stepOffsetMonths` = (stop − 1) mod 12). FIRST BILL pins it month for month against the sell lane's draw.
+  - **The reserve (L6 A).** The sell lane's other assets at the stop month (`rows[stop].otherUsd`) are the policy's
+    `openingCashUsd` — never the plan's months of bills — growing at the face's return (`reserveMonthlyFactor` = the
+    face's `otherMonthlyFactor`).
+  - **The plan.** The owner's saved plan (`usePlanPolicy` → `planPolicySettingsOf`), `blocApr`, `cbAprPct`,
+    `strikeLiquidationLtvPct` and `creditLine` from the store. The breaker opens from today's
+    (`breakerFromHistory` on the history the face loads) only when work stops now; a later stop opens fresh.
+  - **What it reads.** The end — `livingOnCredit.endMonth` and `.endReason` — and nothing else of the end: never
+    `firstUnfundedMonth` (dust) or the rows' ceiling headrooms (read at support, not the lane's room below it). Each
+    row's holdings and debt for ₿ owned, borrowing (`deriveOwnership(row.btcHeld, row.debt, price)` — three arguments —
+    at the face month's start: the row carried into it, at its price), its cold, and the end month's `policyZone`
+    (an unpaid end in `'broken'` gets the breaker's words). When it lasts: ₿ yours against the sell lane's ₿ at the last
+    month's start (the chart's last point), the debt, and the tax its repayment would owe — `sellToNet(debt, price, the
+    face's basis or the path's month-0 price, the face's rate)`: the sell lane's sale, at the coins' month-0 cost — not
+    its pool, which savings while working move; coins they buy above that cost make it read a little high, below it a
+    little low (on the four Paths within ₿0.005 either way — at most 9% high, 3% low; the model card says so) —
+    untaxed in "yours" (B3).
+  - **No lane** (`FireLaneNone`): invalid inputs, no stop month inside the horizon, no spending, retirement income
+    covers it, nothing owned at the stop month, no Strike line.
+  - **The futures — the face's ONE run (F5).** `FireFace` builds one `FireLaneFuturesJob` (`kind: 'fireLane'`: the
+    face's engine base with its stop month HELD as a number, the position to net per future, the lane's plan, the
+    start, the horizon, the anchor on the futures' grid) — null when the displayed path has no lane — and runs it with
+    its one `useFutures(`. `futuresRun.futuresFor` dispatches by kind on the same drawn futures (a cache hit when only
+    the kind changes) to `fireLaneFutures`, which runs the sell lane and then the lane on each future's months
+    0 … months − 1 and tallies lasts, unpaid and seized (and `ran`: a future whose sell lane has nothing left at the stop
+    month runs no lane). The worker, the latest-only client and the hook are typed for either job
+    (`AnyFuturesJob`, `FuturesResultOf`); the four plan faces' jobs and summaries are unchanged.
+  - **Measured** (spec §13): the lane lasts on the face's own default path (Support, on the line — the lane's room is read
+    at support, so a path that never dips below it is its best case) where most simulations run out of credit; so its
+    simulated odds read harsher than the face's path, never rosier (F1's concern, for selling, doesn't carry over).
 - **Viewers.** No viewer gets this face (BL48 — `ownerOnly`): it reads this device's own assumptions (D3 A), so a
   viewer's would show other figures, until they sync (BL48's C2, with the borrow lane). Before BL48 a trusted viewer
   reached it through the owner's full-mode layout. The face keeps its own lock all the same — its buttons
@@ -2686,11 +2753,11 @@ The hub opens on its faces as a grid — the owner's ask, "a grid of apps … si
   (Since BL46's A a window 1200px wide or more shows the faces as a list beside the open face instead — § The Almanac
   on a computer.)
 - **ONE catalogue.** `almanacGrid.ts` — `FACE_TILES` (key, name, group, gate), `FACE_GROUPS`, `faceShown`, `gridGroups`,
-  and the `Face` union (`AlmanacView` re-exports it as `AlmanacFace`) — is pure: the hub reads its four gates once
-  (`hasCbLoan`, `ledgerFaceAvailable(monthlyLog)`, `FIRE_ON_THIS_DEPLOY` and, since BL48, `viewer` — the lens since
+  and the `Face` union (`AlmanacView` re-exports it as `AlmanacFace`) — is pure: the hub reads its three gates once
+  (`hasCbLoan`, `ledgerFaceAvailable(monthlyLog)` and, since BL48, `viewer` — the lens since
   BL50, `useSeenAsViewer()`: a viewer's device, or the owner's trusted preview, § "Preview as viewer")
   and passes them in, so every combination is a unit test. The owner's grid offers exactly the faces the pill row did —
-  `almanacGrid.test.ts` PILLS keeps the pill row's rule as its reference, in all sixteen combinations; a viewer's, those
+  `almanacGrid.test.ts` PILLS keeps the pill row's rule as its reference, in all eight combinations; a viewer's, those
   less FIRE (BL48). `visibleFaces` and the
   `.subnav*` styles are gone.
 - **Open and back.** `face` is `Face | null`: null is the grid, the default whenever the hub mounts (the Halving Clock
@@ -2877,9 +2944,9 @@ BL48). Heavy: spec `pbloc-spec-trusted-viewers-v1`. The routing, the tier and th
   BL50 these gates read the lens, `useSeenAsViewer()` — a viewer's device, or the owner's trusted preview (§ "Preview
   as viewer").
 - **A demotion (V6 A).** A safe snapshot wipes first (`viewer.md` § BL48) and a viewer on the Almanac goes home.
-- Tests: `almanacGrid.test.ts` (OWNER ONLY, NOTE, WHAT-IF; GATES, PILLS and FIRST over sixteen combinations, a viewer's
+- Tests: `almanacGrid.test.ts` (OWNER ONLY, NOTE, WHAT-IF; GATES, PILLS and FIRST over eight combinations, a viewer's
   among them), `viewerWhatIf.test.tsx`, `viewerAlmanacWiring.test.ts` (WRITES and WAYS IN among them), `ledgerColdViewer.test.ts`, `fireWiring.test.ts`
-  (DEPLOY GATE, VIEWER), `controlDockWiring.test.ts` (ONCE's VIEWER) and `e2e/viewerAlmanac.spec.ts`. § Test Suite →
+  (PUBLIC, VIEWER), `controlDockWiring.test.ts` (ONCE's VIEWER) and `e2e/viewerAlmanac.spec.ts`. § Test Suite →
   "Trusted viewers in the Almanac".
 
 ### "→ Cold" always shown (BL49 — the owner's call A; store unchanged, NO bump)
@@ -2976,9 +3043,9 @@ face pager (Gesture P3/P3.1) is GONE, along with everything that existed to arbi
 data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still page).
 - **`almanacGrid.ts`** is the SINGLE source for the grid's tiles (it replaced `visibleFaces`, the sub-nav pill map, at
   BL45 — § The Almanac grid). Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`,
-  cycling and strategy iff `hasCbLoan`, FIRE iff `fireFaceOnDeploy` — the owner's deploy and dev) are simply absent
-  from the grid. Thirteen faces in all; the FIRE face (batch 1 build 4), last of Your plan's, is off the public deploy
-  and the sandbox until its borrow lane ships (build 4b — BL42). `idx`/`onPage`/`canPage`/`renderPane`/
+  cycling and strategy iff `hasCbLoan`; FIRE, the owner's only — BL48) are simply absent from the grid. Thirteen faces
+  in all; the FIRE face (batch 1 build 4), last of Your plan's, shows on every deploy since its borrow lane's build 2
+  (B4, BL57 — build 4b's deploy gate is gone). `idx`/`onPage`/`canPage`/`renderPane`/
   `shouldStart` are deleted; the host renders the open face, `{face !== null && renderFace(face)}`, directly (since
   2026-10-31 in the grid's place: `face === null ? <the grid> : renderFace(face)`).
 - **ONE face mounts at a time.** The P3.1 real-neighbour panes are gone, so a heavy face (Power Law/Mining

@@ -1,5 +1,5 @@
-import type { CyclingResult, CyclingRow, PolicyIgnoredReason, PolicyRunContext } from '../../simulation/cyclingSim';
-import { allInEquity, supportPolicyResolution } from '../../simulation/cyclingSim';
+import type { CyclingResult, CyclingRow, PolicyIgnoredReason } from '../../simulation/cyclingSim';
+import { allInEquity } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
 import type { PlacementPlan } from '../../simulation/placement';
 import { MOVE_THRESHOLD_BTC } from '../../simulation/placement';
@@ -605,16 +605,9 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
   return { title: MOVE_CARD_TITLE, lines };
 }
 
-/**
- * Policy v2, Run B (B4) — does the Decision face's run start from THE MOVE? Only when the move is worth making AND the
- * engine will APPLY the support policy: `supportPolicyResolution` is the run's own answer, asked with the run's own
- * inputs, so the seed and the run can never disagree. Before it the gate asked only "is a policy supplied?", and at a
- * Strike liquidation LTV at or under its 70% call (the engine ignores the policy there — 'strikeLadder') the run
- * started from a move the card never named.
- */
-export function seedsFromMove(seeded: boolean, ctx: PolicyRunContext): boolean {
-  return seeded && supportPolicyResolution(ctx).policyApplied;
-}
+/** THE MOVE's seeding gate lives with the plan's two builders (planRun — BL57: the futures worker composes the FIRE
+ *  face's borrow lane through them, and never loads this module); named here too, for the Decision face's readers. */
+export { seedsFromMove } from './planRun';
 
 /**
  * Policy v2, Run B (B3) — the cheap alert: the price at which Coinbase reaches the owner's trigger (`cbMetrics`'

@@ -18,15 +18,16 @@ const read = (p: string): string => readFileSync(join(ROOT, p), 'utf8');
 const strip = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 const ALL: Face[] = ['halving', 'cycle', 'mining', 'powerlaw', 'sats', 'defense', 'ledger', 'scenario', 'cycling', 'ownership', 'unified', 'decision', 'fire'];
-/** All sixteen gate combinations — the owner's eight and a viewer's (BL48). */
+/** All eight gate combinations — the owner's four and a viewer's (BL48). The FIRE face's deploy gate is gone with its
+ *  borrow lane (BL57 B4): it shows on every deploy. */
 const COMBOS: FaceGates[] = [false, true].flatMap((hasCbLoan) => [false, true].flatMap((ledgerAvailable) =>
-  [false, true].flatMap((fireOnDeploy) => [false, true].map((viewer) => ({ hasCbLoan, ledgerAvailable, fireOnDeploy, viewer })))));
-const label = (g: FaceGates): string =>
-  `loan ${g.hasCbLoan} · ledger ${g.ledgerAvailable} · fire ${g.fireOnDeploy} · viewer ${g.viewer}`;
+  [false, true].map((viewer) => ({ hasCbLoan, ledgerAvailable, viewer }))));
+const label = (g: FaceGates): string => `loan ${g.hasCbLoan} · ledger ${g.ledgerAvailable} · viewer ${g.viewer}`;
 
 /**
  * The pill row's rule as it stood at `0cc0ecd` (AlmanacView's `visibleFaces`), kept here as the reference: the grid
  * shows exactly the faces the pills showed (BL45's kill criterion — a face no viewer could reach before is no nearer).
+ * FIRE as the pills showed it on the owner's deploy — every deploy is that one for it now (BL57 B4).
  */
 function pillRow(g: FaceGates): Face[] {
   return [
@@ -38,7 +39,7 @@ function pillRow(g: FaceGates): Face[] {
     'ownership',
     ...(g.hasCbLoan ? ['unified' as Face] : []),
     'decision',
-    ...(g.fireOnDeploy ? ['fire' as Face] : []),
+    'fire',
   ];
 }
 
@@ -56,7 +57,7 @@ describe('⭐ the catalogue', () => {
   });
 
   it('⭐ ORDER — your plan\'s faces, then bitcoin\'s, as the owner picked them (B)', () => {
-    const all = gridGroups({ hasCbLoan: true, ledgerAvailable: true, fireOnDeploy: true, viewer: false });
+    const all = gridGroups({ hasCbLoan: true, ledgerAvailable: true, viewer: false });
     expect(all.map((g) => g.label), 'ORDER the groups').toEqual(['Your plan', 'Bitcoin']);
     expect(all[0].tiles.map((t) => t.name), 'ORDER your plan').toEqual(
       ['Decision', 'Strategy', 'Ownership', 'Cycling', 'Ledger', 'Scenario', 'Emergency', 'FIRE']);
@@ -65,12 +66,12 @@ describe('⭐ the catalogue', () => {
 });
 
 describe('⭐ the gates', () => {
-  it('⭐ GATES — the loan, the Ledger\'s data, the deploy rule and a viewer\'s device, each on its own faces, in all sixteen combinations', () => {
+  it('⭐ GATES — the loan, the Ledger\'s data and a viewer\'s device, each on its own faces, in all eight combinations', () => {
     for (const g of COMBOS) {
       const want: Record<Face, boolean> = {
         decision: true, ownership: true, scenario: true, halving: true, cycle: true, powerlaw: true, mining: true, sats: true,
         unified: g.hasCbLoan, cycling: g.hasCbLoan, defense: g.hasCbLoan, ledger: g.ledgerAvailable,
-        fire: g.fireOnDeploy && !g.viewer,   // BL48 (V1) — the owner's only: a viewer has no FIRE face on any deploy
+        fire: !g.viewer,   // BL48 (V1) — the owner's only: a viewer has no FIRE face; on every deploy for the owner (BL57 B4)
       };
       for (const f of ALL) expect(faceShown(f, g), `GATES ${f} · ${label(g)}`).toBe(want[f]);
       const shown = gridGroups(g).flatMap((grp) => grp.tiles.map((t) => t.key));
@@ -107,14 +108,14 @@ describe('⭐ the hub', () => {
     expect(HUB, 'GRID the face on screen: the face open, or the list\'s').toContain('const shown: Face | null = face ?? listFace;');
   });
 
-  it('⭐ ONE RULE — the hub reads its four gates once and asks almanacGrid; no gate of its own', () => {
+  it('⭐ ONE RULE — the hub reads its three gates once and asks almanacGrid; no gate of its own', () => {
     // BL50 — the viewer gate is the lens: a viewer's device, or the owner's trusted preview (seenAsViewer.ts).
     expect(HUB, 'ONE RULE the grid').toContain(
-      'const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer });');
+      'const groups = gridGroups({ hasCbLoan, ledgerAvailable, viewer: seenAsViewer });');
     expect(HUB, 'ONE RULE the fallback').toMatch(
-      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable, seenAsViewer\]\);/);
+      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, viewer: seenAsViewer \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable, seenAsViewer\]\);/);
     expect(HUB, 'ONE RULE no pill list').not.toMatch(/visibleFaces|subnav/);
-    expect(HUB, 'ONE RULE no gate spread of its own').not.toMatch(/hasCbLoan \?|ledgerAvailable \?|FIRE_ON_THIS_DEPLOY \?/);
+    expect(HUB, 'ONE RULE no gate spread of its own').not.toMatch(/hasCbLoan \?|ledgerAvailable \?/);
     expect(HUB, 'ONE RULE no face falls back to a face').not.toMatch(/setFace\('halving'\)/);
   });
 
@@ -189,7 +190,7 @@ describe('⭐ a computer (BL46\'s A — the owner\'s pick): the list', () => {
     expect(HUB, 'WIDTH the hub follows the rule').toContain('const listMode = useMediaQuery(ALMANAC_LIST);');
   });
 
-  it('⭐ FIRST — the list opens on the face last open while it shows, else Decision — in all sixteen combinations', () => {
+  it('⭐ FIRST — the list opens on the face last open while it shows, else Decision — in all eight combinations', () => {
     let kept = 0;
     let fell = 0;
     for (const g of COMBOS) {

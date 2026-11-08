@@ -769,7 +769,7 @@ the words: `almanac.md` § BL14 and § BL32; the Dashboard tile: `viewer.md` § 
 
 ---
 
-## The borrow lane — `livingOnCredit` (BL42, BL55; the borrow lane's build 1; no store, no screen)
+## The borrow lane — `livingOnCredit` (BL42, BL55; the borrow lane's build 1; no store — the FIRE face since build 2)
 
 Spec `pbloc-spec-borrow-lane-v1` v0.3 — the owner's calls, BL55. The FIRE face's second lane, living on credit with no
 income, is the plan's own engine with one opt-in input, `CyclingInputs.livingOnCredit` — REAL, never test-only:
@@ -795,6 +795,12 @@ income, is the plan's own engine with one opt-in input, `CyclingInputs.livingOnC
 - **The end:** the first bill none of them pays (by `LANE_UNPAID_EPS_USD`, half a cent) or Coinbase's seizure, whichever
   comes first, a tie the seizure — `CyclingResult.livingOnCredit` { endMonth, endReason, coldBackBtc }. The run goes on
   to its horizon; nothing is dropped and no coin is sold for a bill (L4, BL42).
+- **Its one caller — the FIRE face (build 2, BL57).** `fireLane.ts` composes the run (`docs/claude/almanac.md` § FIRE
+  face → The borrow lane): the sell lane's coins at the stop month through THE MOVE with fresh loans; the stop month
+  repeated at the front of the price and support paths, so lane month k pays face month stop + k − 1's bill (B1 — the
+  base bill the month before the stop month's, `stepOffsetMonths` = (stop − 1) mod 12); the sell lane's other assets as
+  `openingCashUsd`; the owner's plan and terms. It reads back `livingOnCredit`'s end and nothing else of the end. No
+  engine change: build 1's rule as merged.
 
 ---
 
@@ -804,7 +810,7 @@ Spec `pbloc-spec-batch-1-v1` v0.28 §2.3 and the FIRE plan `pbloc-spec-fire-face
 spec's §1 answers override its body — BL31). The engine of the thirteenth Almanac face: how many years of spending a
 portfolio funds, and when it funds enough. The Compass's free engine (the FIRE plan's §1.2, E1–E9) is re-derived from the
 plan's own formulas — never its code, its multiplier arrays or its copy (R0). The face is build 4; the borrow lane is its own
-item after Batch 1 (BL42).
+item after Batch 1 (BL42) — the engine rule `livingOnCredit` (build 1), on the face since build 2 (BL57).
 
 - **The modules.**
   - `fire.ts` — the timeline, the two needs, the scale and the capacity. 🔴 + − × ÷ and `Math.max` / `min` / `floor` /
@@ -875,8 +881,8 @@ item after Batch 1 (BL42).
   realized gains, per sale, over an average-cost pool, only on what the portfolio funds).
 - **D1 A′ — no simulation sets or shows a sell-lane figure.** The 1,000 simulations carry the power-law trend, so their
   odds read rosier than the face's own default path (the FIRE plan's F1). The sell lane reads the four Paths, the replays
-  and the break-even; the simulations appear only on the borrow lane, as its seizure chance (its own item after Batch 1 —
-  BL42).
+  and the break-even; the simulations appear only on the borrow lane (build 2, BL57), as its outcomes — how often it
+  lasts, runs out of credit, or is seized, side by side; measured, they read harsher than the face's own path.
 - **The edges** — never NaN, ∞ or a negative ₿. `'atFi'` not met within the horizon → no stop month, every row working,
   no capacity or break-even (`'noStopMonth'`). Underwater → 0 ₿, the excess debt repaid from the other assets at month 0,
   what they can't cover in `uncoveredDebtUsd`. 0 ₿ → the traditional need, no basis read: the two 0 ÷ 0 reads (the basis at

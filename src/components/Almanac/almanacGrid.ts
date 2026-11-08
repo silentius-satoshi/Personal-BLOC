@@ -1,7 +1,7 @@
 /**
  * The Almanac's grid (BL40, BL45 — the owner's pick B): which faces the hub offers, in which group and in which order.
- * ONE pure rule: the hub reads its gates — the Coinbase loan, the Ledger's data, the FIRE face's deploy rule, and
- * whether this device is a viewer's — and passes them in; this module reads no store and no env, so every combination
+ * ONE pure rule: the hub reads its gates — the Coinbase loan, the Ledger's data, and whether this device is a viewer's —
+ * and passes them in; this module reads no store and no env, so every combination
  * is a unit test (`almanacGrid.test.ts`). A gated face is simply absent, as its pill was: for the owner the grid shows
  * exactly the faces the pill row showed (BL45's kill criterion). A trusted viewer gets the same faces less the
  * owner's-only — FIRE, whose assumptions are each device's own (BL48 V1, D3 A); a safe viewer never opens the hub.
@@ -15,8 +15,9 @@ export type Face =
 
 export type FaceGroup = 'plan' | 'bitcoin';
 
-/** What a gated tile waits on — the pill row's three gates, unchanged. */
-type FaceGate = 'cbLoan' | 'ledger' | 'fireDeploy';
+/** What a gated tile waits on. The FIRE face's deploy gate is gone with its borrow lane (BL57 B4): it shows on every
+ *  deploy, as every other face does. */
+type FaceGate = 'cbLoan' | 'ledger';
 
 export interface FaceTile {
   key: Face;
@@ -29,13 +30,11 @@ export interface FaceTile {
   ownerOnly?: true;
 }
 
-/** The gates as the hub reads them: `hasCbLoan` (Emergency, Cycling, Strategy), `ledgerFaceAvailable` (Ledger),
- *  `fireFaceOnDeploy` (FIRE — the owner's deploy and dev only until its borrow lane ships, BL42) and `viewerMode`
- *  (BL48 — the owner's-only faces leave a viewer's hub). */
+/** The gates as the hub reads them: `hasCbLoan` (Emergency, Cycling, Strategy), `ledgerFaceAvailable` (Ledger) and
+ *  `viewerMode` (BL48 — the owner's-only faces leave a viewer's hub). */
 export interface FaceGates {
   hasCbLoan: boolean;
   ledgerAvailable: boolean;
-  fireOnDeploy: boolean;
   viewer: boolean;
 }
 
@@ -48,7 +47,7 @@ export const FACE_TILES: readonly FaceTile[] = [
   { key: 'ledger',    name: 'Ledger',        group: 'plan', gate: 'ledger' },
   { key: 'scenario',  name: 'Scenario',      group: 'plan' },
   { key: 'defense',   name: 'Emergency',     group: 'plan', gate: 'cbLoan' },
-  { key: 'fire',      name: 'FIRE',          group: 'plan', gate: 'fireDeploy', ownerOnly: true },
+  { key: 'fire',      name: 'FIRE',          group: 'plan', ownerOnly: true },
   { key: 'halving',   name: 'Halving Clock', group: 'bitcoin' },
   { key: 'cycle',     name: 'Cycle Clock',   group: 'bitcoin' },
   { key: 'powerlaw',  name: 'Power Law',     group: 'bitcoin' },
@@ -71,7 +70,6 @@ export function faceShown(face: Face, gates: FaceGates): boolean {
     case undefined: return true;
     case 'cbLoan': return gates.hasCbLoan;
     case 'ledger': return gates.ledgerAvailable;
-    case 'fireDeploy': return gates.fireOnDeploy;
   }
 }
 

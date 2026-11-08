@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { runFuturesJob } from './futuresClient';
-import type { FuturesJob } from './futuresRun';
+import type { AnyFuturesJob, FuturesJob, FuturesResultOf } from './futuresRun';
 import type { FuturesSummary } from '../../simulation/monteCarlo';
 import { FUTURES_DEBOUNCE_MS } from './futuresView';
 
-export interface FuturesState {
+export interface FuturesState<S = FuturesSummary> {
   /** The latest run's summary — held while a newer run goes, so the readout never blanks in the middle of a drag. */
-  summary: FuturesSummary | null;
+  summary: S | null;
   /** The current inputs have no landed run yet. */
   running: boolean;
 }
@@ -16,13 +16,13 @@ export interface FuturesState {
  * the job on every price tick (its anchor is a dependency), and an identity key would run a thousand engine runs for
  * nothing on each one — measured over nine live quotes, eight runs instead of one. A run starts once the inputs have
  * held still for FUTURES_DEBOUNCE_MS, and a result for inputs that have moved on since is dropped. A `null` job runs
- * nothing and keeps the last summary.
+ * nothing and keeps the last summary. Either kind of job (futuresRun's `AnyFuturesJob`); the summary is its kind's.
  */
-export function useFutures(job: FuturesJob | null): FuturesState {
+export function useFutures<J extends AnyFuturesJob = FuturesJob>(job: J | null): FuturesState<FuturesResultOf<J>> {
   const key = useMemo(() => (job === null ? null : JSON.stringify(job)), [job]);
   const jobRef = useRef(job);
   jobRef.current = job;
-  const [state, setState] = useState<FuturesState>({ summary: null, running: job !== null });
+  const [state, setState] = useState<FuturesState<FuturesResultOf<J>>>({ summary: null, running: job !== null });
 
   useEffect(() => {
     const current = jobRef.current;

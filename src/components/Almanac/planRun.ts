@@ -1,5 +1,6 @@
 import {
-  runCyclingSim, validOpeningBreaker, type CyclingInputs, type CyclingResult, type CyclingRow, type SupportPolicyInputs,
+  runCyclingSim, supportPolicyResolution, validOpeningBreaker, type CyclingInputs, type CyclingResult, type CyclingRow,
+  type PolicyRunContext, type SupportPolicyInputs,
 } from '../../simulation/cyclingSim';
 import { DUST_USD } from '../../utils/format';
 import { placementPlan, type PlacementInput, type PlacementPlan } from '../../simulation/placement';
@@ -11,7 +12,6 @@ import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, type EffectivePolicySettings, type SupportPolicySettings,
 } from './supportPolicyView';
 import { buildSupportPath, supportPolicyFor, holdMonthsFrom, type BreakerSeed } from './supportPolicyInputs';
-import { seedsFromMove } from './decisionView';
 import type { PlanPolicySettings } from '../../lib/planPolicy';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import type { DayEvent } from '../../simulation/types';
@@ -34,6 +34,17 @@ export const PLAN_ENGINE_CONTEXT = {
   mode: 'cycle' as const, cbLtvCapPct: PLAN_CB_LTV_CAP_PCT, strikeLtvCapPct: PLAN_STRIKE_CAP_PCT,
   strikeMarginLtv: STRIKE_MARGIN_CALL_LTV, strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,
 } as const;
+/**
+ * Policy v2, Run B (B4) — does the plan's run start from THE MOVE? Only when the move is worth making AND the
+ * engine will APPLY the support policy: `supportPolicyResolution` is the run's own answer, asked with the run's own
+ * inputs, so the seed and the run can never disagree. Before it the gate asked only "is a policy supplied?", and at a
+ * Strike liquidation LTV at or under its 70% call (the engine ignores the policy there — 'strikeLadder') the run
+ * started from a move the card never named.
+ */
+export function seedsFromMove(seeded: boolean, ctx: PolicyRunContext): boolean {
+  return seeded && supportPolicyResolution(ctx).policyApplied;
+}
+
 /** Used only if the policy is off — the plan has no off switch, so on a main screen never. */
 export const PLAN_COLD_BUFFER_PCT = 30;
 export const PLAN_CYCLE_MONTHS = 1;

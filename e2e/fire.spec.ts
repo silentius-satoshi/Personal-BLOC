@@ -2,7 +2,7 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 import { openAlmanacFace, STORE_VERSION } from './helpers';
 
 /**
- * The FIRE face (batch 1 build 4 — the sell lane). Hermetic and date-proof: Playwright's clock fixed at 12 Oct 2026, the
+ * The FIRE face (batch 1 build 4 — the sell lane; the borrow lane's build 2 — BL57). Hermetic and date-proof: Playwright's clock fixed at 12 Oct 2026, the
  * spot price aborted (a manual $100,000 is seeded), and the price history stubbed with a synthetic one — round invented
  * prices on real dates, a top inside each cycle's window (no price series is committed, D-2). Every word asserted here was
  * worked out first from the face's own view on this seed, this clock and this stub (fireFaceView — Playwright can't import
@@ -46,7 +46,9 @@ const SEED = `
 `;
 
 // fireFaceView's words (Playwright can't import src/).
-const FRAMING = 'How many years of spending your bitcoin covers if you sell it to live, on the price path you pick.';
+const FRAMING = 'How many years of spending your bitcoin covers if you sell it to live — or borrow against it instead — on the price path you pick.';
+const BORROW_LEAD = 'Instead of selling, your plan borrows each month\'s spending against the same coins from the month you stop, within '
+  + 'its own limits; your other assets pay only when it can\'t.';
 const END = 'Sep 2046';   // month 239 from Oct 2026 — the horizon's last month
 const FAILED = 'The price history didn\'t load, so there are no replays and no capacity this visit.';
 const OFFLINE = 'Offline — the replays need the price history, which isn\'t kept on this device.';
@@ -222,6 +224,30 @@ test.describe('FIRE face', () => {
       [...tr.querySelectorAll('td')].slice(1).map((td) => td.textContent!.trim())));
     heads.slice(1).forEach((h, i) => expect(views[h], `PHONE TABLE SAME ${h}`).toEqual(rows.map((r) => r[i])));
     expect(views['Other assets'].every((v) => v === '—'), 'PHONE TABLE no "$0": a zero prints "—"').toBe(true);
+  });
+
+  test('⭐ BORROW — living on credit beside selling: the third line, the card on this path, the simulations from the worker; today\'s breaker when you stop now (BL57)', async ({ page }) => {
+    await start(page);
+    await openFire(page);
+    await expect(page.getByText('₿ owned, borrowing', { exact: true }), 'BORROW the third line in the legend').toBeVisible();
+    await expect(page.locator('.recharts-line'), 'BORROW three lines on the chart').toHaveCount(3);
+    await expect(page.getByText('Living on credit instead', { exact: true }), 'BORROW the card').toBeVisible();
+    await expect(page.getByText(BORROW_LEAD, { exact: true }), 'BORROW the lead').toBeVisible();
+    // At FI (Dec 2035), on Support, on the line — fireLane and fireFaceView's words on this seed (2 ₿, the store's $10,000
+    // Strike line and C1 plan; the price path from the held $100,000).
+    await expect(page.getByText(`On this path, living on credit lasts through ${END}.`, { exact: true }), 'BORROW at FI: it lasts').toBeVisible();
+    await expect(page.getByText('In Sep 2046 you\'d own ₿2.144 borrowing, against ₿1.852 selling — ₿0.292 more.', { exact: true }), 'BORROW the kept line').toBeVisible();
+    await expect(page.getByText('Repaying the ₿0.167 you\'d owe then, by selling coins, would owe about ₿0.070 in tax on this path.', { exact: true }), 'BORROW the tax (B3)').toBeVisible();
+    await expect(page.getByText('In cold storage: ₿2.131 when you stop, ₿1.909 in Sep 2046.', { exact: true }), 'BORROW cold storage').toBeVisible();
+    await expect(page.getByText(/^Across 1,000 simulations of the price, stopping in Dec 2035: living on credit lasts through Sep 2046 in \d+% of them, credit runs out first in \d+%, and Coinbase seizes the coins in (none|\d+(\.\d)?%)\.$/),
+      'BORROW the simulations land, from the held stop').toBeVisible({ timeout: 20_000 });
+    // Now: the breaker folded from the stubbed history (its invented prices sit far under support) holds new borrowing off.
+    await page.getByRole('button', { name: 'Now', exact: true }).click();
+    await expect(page.getByText('On this path, credit runs out in Oct 2026: after a deep fall below support your plan\'s breaker stops new borrowing, and your other assets can\'t cover that month\'s spending.', { exact: true }),
+      'BORROW now: today\'s breaker').toBeVisible();
+    await expect(page.locator('.recharts-reference-line').getByText('Credit runs out', { exact: true }), 'BORROW the end\'s marker (B2)').toBeVisible();
+    await expect(page.getByText(/^Across 1,000 simulations of the price, stopping in Oct 2026: /), 'BORROW the simulations follow the stop').toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText('Something crashed'), 'BORROW nothing crashed').toHaveCount(0);
   });
 
   test('⭐ NO SIDEWAYS — nothing scrolls sideways at 390 px', async ({ page }) => {

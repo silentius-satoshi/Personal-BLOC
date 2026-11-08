@@ -6,11 +6,10 @@
 // slot, and the request it replaced resolves `null` (superseded) — so dragging a slider across ten values runs two jobs,
 // the first and the last, not ten.
 
-import { futuresFor, type FuturesJob } from './futuresRun';
-import type { FuturesSummary } from '../../simulation/monteCarlo';
+import { futuresFor, type AnyFuturesJob, type AnyFuturesResult, type FuturesResultOf } from './futuresRun';
 
-type Reply = { id: number; ok: true; summary: FuturesSummary } | { id: number; ok: false };
-type Settle = (s: FuturesSummary | null) => void;
+type Reply = { id: number; ok: true; summary: AnyFuturesResult } | { id: number; ok: false };
+type Settle = (s: AnyFuturesResult | null) => void;
 
 /** Far past any real run (a slow phone needs about a second): beyond it the worker is taken as stuck, and the job runs in-thread. */
 const JOB_TIMEOUT_MS = 20_000;
@@ -24,10 +23,10 @@ let factory: WorkerFactory = realFactory;
 let worker: Worker | null = null;
 let available: boolean | null = null;
 let nextId = 0;
-let running: { id: number; job: FuturesJob; settle: Settle; timer: ReturnType<typeof setTimeout> } | null = null;
-let waiting: { job: FuturesJob; settle: Settle } | null = null;
+let running: { id: number; job: AnyFuturesJob; settle: Settle; timer: ReturnType<typeof setTimeout> } | null = null;
+let waiting: { job: AnyFuturesJob; settle: Settle } | null = null;
 
-function inThread(job: FuturesJob): FuturesSummary | null {
+function inThread(job: AnyFuturesJob): AnyFuturesResult | null {
   try { return futuresFor(job); } catch { return null; }
 }
 
@@ -84,11 +83,12 @@ function pump(): void {
   try { worker!.postMessage({ id, job }); } catch { onCrash(); }
 }
 
-/** The futures for `job`, or `null` when a newer request took its place before it started. */
-export function runFuturesJob(job: FuturesJob): Promise<FuturesSummary | null> {
+/** The futures for `job`, or `null` when a newer request took its place before it started. Either kind of request
+ *  answers with its own kind of result (futuresRun's `futuresFor`). */
+export function runFuturesJob<J extends AnyFuturesJob>(job: J): Promise<FuturesResultOf<J> | null> {
   return new Promise((resolve) => {
     if (waiting) waiting.settle(null);   // the request still waiting is superseded
-    waiting = { job, settle: resolve };
+    waiting = { job, settle: (s) => resolve(s as FuturesResultOf<J> | null) };
     pump();
   });
 }

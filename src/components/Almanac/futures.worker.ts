@@ -6,11 +6,11 @@
 // The message shapes are declared here rather than imported from the client, as the crypto worker does — the client is
 // DOM-typed, and pulling it in would drag the DOM into this WebWorker-lib project.
 
-import { futuresFor, type FuturesJob } from './futuresRun';
+import { futuresFor, type AnyFuturesJob } from './futuresRun';
 
 declare const self: DedicatedWorkerGlobalScope;
 
-self.onmessage = (e: MessageEvent<{ id: number; job: FuturesJob }>) => {
+self.onmessage = (e: MessageEvent<{ id: number; job: AnyFuturesJob }>) => {
   const { id, job } = e.data;
   try {
     self.postMessage({ id, ok: true, summary: futuresFor(job) });

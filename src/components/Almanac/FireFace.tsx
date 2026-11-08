@@ -14,6 +14,12 @@ import { applyPathStress, clampMonth, fmtPhaseShift, MS_TABLE } from './cyclingF
 import { fireDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
 import { planCbCollateralOf, planCbLoanBalanceOf } from './planRun';
+import { buildSupportPath, breakerFromHistory } from './supportPolicyInputs';
+import { DEFAULT_BREAKER_REARM_MONTHS } from './supportPolicyView';
+import { usePlanPolicy } from './usePlanPolicy';
+import { futuresAnchor, type FireLaneFuturesJob } from './futuresRun';
+import { useFutures } from './useFutures';
+import { fireLaneOn, fireLaneFigures, type FireLanePlan } from './fireLane';
 import ControlDock, { type DockPanel } from './ControlDock';
 import MilestoneSwitchTable from './MilestoneSwitchTable';
 import FireScale from './FireScale';
@@ -25,7 +31,8 @@ import {
   STOP_CARD, spendHint, SCALE_TITLE, SCALE_NONE, fireScale, REPLAYS_TITLE, REPLAYS_INFO, REPLAYS_INFO_LABEL, CHART_TITLE,
   FIRE_LINES, CHART_EMPTY, CHART_GAP_NOTE, MS_VIEWS_FIRE, MS_LABEL, MS_SWITCH_LABEL, MS_YEAR_HEAD,
   fireMilestoneRows, MODEL_TITLE, MODEL_RULES, MODEL_LIMITS_TITLE, MODEL_LIMITS, MODEL_CREDITS, FIRE_DISCLAIMER, DOCK_WORDS,
-  FOUR_YEAR_LABEL, revertChipLabel, horizonDisplay, type FirePoint, type FireTile, type FireLine,
+  FOUR_YEAR_LABEL, revertChipLabel, horizonDisplay, BORROW_TITLE, BORROW_LEAD, BORROW_INFO, BORROW_INFO_LABEL, borrowCard,
+  laneEndMarker, type FirePoint, type FireTile, type FireLine,
 } from './fireFaceView';
 import { NumberInput } from '../ui/NumberInput';
 import { SliderInput } from '../ui/SliderInput';
@@ -45,8 +52,11 @@ import styles from './FireFace.module.css';
  *    reads its inputs once a change, through `fireInputsOf` memoised on the stored object, so the lens reset never fires on
  *    a render. Its own buttons are inert for a viewer (D-1); its number fields already are — and stay so inside the
  *    Almanac's what-ifs, which lift a viewer's lock on every other face (BL48): this face provides the lock back.
- * ⚠ D1 A′: no simulation here — the four Paths, the replays and the break-even only. The borrow lane is its own item after
- *    Batch 1 (BL42); until it ships, the hub keeps this face off the public deploy and the sandbox.
+ * 🔴 THE BORROW LANE (BL42/BL55/BL57 — build 2): the plan's own engine, living on credit from the same stop month, on the
+ *    displayed path (fireLane — the face runs no engine itself), and on the simulations from that stop month held: the
+ *    face's ONE futures run (F5), in the worker. With it the face shows on every deploy (B4).
+ * ⚠ D1 A′: no simulation sets a sell-lane figure — the four Paths, the replays and the break-even only; the simulations
+ *    show only the borrow lane's outcomes.
  */
 
 type Overlay = { pathKind?: PathKind; convergeMonths?: number; phaseShiftMonths?: number; months?: number };
@@ -82,13 +92,13 @@ function LineMark({ line }: { line: FireLine }) {
   return <i className={line.dash === undefined ? styles.lineMark : `${styles.lineMark} ${styles.lineMarkDash}`} />;
 }
 
-function FireTip({ active, payload }: { active?: boolean; payload?: { payload: FirePoint }[] }) {
+function FireTip({ active, payload, withLane }: { active?: boolean; payload?: { payload: FirePoint }[]; withLane: boolean }) {
   if (!active || !payload || payload.length === 0) return null;
   const p = payload[0].payload;
   return (
     <div className={styles.tooltip}>
       <div className={styles.tooltipHead}>{p.label}</div>
-      {fireTooltipLines(p).map((l) => (
+      {fireTooltipLines(p, withLane).map((l) => (
         <div key={l.name} className={styles.tooltipRow}>
           <span style={l.line ? { color: l.line.color } : undefined}>{l.line && <LineMark line={l.line} />}{l.name}</span>
           <strong>{l.value}</strong>
@@ -119,6 +129,9 @@ function FireFaceBody() {
     cbLoanBalance: planCbLoanBalanceOf(st),   // D-R2-4 — 0 with the Coinbase loan switched off
     cbAprPct: st.cbAprPct,
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
+    blocApr: st.blocApr,   // the borrow lane's terms (BL57): Strike's rate, its line, its liquidation LTV
+    creditLine: st.creditLine,
+    strikeLiquidationLtvPct: st.strikeLiquidationLtvPct,
     fireInputs: st.fireInputs,
     viewerMode: st.viewerMode,
     setFireInputs: st.setFireInputs,
@@ -178,6 +191,30 @@ function FireFaceBody() {
   const history = historyStateOf({ loading: historyLoading, error: historyError, online });
   const capacity = useMemo(() => capacityOf(run.result, runs, history, fi.bufferPct), [run.result, runs, history, fi.bufferPct]);
 
+  // The borrow lane (BL42/BL55/BL57): the plan's own engine on the displayed path, from the sell lane's stop month and coins,
+  // under the owner's saved plan and loan terms. Its breaker starts from today's only when work stops now (fireLane).
+  const plan = usePlanPolicy();
+  const supportPath = useMemo(() => buildSupportPath(startDate, months), [startDate, months]);
+  const breakerSeed = useMemo(
+    () => breakerFromHistory(historical, startDate, DEFAULT_BREAKER_REARM_MONTHS ?? null), [historical, startDate]);
+  const lanePlan = useMemo((): FireLanePlan => ({
+    plan, creditLine: s.creditLine, blocApr: s.blocApr, cbAprPct: s.cbAprPct,
+    strikeLiquidationLtvPct: s.strikeLiquidationLtvPct, breakerToday: breakerSeed?.state ?? null,
+  }), [plan, s.creditLine, s.blocApr, s.cbAprPct, s.strikeLiquidationLtvPct, breakerSeed]);
+  const lane = useMemo(
+    () => fireLaneOn(run.result, run.x, stressPath, supportPath, lanePlan, startISO),
+    [run.result, run.x, stressPath, supportPath, lanePlan, startISO],
+  );
+  const laneFigures = useMemo(
+    () => (lane.ran ? fireLaneFigures(lane, run.result, run.x, stressPath) : null), [lane, run.result, run.x, stressPath]);
+  // 🔴 ONE futures run (F5): the lane on the simulations, from the stop month the displayed path gives, HELD — on the
+  // futures' anchor grid, from the held anchor (never the polled quote). No lane on the path, no run.
+  const futuresJob = useMemo((): FireLaneFuturesJob | null => (!lane.ran ? null : {
+    kind: 'fireLane', sell: { ...engineInputs.base, stopMonth: lane.stop }, facts: { openingBtc, openingDebtUsd: openingDebt },
+    lane: lanePlan, startISO, months: pricePath.length, anchorPrice: futuresAnchor(anchorPrice),
+  }), [lane, engineInputs.base, openingBtc, openingDebt, lanePlan, startISO, pricePath.length, anchorPrice]);
+  const futures = useFutures(futuresJob);
+
   useEffect(() => { setSelectedMonth((m) => Math.min(m, pricePath.length - 1)); }, [pricePath.length]);
   // ⚠ MIRRORS the engine-inputs memo (fireWiring's RESET MIRROR), plus the path and the month: a stress measured against
   // inputs that have since moved would describe a run that never happened.
@@ -194,7 +231,10 @@ function FireFaceBody() {
   const position = firePositionLine(engineInputs.facts, stressPath[0] ?? 0, run.result.uncoveredDebtUsd);
   const tiles = fireTiles({ run, fi, startISO, capacity });
   const card = replaysCard({ run, runs, history, capacity, startISO, bufferPct: fi.bufferPct });
-  const points = useMemo(() => fireChartPoints(run.result, startISO), [run.result, startISO]);
+  const borrow = borrowCard({ lane, figures: laneFigures, sell: run.result, startISO, futures });
+  const laneEnd = laneEndMarker(laneFigures, pricePath.length);
+  const points = useMemo(
+    () => fireChartPoints(run.result, startISO, laneFigures?.owned ?? null), [run.result, startISO, laneFigures]);
   const domain = useMemo(() => fireChartDomain(points), [points]);
   const yTicks = useMemo(() => (domain ? logTicks(domain) : []), [domain]);
   const stopLabel = stopMarkerLabel(stop, pricePath.length);
@@ -296,8 +336,11 @@ function FireFaceBody() {
       <section className={styles.card}>
         <span className={styles.cardLabel}>{CHART_TITLE}</span>
         <p className={styles.noteQuiet}>
-          <span style={{ color: FIRE_LINES.owned.color }}><LineMark line={FIRE_LINES.owned} />{FIRE_LINES.owned.name}</span>{' · '}
-          <span style={{ color: FIRE_LINES.needed.color }}><LineMark line={FIRE_LINES.needed} />{FIRE_LINES.needed.name}</span>
+          <span className={styles.legendItem} style={{ color: FIRE_LINES.owned.color }}><LineMark line={FIRE_LINES.owned} />{FIRE_LINES.owned.name}</span>{' · '}
+          <span className={styles.legendItem} style={{ color: FIRE_LINES.needed.color }}><LineMark line={FIRE_LINES.needed} />{FIRE_LINES.needed.name}</span>
+          {laneFigures !== null && (
+            <>{' · '}<span className={styles.legendItem} style={{ color: FIRE_LINES.borrowed.color }}><LineMark line={FIRE_LINES.borrowed} />{FIRE_LINES.borrowed.name}</span></>
+          )}
         </p>
         {domain === null ? (
           <p className={styles.note}>{CHART_EMPTY}</p>
@@ -309,14 +352,21 @@ function FireFaceBody() {
                 tickFormatter={(m: number) => fireYearTick(startISO, m)} stroke="var(--text-muted)" fontSize={10} />
               <YAxis type="number" scale="log" domain={domain} ticks={yTicks} allowDataOverflow tickFormatter={fireBtcTick}
                 stroke="var(--text-muted)" fontSize={10} width={44} />
-              <Tooltip content={<FireTip />} isAnimationActive={false} wrapperStyle={{ transitionProperty: 'none' }} />
+              <Tooltip content={<FireTip withLane={laneFigures !== null} />} isAnimationActive={false} wrapperStyle={{ transitionProperty: 'none' }} />
               {stopLabel !== null && stop !== null && (
                 <ReferenceLine x={stop} stroke="var(--amber)" strokeDasharray="4 3"
                   label={{ value: stopLabel, fill: 'var(--amber)', fontSize: 10, position: 'insideTopLeft' }} />
               )}
+              {laneEnd !== null && laneFigures !== null && laneFigures.endMonth !== null && (
+                <ReferenceLine x={laneFigures.endMonth} stroke={FIRE_LINES.borrowed.color} strokeDasharray="2 3"
+                  label={{ value: laneEnd.label, fill: FIRE_LINES.borrowed.color, fontSize: 10, position: laneEnd.position }} />
+              )}
               <ReferenceLine x={monthIdx} stroke="var(--text-faint)" />
               <Line type="monotone" dataKey="owned" stroke={FIRE_LINES.owned.color} strokeDasharray={FIRE_LINES.owned.dash} dot={false} strokeWidth={2} connectNulls={false} isAnimationActive={false} />
               <Line type="monotone" dataKey="needed" stroke={FIRE_LINES.needed.color} strokeDasharray={FIRE_LINES.needed.dash} dot={false} connectNulls={false} isAnimationActive={false} />
+              {laneFigures !== null && (
+                <Line type="monotone" dataKey="borrowed" stroke={FIRE_LINES.borrowed.color} strokeDasharray={FIRE_LINES.borrowed.dash} dot={false} strokeWidth={2} connectNulls={false} isAnimationActive={false} />
+              )}
             </LineChart>
           </ResponsiveContainer>
         )}
@@ -415,6 +465,18 @@ function FireFaceBody() {
         {card.lines.map((l) => <p key={l} className={styles.noteQuiet}>{l}</p>)}
         {card.capacity !== null && <p className={styles.note}>{card.capacity}</p>}
         {card.breakEven !== null && <p className={styles.noteQuiet}>{card.breakEven}</p>}
+      </section>
+
+      {/* 5b · living on credit instead — the borrow lane (BL57): its outcome on this path, and on the simulations. */}
+      <section className={styles.card}>
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>{BORROW_TITLE}</span>
+          <InfoTip label={BORROW_INFO_LABEL}>{BORROW_INFO}</InfoTip>
+        </div>
+        <p className={styles.noteQuiet}>{BORROW_LEAD}</p>
+        <p className={styles.note} style={{ color: TONE[borrow.tone] }}>{borrow.outcome}</p>
+        {borrow.lines.map((l) => <p key={l} className={styles.noteQuiet}>{l}</p>)}
+        {borrow.share !== null && <p className={styles.noteQuiet}>{borrow.share}</p>}
       </section>
 
       {/* 6 · the Milestones — a row a year; the table from 768 px, the switch table under it (one markup at a time). */}

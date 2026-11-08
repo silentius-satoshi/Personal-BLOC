@@ -543,3 +543,6 @@
   vertical-align: middle;
 }
 .lineMarkDash { border-top-style: dashed; }
+/* A legend item — its mark and its name — kept on one line: a legend that wraps does so between items, never between a
+   mark and its name or inside a name (the FIRE face's three lines on a phone — BL57). */
+.legendItem { white-space: nowrap; }

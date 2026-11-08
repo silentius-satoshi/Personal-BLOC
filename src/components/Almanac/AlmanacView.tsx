@@ -24,7 +24,6 @@ import { ALMANAC_LIST, faceShown, firstListFace, gridGroups, VIEWER_WHAT_IF_NOTE
 import { ViewerWhatIf } from '../ui/viewerWhatIf';
 import { useSeenAsViewer } from './seenAsViewer';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
-import { fireFaceOnDeploy } from '../../lib/fireDeploy';
 import styles from './AlmanacView.module.css';
 
 /**
@@ -85,12 +84,6 @@ import styles from './AlmanacView.module.css';
 /** A face the hub can be opened on — Run 3: the plan's "other price paths" link opens the Decision face. */
 export type AlmanacFace = Face;
 
-/** Where the FIRE face shows: the owner's deploy and dev, never the public deploy or the sandbox until its borrow lane
- *  ships (batch 1 build 4b — BL42). The two flags are read here, once, where the grid is built; the rule is pure. */
-const FIRE_ON_THIS_DEPLOY = fireFaceOnDeploy({
-  VITE_LANDING: import.meta.env.VITE_LANDING, VITE_DEMO: import.meta.env.VITE_DEMO,
-});
-
 /** The face last open in this session (BL46's A): a computer's list reopens on it. In memory only — nothing persisted,
  *  nothing synced; a reload forgets it. One per lens (BL50): the owner's own hub and his trusted preview of his viewer's
  *  each keep their own, so neither opens on a face the other left open. */
@@ -136,11 +129,11 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
   // face's what-ifs are his to try, never saved. BL50 — the owner's trusted preview reads it the same way.
   const seenAsViewer = useSeenAsViewer();
 
-  // A gated face whose gate closes while it is open — the loan switched off, the log emptied, or the FIRE face off this
-  // deploy (build 4b — BL42; an `initialFace` of 'fire' lands here too) — goes back to the grid, where its tile is
-  // gone; on a computer the list opens Decision (`firstListFace` — the closed face no longer shows).
+  // A gated face whose gate closes while it is open — the loan switched off, the log emptied, or an owner's-only face on a
+  // viewer's device (BL48) — goes back to the grid, where its tile is gone; on a computer the list opens Decision
+  // (`firstListFace` — the closed face no longer shows).
   useEffect(() => {
-    if (face !== null && !faceShown(face, { hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer })) setFace(null);
+    if (face !== null && !faceShown(face, { hasCbLoan, ledgerAvailable, viewer: seenAsViewer })) setFace(null);
   }, [face, hasCbLoan, ledgerAvailable, seenAsViewer]);
 
   // Every way into a face from inside the hub — a tile, a list item on a computer, a face's own link to another — ends
@@ -172,7 +165,7 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
     }
   };
 
-  const groups = gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer });
+  const groups = gridGroups({ hasCbLoan, ledgerAvailable, viewer: seenAsViewer });
   // In the list a face is always open (BL46's A): with none asked for, the face last open in this session while it shows,
   // else Decision — drawn at once, and kept as the open face, so narrowing the window keeps it too.
   const memory = seenAsViewer ? 'seen' : 'own';

@@ -23,14 +23,14 @@ const VIEW = read('src/components/Almanac/fireFaceView.ts');
 const SCALE = strip(read('src/components/Almanac/FireScale.tsx'));
 const SOURCES = [
   FACE_PATH, 'src/components/Almanac/fireFaceView.ts', 'src/components/Almanac/fireReplays.ts',
-  'src/components/Almanac/FireScale.tsx', 'src/lib/fireInputs.ts', 'src/lib/fireDeploy.ts',
+  'src/components/Almanac/FireScale.tsx', 'src/lib/fireInputs.ts', 'src/components/Almanac/fireLane.ts',
 ];
 /** Every FIRE file — sources, styles and tests — for the walls that read text. */
 const FIRE_FILES = [
   ...SOURCES, 'src/components/Almanac/FireFace.module.css', 'src/components/Almanac/FireScale.module.css',
   'src/components/Almanac/__tests__/fireFaceView.test.ts', 'src/components/Almanac/__tests__/fireReplays.test.ts',
   'src/components/Almanac/__tests__/fireWiring.test.ts', 'src/lib/__tests__/fireInputs.test.ts',
-  'src/lib/__tests__/fireDeploy.test.ts', 'src/store/__tests__/fireInputsStore.test.ts', 'e2e/fire.spec.ts',
+  'src/components/Almanac/__tests__/fireLane.test.ts', 'src/store/__tests__/fireInputsStore.test.ts', 'e2e/fire.spec.ts',
 ];
 /** Every source file under src/, tests excluded (fireWalls' walker). */
 const srcFiles = (dir = join(ROOT, 'src')): string[] => readdirSync(dir).flatMap((f) => {
@@ -56,38 +56,25 @@ describe('⭐ the hub', () => {
     expect(branch, 'C8 above the fallback').toBeLessThan(fallback);
   });
 
-  it('⭐ DEPLOY GATE — its tile last in your plan, on the deploy rule, never the loan; the env read once, where the grid is built; unreachable where hidden (BL42, BL45)', () => {
+  it('⭐ PUBLIC — on every deploy for the owner, last in your plan, never the loan; a viewer has none (BL57 B4, BL48)', () => {
     const fire = FACE_TILES.filter((t) => t.key === 'fire');
-    expect(fire, 'DEPLOY GATE one FIRE tile, on the rule — the owner\'s only (BL48 V1)').toEqual(
-      [{ key: 'fire', name: 'FIRE', group: 'plan', gate: 'fireDeploy', ownerOnly: true }]);
+    expect(fire, 'PUBLIC one FIRE tile, ungated — the owner\'s only (BL48 V1)').toEqual(
+      [{ key: 'fire', name: 'FIRE', group: 'plan', ownerOnly: true }]);
     const plan = FACE_TILES.filter((t) => t.group === 'plan');
-    expect(plan[plan.length - 1].key, 'DEPLOY GATE last in your plan').toBe('fire');
-    // For the owner the rule reads the deploy flag alone: off the deploy it never shows, with or without the loan; on it,
-    // always. A viewer has none on any deploy (BL48 — almanacGrid.test.ts's OWNER ONLY).
+    expect(plan[plan.length - 1].key, 'PUBLIC last in your plan').toBe('fire');
     for (const hasCbLoan of [false, true]) {
       for (const ledgerAvailable of [false, true]) {
-        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, fireOnDeploy: false, viewer: false }), 'DEPLOY GATE never the loan').toBe(false);
-        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, fireOnDeploy: true, viewer: false }), 'DEPLOY GATE never the loan').toBe(true);
+        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, viewer: false }), 'PUBLIC the owner\'s, never the loan').toBe(true);
+        expect(faceShown('fire', { hasCbLoan, ledgerAvailable, viewer: true }), 'PUBLIC never a viewer\'s').toBe(false);
       }
     }
-    expect(strip(GRID), 'DEPLOY GATE the rule\'s case').toMatch(/case 'fireDeploy': return gates\.fireOnDeploy;/);
-    // Every env check reads code, never a comment: a doc comment can't turn the gate red.
-    const hub = strip(HUB);
-    expect(hub, 'DEPLOY GATE never the loan').not.toMatch(/face === 'fire' && !hasCbLoan/);
-    expect(hub, 'DEPLOY GATE the rule\'s import').toContain("import { fireFaceOnDeploy } from '../../lib/fireDeploy';");
-    expect(hub, 'DEPLOY GATE the env, read once where the grid is built').toMatch(
-      /const FIRE_ON_THIS_DEPLOY = fireFaceOnDeploy\(\{\s*VITE_LANDING: import\.meta\.env\.VITE_LANDING, VITE_DEMO: import\.meta\.env\.VITE_DEMO,\s*\}\);/);
-    expect(count(hub, 'import.meta'), 'DEPLOY GATE the hub reads the env only there').toBe(2);
-    const calls = srcFiles().flatMap((f) => {
-      const code = strip(readFileSync(f, 'utf8')).replace(/function fireFaceOnDeploy\(/g, '');
-      return Array.from({ length: count(code, 'fireFaceOnDeploy(') }, () => f.slice(ROOT.length + 1).split('\\').join('/'));
-    });
-    expect(calls, 'DEPLOY GATE the rule\'s one call, in the hub').toEqual(['src/components/Almanac/AlmanacView.tsx']);
-    for (const f of SOURCES) expect(strip(read(f)), `DEPLOY GATE ${f} reads no env`).not.toContain('import.meta');
-    expect(hub, 'DEPLOY GATE unreachable where hidden: the fallback').toMatch(
-      /useEffect\(\(\) => \{\s*if \(face !== null && !faceShown\(face, \{ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer \}\)\) setFace\(null\);\s*\}, \[face, hasCbLoan, ledgerAvailable, seenAsViewer\]\);/);
-    expect(hub, 'DEPLOY GATE the grid, on the same rule').toContain('gridGroups({ hasCbLoan, ledgerAvailable, fireOnDeploy: FIRE_ON_THIS_DEPLOY, viewer: seenAsViewer })');
-    expect(count(hub, 'FIRE_ON_THIS_DEPLOY'), 'DEPLOY GATE one constant: declared, the grid, the fallback').toBe(3);
+    // The deploy gate is gone, its module with it: no deploy reads a flag for this face.
+    expect(strip(HUB), 'PUBLIC the hub reads no env').not.toContain('import.meta');
+    expect(strip(GRID), 'PUBLIC no deploy gate in the grid').not.toMatch(/fireDeploy|fireOnDeploy/);
+    const named = srcFiles().filter((f) => /fireFaceOnDeploy|FIRE_ON_THIS_DEPLOY|fireDeploy'/.test(strip(readFileSync(f, 'utf8'))));
+    expect(named, 'PUBLIC the rule is gone').toEqual([]);
+    expect(existsSync(join(ROOT, 'src/lib/fireDeploy.ts')), 'PUBLIC its module is gone').toBe(false);
+    for (const f of SOURCES) expect(strip(read(f)), `PUBLIC ${f} reads no env`).not.toContain('import.meta');
   });
 
   it('⭐ THIRTEEN — the union carries the face and the header counts it', () => {
@@ -104,13 +91,48 @@ describe('⭐ the walls', () => {
     expect(importsOf(SCALE), 'BELIEF the scale').toEqual(['./FireScale.module.css']);
   });
 
-  it('⭐ NO SIM — no FIRE source reads the simulations or runs the strategy engine (D1 A′)', () => {
-    for (const f of SOURCES) {
+  it('⭐ NO SIM ON SELLING — the sell lane\'s sources read no simulation and run no plan engine; the borrow lane alone does (D1 A′, BL57)', () => {
+    for (const f of ['src/components/Almanac/fireFaceView.ts', 'src/components/Almanac/fireReplays.ts', 'src/components/Almanac/FireScale.tsx', 'src/lib/fireInputs.ts']) {
       const src = strip(read(f));
       expect(src.length, `NO SIM ${f} read`).toBeGreaterThan(0);
-      for (const i of importsOf(src)) expect(i, `NO SIM ${f} imports ${i}`).not.toMatch(/pricePaths|monteCarlo|futuresRun|useFutures|futuresClient|futuresView|FuturesCard/);
-      expect(src, `NO SIM ${f} runs no strategy engine`).not.toMatch(/\brunCyclingSim\(/);
+      for (const i of importsOf(src)) expect(i, `NO SIM ${f} imports ${i}`).not.toMatch(/pricePaths|monteCarlo|futuresRun|useFutures|futuresClient|FuturesCard|cyclingSim/);
+      expect(src, `NO SIM ${f} runs no plan engine`).not.toMatch(/\brunCyclingSim\(|\bfireLaneOn\(|\bfireLaneFutures\(/);
     }
+    // The view words the lane's simulations with futuresView's words — never its readout.
+    expect(importsOf(strip(VIEW)).filter((i) => /futures/i.test(i)), 'NO SIM the view: futuresView\'s words only').toEqual(['./futuresView']);
+    // The face runs no engine and draws no futures itself: the lane is fireLane's, the futures futuresRun's.
+    expect(FACE, 'NO SIM the face runs no engine').not.toMatch(/\brunCyclingSim\(|\brunFutures\(|\bpriceFutures\(|\bfireTimeline\(/);
+    for (const i of importsOf(FACE)) expect(i, `NO SIM the face imports ${i}`).not.toMatch(/pricePaths|monteCarlo|futuresClient|FuturesCard|cyclingSim/);
+    const lane = strip(read('src/components/Almanac/fireLane.ts'));
+    for (const i of importsOf(lane)) expect(i, `NO SIM the lane imports ${i}`).not.toMatch(/pricePaths|monteCarlo|futuresRun|useFutures|futuresClient|powerLaw/);
+  });
+
+  it('⭐ ONE RUN — the face\'s one futures run is the borrow lane\'s, from the held stop, on the futures\' anchor grid (F5, BL57)', () => {
+    expect(count(FACE, 'useFutures('), 'ONE RUN one').toBe(1);
+    expect(FACE, 'ONE RUN the job').toContain('const futures = useFutures(futuresJob);');
+    expect(FACE, 'ONE RUN the lane\'s, its stop held').toMatch(/kind: 'fireLane', sell: \{ \.\.\.engineInputs\.base, stopMonth: lane\.stop \}/);
+    expect(FACE, 'ONE RUN the held anchor, on the grid').toContain('anchorPrice: futuresAnchor(anchorPrice)');
+    expect(FACE, 'ONE RUN the face\'s horizon').toContain('months: pricePath.length');
+    expect(FACE, 'ONE RUN the position, netted per future as on the path').toContain('facts: { openingBtc, openingDebtUsd: openingDebt }');
+    expect(FACE, 'ONE RUN no lane, no run').toMatch(/\(!lane\.ran \? null : \{/);
+  });
+
+  it('⭐ THE LANE — on the displayed path, from the sell lane\'s own run, under the owner\'s plan and loan terms; the card after the replays', () => {
+    expect(FACE, 'THE LANE the run').toContain('fireLaneOn(run.result, run.x, stressPath, supportPath, lanePlan, startISO)');
+    expect(count(FACE, 'fireLaneOn('), 'THE LANE one run on the path').toBe(1);
+    expect(FACE, 'THE LANE the figures, from the same path').toContain('fireLaneFigures(lane, run.result, run.x, stressPath)');
+    expect(FACE, 'THE LANE the support path').toContain('const supportPath = useMemo(() => buildSupportPath(startDate, months), [startDate, months]);');
+    expect(FACE, 'THE LANE the owner\'s plan').toContain('const plan = usePlanPolicy();');
+    for (const r of ['blocApr: st.blocApr,', 'creditLine: st.creditLine,', 'strikeLiquidationLtvPct: st.strikeLiquidationLtvPct,', 'cbAprPct: st.cbAprPct,']) {
+      expect(FACE, `THE LANE ${r}`).toContain(r);
+    }
+    expect(FACE, 'THE LANE today\'s breaker, from the history the face loads').toContain(
+      'breakerFromHistory(historical, startDate, DEFAULT_BREAKER_REARM_MONTHS ?? null)');
+    expect(FACE, 'THE LANE the card\'s words').toContain('const borrow = borrowCard({ lane, figures: laneFigures, sell: run.result, startISO, futures });');
+    expect(FACE, 'THE LANE the chart\'s line').toContain('fireChartPoints(run.result, startISO, laneFigures?.owned ?? null)');
+    const replays = FACE.indexOf('{REPLAYS_TITLE}'), card = FACE.indexOf('{BORROW_TITLE}'), ms = FACE.indexOf('<span className={styles.cardLabel}>{MS_LABEL}</span>');
+    expect(replays > 0 && replays < card && card < ms, 'THE LANE the card after the replays, before the Milestones').toBe(true);
+    expect(FACE, 'THE LANE a risk in red, never a tone of its own').toContain('style={{ color: TONE[borrow.tone] }}');
   });
 
   it('⭐ NO FETCH — no FIRE source fetches; the history is usePowerLawData\'s, as it is', () => {
@@ -166,6 +188,10 @@ describe('⭐ the face\'s reads', () => {
     expect(FACE, 'POSITION no call in the face').not.toMatch(/deriveOwnership\(/);
     const calls = [...strip(VIEW).matchAll(/deriveOwnership\(([^)]*)\)/g)].map((m) => m[1]);
     expect(calls.map((a) => a.split(',').length), 'POSITION one call, three arguments').toEqual([3]);
+    // The borrow lane's ₿ yours: the one definition on the engine's rows, never a 4th argument (BL57).
+    const laneCalls = [...strip(read('src/components/Almanac/fireLane.ts')).matchAll(/deriveOwnership\(([^)]*)\)/g)].map((m) => m[1]);
+    expect(laneCalls.length, 'POSITION the lane\'s calls').toBe(3);
+    for (const a of laneCalls) expect(a.split(',').length, `POSITION the lane: three arguments (${a})`).toBe(3);
   });
 
   it('⭐ ANCHOR — the path is built from the held anchor, never the polled quote', () => {
@@ -248,16 +274,16 @@ describe('⭐ the face\'s shape', () => {
 
   it('⭐ ONE DEFINITION — the chart\'s <Line>s, the legend and the hover box read FIRE_LINES; the marks are CyclingFace\'s (BL41)', () => {
     const lines = [...FACE.matchAll(/<Line\b[^>]*\/>/g)].map((m) => m[0]);
-    expect(lines.length, 'ONE DEFINITION two lines').toBe(2);
-    for (const k of ['owned', 'needed']) {
+    expect(lines.length, 'ONE DEFINITION three lines').toBe(3);
+    for (const k of ['owned', 'needed', 'borrowed']) {
       const tag = lines.find((t) => t.includes(`dataKey="${k}"`)) ?? '';
       expect(tag, `ONE DEFINITION the ${k} line's colour`).toContain(`stroke={FIRE_LINES.${k}.color}`);
       expect(tag, `ONE DEFINITION the ${k} line's dash`).toContain(`strokeDasharray={FIRE_LINES.${k}.dash}`);
     }
     const legend = FACE.slice(FACE.indexOf('{CHART_TITLE}'), FACE.indexOf('{domain === null'));
-    for (const k of ['owned', 'needed']) {
+    for (const k of ['owned', 'needed', 'borrowed']) {
       expect(legend, `ONE DEFINITION the legend's ${k}`).toContain(
-        `<span style={{ color: FIRE_LINES.${k}.color }}><LineMark line={FIRE_LINES.${k}} />{FIRE_LINES.${k}.name}</span>`);
+        `<span className={styles.legendItem} style={{ color: FIRE_LINES.${k}.color }}><LineMark line={FIRE_LINES.${k}} />{FIRE_LINES.${k}.name}</span>`);
     }
     const tip = FACE.slice(FACE.indexOf('function FireTip('), FACE.indexOf('export default function FireFace('));
     expect(tip, 'ONE DEFINITION the hover box: a line\'s name in its colour, after its mark').toContain(
@@ -269,24 +295,27 @@ describe('⭐ the face\'s shape', () => {
       expect(src.length, `ONE DEFINITION ${where} found`).toBeGreaterThan(40);
       expect(src, `ONE DEFINITION no colour literal in ${where}`).not.toMatch(/var\(--|#[0-9a-fA-F]{3,8}\b|rgba?\(/);
     }
-    expect(FACE, 'ONE DEFINITION the two colours live in the view').not.toMatch(/var\(--btc\)|var\(--text-secondary\)/);
+    expect(FACE, 'ONE DEFINITION the colours live in the view').not.toMatch(/var\(--btc\)|var\(--text-secondary\)|var\(--text-primary\)/);
+    expect(FACE, 'ONE DEFINITION the lane\'s end, in its line\'s colour').toMatch(
+      /<ReferenceLine x=\{laneFigures\.endMonth\} stroke=\{FIRE_LINES\.borrowed\.color\}[^>]*fill: FIRE_LINES\.borrowed\.color/);
     // The view spells each colour once, inside FIRE_LINES; the Milestones' ₿ owned cell reads the definition too.
     const view = strip(VIEW);
     const defn = view.slice(view.indexOf('export const FIRE_LINES'), view.indexOf('};', view.indexOf('export const FIRE_LINES')));
-    for (const c of ["'var(--btc)'", "'var(--text-secondary)'"]) {
+    for (const c of ["'var(--btc)'", "'var(--text-secondary)'", "'var(--text-primary)'"]) {
       expect(count(view, c), `ONE DEFINITION the view spells ${c} once`).toBe(1);
       expect(count(defn, c), `ONE DEFINITION ${c} inside FIRE_LINES`).toBe(1);
     }
     expect(view, 'ONE DEFINITION the Milestones\' ₿ owned cell').toContain(
       "{ label: '₿ owned', value: btcOrNull(row.btc) ?? NONE, color: FIRE_LINES.owned.color },");
     const css = read('src/components/Almanac/FireFace.module.css');
-    for (const c of ['lineMark', 'lineMarkDash']) {
+    for (const c of ['lineMark', 'lineMarkDash', 'legendItem']) {
       expect(css, `ONE DEFINITION .${c} composed`).toContain(`.${c} { composes: ${c} from './CyclingFace.module.css'; }`);
     }
     const base = read('src/components/Almanac/CyclingFace.module.css');
     expect(base, 'ONE DEFINITION the mark: 14px, a 2px top border in the text\'s colour').toMatch(
       /\.lineMark \{[^}]*width: 14px;[^}]*border-top: 2px solid currentColor;[^}]*\}/);
     expect(base, 'ONE DEFINITION the dashed mark').toMatch(/\.lineMarkDash \{ border-top-style: dashed; \}/);
+    expect(base, 'ONE DEFINITION a legend item on one line (BL57)').toMatch(/\.legendItem \{ white-space: nowrap; \}/);
   });
 
   it('⭐ DOCK LAST — one dock, the face\'s last child, after the disclaimer; never position: fixed', () => {
