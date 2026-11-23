@@ -18,6 +18,8 @@
   margin-bottom: 9px;
   color: var(--maroon);
 }
+/* The turn ahead is a peak (the cadence rising): the peak's hue, as on the dial's marker (step 0 of the Engine, BL61). */
+.eyebrowPeak { color: var(--amber); }
 .count {
   font-family: var(--mono);
   font-weight: 600;

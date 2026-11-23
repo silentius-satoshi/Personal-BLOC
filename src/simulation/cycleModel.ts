@@ -125,3 +125,29 @@ export function nextTurnAfter(ms: number): CycleTurn | null {
   }
   return null;
 }
+
+/** The leg of the idealized cadence that `ms` sits on: the projected turn at or before it (`prev`), the one after it
+ *  (`next`), whether it rises (a low toward a high) and how far along it `ms` is, from 0 at `prev` toward 1 at `next`. */
+export interface CycleLeg {
+  prev: CycleTurn;
+  next: CycleTurn;
+  rising: boolean;
+  fraction: number;
+}
+
+/**
+ * The leg at `ms` — the turns on either side of it (step 0 of the Engine, BL61). ONE rule for every reader: the
+ * Cycle Clock, the Halving Clock's pattern card and the Engine's flywheel. A turn starts the leg after it. Null before
+ * the first turn and from the last turn on: the projection has no leg there.
+ */
+export function cycleLegAt(ms: number): CycleLeg | null {
+  for (let i = 1; i < CYCLE_TURNS.length; i++) {
+    const next = CYCLE_TURNS[i];
+    if (next.date > ms) {
+      const prev = CYCLE_TURNS[i - 1];
+      if (prev.date > ms) return null;
+      return { prev, next, rising: prev.kind === 'low', fraction: (ms - prev.date) / (next.date - prev.date) };
+    }
+  }
+  return null;
+}

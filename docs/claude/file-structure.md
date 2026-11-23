@@ -1515,6 +1515,12 @@ src/
                                 # Lens) · LensView / LENS_TAB_VALUE (Position · Flywheel). ONE private constructor per shared
                                 # tab (month, stress, path, policy) — all three builders use them, so a tab reads the same on
                                 # every face. Batch 1 build 4: fireDockTabs (the FIRE face's three — Month · Stress · Path)
+      cycleClockView.ts         # Step 0 of the Engine (BL61) — the Clocks' leg in words, ONE pure view for the Cycle Clock
+                                # and the Halving Clock's pattern card: cycleLegView(ms) reads cycleModel's cycleLegAt (the
+                                # turns on either side of ms) → rising, phase ("Rising phase" / "Descending phase"), route
+                                # ("floor → peak" / "peak → floor"), pct, and the turn behind and ahead (date, peak or
+                                # floor, high or low); null where the projection has no leg. No clock, no store, nothing
+                                # from the risk core (§2).
       MilestoneSwitchTable.tsx  # Milestones on a phone (Run 2) — THE Milestones where the table doesn't fit (+ .module.css,
                                 # tokens only). The three parents render it OR their table — useMediaQuery(MS_TABLE), ONE
                                 # markup at a time, never a CSS toggle: under 768 px, and in Ownership's side column (from

@@ -7,6 +7,7 @@ import {
   CYCLE_TURNS,
   CYCLE_ANCHOR,
   nextTurnAfter,
+  cycleLegAt,
   H4,
 } from '../cycleModel';
 
@@ -106,5 +107,52 @@ describe('nextTurnAfter', () => {
   it('returns null past the end of the projection', () => {
     // WHY: bounded cadence — nothing projected beyond the last turn.
     expect(nextTurnAfter(CYCLE_TURNS[CYCLE_TURNS.length - 1].date)).toBeNull();
+  });
+});
+
+describe('cycleLegAt — the leg the cadence is on (step 0 of the Engine, BL61)', () => {
+  const AFTER_LOW = Date.UTC(2026, 10, 22, 12); // 48½ days after the 5 Oct 2026 low
+  const IN_BEAR = Date.UTC(2026, 2, 1); // between the 6 Oct 2025 high and the 5 Oct 2026 low
+
+  it('⭐ LEG — just after the 5 Oct 2026 low it rises toward the 3 Sep 2029 high', () => {
+    // WHY: the Clocks paired the LAST HIGH with the NEXT LOW, so once the 5 Oct 2026 low had passed they read
+    // "descending, peak → floor" toward the Sep 2030 floor (the engine review, 2026-11-21). The leg is the two turns
+    // on either side of now.
+    const leg = cycleLegAt(AFTER_LOW)!;
+    expect(leg.prev).toEqual({ date: Date.UTC(2026, 9, 5), kind: 'low' });
+    expect(leg.next).toEqual({ date: Date.UTC(2029, 8, 3), kind: 'high' });
+    expect(leg.rising).toBe(true);
+    expect(leg.fraction).toBeCloseTo(48.5 / 1064, 12);
+  });
+
+  it('⭐ LEG — inside the first bear it descends from the 6 Oct 2025 high to the 5 Oct 2026 low', () => {
+    const leg = cycleLegAt(IN_BEAR)!;
+    expect(leg.prev).toEqual({ date: CYCLE_ANCHOR, kind: 'high' });
+    expect(leg.next).toEqual({ date: Date.UTC(2026, 9, 5), kind: 'low' });
+    expect(leg.rising).toBe(false);
+    expect(leg.fraction).toBeCloseTo(146 / 364, 12);
+  });
+
+  it('⭐ AT A TURN — a turn starts the leg after it; a millisecond before, the leg before it is all but done', () => {
+    for (let i = 1; i < CYCLE_TURNS.length - 1; i++) {
+      const t = CYCLE_TURNS[i];
+      const on = cycleLegAt(t.date)!;
+      expect(on.prev).toBe(t);
+      expect(on.next).toBe(CYCLE_TURNS[i + 1]);
+      expect(on.fraction).toBe(0);
+      expect(on.rising).toBe(t.kind === 'low');
+      const before = cycleLegAt(t.date - 1)!;
+      expect(before.prev).toBe(CYCLE_TURNS[i - 1]);
+      expect(before.next).toBe(t);
+      expect(before.fraction).toBeGreaterThan(0.999);
+      expect(before.fraction).toBeLessThan(1);
+    }
+  });
+
+  it('is null before the first turn and from the last turn on (the projection has no leg there)', () => {
+    expect(cycleLegAt(CYCLE_ANCHOR - 1)).toBeNull();
+    expect(cycleLegAt(CYCLE_ANCHOR)).not.toBeNull();
+    expect(cycleLegAt(CYCLE_TURNS[CYCLE_TURNS.length - 1].date)).toBeNull();
+    expect(cycleLegAt(CYCLE_TURNS[CYCLE_TURNS.length - 1].date - 1)).not.toBeNull();
   });
 });

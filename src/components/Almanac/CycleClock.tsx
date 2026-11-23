@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import CycleDial from './CycleDial';
 import { usePageVisibility } from '../../hooks/usePageVisibility';
-import { epochProgress, TARGET_BLOCK_S, H5_EST, CYCLE_TURNS } from '../../simulation/cycleModel';
+import { epochProgress, TARGET_BLOCK_S, H5_EST } from '../../simulation/cycleModel';
+import { cycleLegView } from './cycleClockView';
 import styles from './CycleClock.module.css';
 
 /**
- * Almanac — CycleClock (P2): the OPT-IN, projection-hero face. The idealized projected-floor countdown
- * is foregrounded (the §14.2 inversion), with the halving demoted to a card. This is the ONE place a
+ * Almanac — CycleClock (P2): the OPT-IN, projection-hero face. The idealized countdown to the projected turn
+ * ahead is foregrounded (the §14.2 inversion), with the halving demoted to a card. This is the ONE place a
  * ticking countdown is permitted (§14.4) — a 1s ticker gated by usePageVisibility + cleaned up on
  * unmount. The "idealized cadence" tag + "why idealized" note ALWAYS accompany the countdown (§14.4).
  * Pure projection: imports nothing from the risk/position core — foregrounding it makes it an input to
@@ -27,11 +28,16 @@ function fmtCountdown(msLeft: number): string {
   return `${d}d ${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-function fmtFloorDate(ms: number): string {
+function fmtTurnDate(ms: number): string {
   const date = new Date(ms);
   const wd = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' }).format(date);
+  return `${wd} ${fmtDayMonYear(ms)}`;
+}
+
+function fmtDayMonYear(ms: number): string {
+  const date = new Date(ms);
   const mon = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' }).format(date);
-  return `${wd} ${date.getUTCDate()} ${mon} ${date.getUTCFullYear()}`;
+  return `${date.getUTCDate()} ${mon} ${date.getUTCFullYear()}`;
 }
 
 export interface CycleClockProps {
@@ -50,13 +56,12 @@ export default function CycleClock({ height, mode, onSwitchToHalving }: CycleClo
     return () => clearInterval(id);
   }, [isVisible]);
 
-  // projection phase (the foregrounded, idealized cadence)
-  const nextLow = CYCLE_TURNS.find((t) => t.kind === 'low' && t.date > now);
-  const lastHigh = [...CYCLE_TURNS].reverse().find((t) => t.kind === 'high' && t.date <= now);
-  const phasePct =
-    lastHigh && nextLow ? Math.round(((now - lastHigh.date) / (nextLow.date - lastHigh.date)) * 100) : 0;
-  const daysSincePeak = lastHigh ? Math.floor((now - lastHigh.date) / 86_400_000) : 0;
-  const countdown = nextLow ? fmtCountdown(nextLow.date - now) : '0d 00:00:00';
+  // projection phase (the foregrounded, idealized cadence): the leg it is on — rising toward the next high after a
+  // low, descending toward the next low after a high (step 0 of the Engine, BL61: it paired the last high with the
+  // next low, so from the 5 Oct 2026 low on it read "descending" toward the low after next).
+  const leg = cycleLegView(now);
+  const daysSinceTurn = leg ? Math.floor((now - leg.prev.date) / 86_400_000) : 0;
+  const countdown = leg ? fmtCountdown(leg.next.date - now) : '0d 00:00:00';
 
   // demoted halving context (real)
   const ep = epochProgress(height);
@@ -68,23 +73,25 @@ export default function CycleClock({ height, mode, onSwitchToHalving }: CycleClo
     <>
       <div className={styles.hero}>
         <CycleDial height={height} mode={mode} emphasis="cycle">
-          <div className={styles.eyebrow}>Projected floor</div>
+          <div className={leg?.next.word === 'peak' ? `${styles.eyebrow} ${styles.eyebrowPeak}` : styles.eyebrow}>
+            Projected {leg ? leg.next.word : 'turn'}
+          </div>
           <div className={styles.count}>{countdown}</div>
-          <div className={styles.sub}>~ {nextLow ? fmtFloorDate(nextLow.date) : '—'}</div>
+          <div className={styles.sub}>~ {leg ? fmtTurnDate(leg.next.date) : '—'}</div>
           <div className={styles.tag}>idealized cadence</div>
         </CycleDial>
       </div>
 
       <div className={styles.rstats}>
         <div className={styles.rstat}>
-          <div className={styles.k}>Descending phase</div>
-          <div className={`${styles.v} ${styles.vMaroon}`}>~{phasePct}%</div>
-          <div className={styles.rsub}>peak → floor</div>
+          <div className={styles.k}>{leg ? leg.phase : 'Phase'}</div>
+          <div className={`${styles.v} ${leg?.rising ? styles.vAmber : styles.vMaroon}`}>~{leg ? leg.pct : 0}%</div>
+          <div className={styles.rsub}>{leg ? leg.route : '—'}</div>
         </div>
         <div className={styles.rstat}>
-          <div className={styles.k}>Since proj. peak</div>
-          <div className={`${styles.v} ${styles.vAmber}`}>{daysSincePeak}d</div>
-          <div className={styles.rsub}>6 Oct 2025 high</div>
+          <div className={styles.k}>Since proj. {leg ? leg.prev.word : 'turn'}</div>
+          <div className={`${styles.v} ${leg?.rising ? styles.vMaroon : styles.vAmber}`}>{daysSinceTurn}d</div>
+          <div className={styles.rsub}>{leg ? `${fmtDayMonYear(leg.prev.date)} ${leg.prev.kind}` : '—'}</div>
         </div>
         <div className={styles.rstat}>
           <div className={styles.k}>Block height</div>

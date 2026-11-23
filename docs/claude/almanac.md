@@ -25,12 +25,18 @@ in P1, superseded later (both deleted by the Power Law face, spec pbloc-spec-pow
     boundary only). Epoch 6 (height ≥1,050,000 → reward 1.5625, new bounds) derives with no code change.
   - **Cycle projection (FIXED-ANCHORED, does NOT generalize):** `CYCLE_TURNS` (14 turns built from
     `CYCLE_ANCHOR` = Mon 6 Oct 2025 high, alternating High→Low +364d / Low→High +1064d to ~2050; both
-    steps ×7 so EVERY turn lands on a Monday; first low = Mon 5 Oct 2026) + `nextTurnAfter(ms)`.
-- **`src/simulation/__tests__/cycleModel.test.ts`** (12 cases) — epoch-5 classification + 2028 rollover
+    steps ×7 so EVERY turn lands on a Monday; first low = Mon 5 Oct 2026) + `nextTurnAfter(ms)` +
+    `cycleLegAt(ms)` — the leg `ms` sits on: the turn at or before it (`prev`), the turn after it (`next`), `rising`
+    (a low toward a high) and the `fraction` along it; a turn starts the leg after it; null before the anchor and from
+    the last turn on. The Clocks' rule for the leg (step 0 of the Engine, BL61; `cyclePath`'s `cycleMultAt` keeps its
+    own copy of the same rule, with the phase shift): both Clocks read it through
+    `cycleLegView` (`components/Almanac/cycleClockView.ts`), and the Engine's flywheel will.
+- **`src/simulation/__tests__/cycleModel.test.ts`** (16 cases) — epoch-5 classification + 2028 rollover
   (Epoch 6/1.5625, no code change), `fraction` 0..1 single-source (half-open: ~1 just below endBlock,
   0 at rollover), `blocksRemaining === 1_050_000 − h` exactness, `dateAtBlock` 144-blocks≈1-day,
   `blockAtDate(H4.date)===H4.block`, and the IMG_7080 premise (14 turns, anchor high, first low Mon
-  5 Oct 2026, every turn `getUTCDay()===1`, strictly increasing, strict high/low alternation).
+  5 Oct 2026, every turn `getUTCDay()===1`, strictly increasing, strict high/low alternation); `cycleLegAt`
+  (⭐ LEG ×2, ⭐ AT A TURN, the projection's ends — step 0 of the Engine, BL61).
 - **`src/components/Almanac/CycleDial.tsx`** (+ `.module.css`) — STATIC presentational SVG dial, a
   declarative React port of the preview's `drawDial(…,'halving')` (no `createElementNS`). Props
   `{height, mode:'live'|'estimated', emphasis?:'halving'|'cycle'}` (`emphasis` accepted as the P2 seam;
@@ -55,7 +61,9 @@ markers ghosted vs confident (glow + solid dot), arc BTC→green-gradient (sw9) 
 BOTH (HR-1; the framing flips, the geometry doesn't). Marker HUES fixed both ways (high `--amber`, low
 `--maroon`). The gradient `<defs>` is emitted only for halving (cycle arc is solid). `CycleDial` also
 accepts a `children` center overlay (absolute `.dialCenter` inside `.dialwrap`) so faces align their
-readout to the dial's own sized box. a11y `aria-valuetext` branches per emphasis. **`viewBox` stays `"0 0 360 360"`** — coordinate math unchanged. iOS-portrait overflow (dial
+readout to the dial's own sized box. a11y `aria-valuetext` branches per emphasis — both say what the hand
+shows, the epoch's progress (since step 0 of the Engine, BL61, the cycle emphasis's reads "Epoch N, X% complete, the
+projected peak and floor marked, idealized"; it had called the epoch's percent "the projected descending phase"). **`viewBox` stays `"0 0 360 360"`** — coordinate math unchanged. iOS-portrait overflow (dial
 off-center-right, content zoomed) was fixed via CSS containment instead: `AlmanacView .container`
 gains `width:100%; box-sizing:border-box; overflow-x:hidden` (stops SVG `overflow:visible` labels
 from propagating to the viewport); `.dialwrap` is now `width:100%; max-width:300px; margin:0 auto`
@@ -65,15 +73,21 @@ from propagating to the viewport); `.dialwrap` is now `width:100%; max-width:300
 - **`HalvingClock.tsx`** (+ `.module.css`) — DEFAULT honest face (§5): real hero = next-halving
   **day-count** (`Math.round(blocksRemaining·TARGET_BLOCK_S/86400)`, NO ticking seconds — HR-2) + `est.
   ~{Mon YYYY}` (from `H5_EST`) + `block N / 1,050,000`; real 3-cell stat row (Through epoch / Blocks to
-  halving / Block height); demoted GHOSTED projection card (next-low floor + last-high peak via
-  `CYCLE_TURNS`, soft proj-bar at the descending %, "pattern not a forecast" caption). One-time
+  halving / Block height); demoted GHOSTED projection card (the leg the cadence is on, via
+  `cycleLegView` over `CYCLE_TURNS`: the turn ahead and the turn behind, each a peak or a floor — step 0 of the
+  Engine, BL61; it paired the next low with the last high — the soft proj-bar at the leg's %, "rising" or
+  "descending"; "pattern not a forecast" caption). One-time
   `Date.now()` read, no interval.
 - **`CycleClock.tsx`** (+ `.module.css`) — OPT-IN projection-hero (§14.2): hero = ticking
-  projected-floor countdown `Nd HH:MM:SS` to the next `CYCLE_TURNS` low — **the ONE permitted ticker
+  countdown `Nd HH:MM:SS` to the projected turn ahead — the next high while the cadence rises, the next low while
+  it descends (`cycleLegView` over `cycleLegAt`; step 0 of the Engine, BL61 — it paired the last high with the next
+  low, so from the 5 Oct 2026 low on it counted down to the Sep 2030 low), under "Projected peak" `--amber` (`.eyebrowPeak`) or
+  "Projected floor" `--maroon` — **the ONE permitted ticker
   (§14.4)**, a 1s `setInterval` gated by `usePageVisibility` (pauses hidden, resyncs on resume) +
   cleaned up on unmount; carries the REQUIRED "idealized cadence" tag + "why idealized" note (both
-  §14.4, always shown with the countdown); stat row (Descending phase `--maroon` / Since proj. peak
-  `--amber` / Block height); demoted halving card with an "Open Halving Clock →" link (`--btc`) calling
+  §14.4, always shown with the countdown); stat row (the leg — Rising phase `--amber` · floor → peak, or
+  Descending phase `--maroon` · peak → floor / Since proj. floor `--maroon` or Since proj. peak `--amber`, with the
+  turn's date / Block height); demoted halving card with an "Open Halving Clock →" link (`--btc`) calling
   `onSwitchToHalving`.
 - **`AlmanacView.tsx`** (+ `.module.css`) — local `face` state (default `'halving'`, §14.3, unpersisted)
   + the sub-nav (Halving · Cycle · Mining-soon-disabled · Power-Law-soon-disabled); passes the SAME

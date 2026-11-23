@@ -71,6 +71,10 @@ export default function CycleDial({ height, mode, emphasis = 'halving', children
   };
   const peak = pickMarker('high'); // hue --amber (style flips by emphasis)
   const floor = pickMarker('low'); // hue --maroon (style flips by emphasis)
+  // The screen-reader line on the cycle emphasis says what the hand shows — the epoch's progress, as on the halving
+  // emphasis — and which projected turns are marked (step 0 of the Engine, BL61: it called the epoch's percent "the
+  // projected descending phase").
+  const marked = [peak ? 'peak' : null, floor ? 'floor' : null].filter((w): w is string => w !== null).join(' and ');
 
   const handPt = polar(R, NOW);
   const handColor = isHalving ? 'var(--green)' : 'var(--text-primary)'; // green vs neutral (HR-2)
@@ -123,7 +127,7 @@ export default function CycleDial({ height, mode, emphasis = 'halving', children
         aria-valuetext={
           isHalving
             ? `Epoch ${epoch.era}, ${pct}% complete${mode === 'estimated' ? ' (estimated)' : ''}`
-            : `${pct}% through the projected descending phase, idealized${mode === 'estimated' ? ' (estimated)' : ''}`
+            : `Epoch ${epoch.era}, ${pct}% complete${marked ? `, the projected ${marked} marked` : ''}, idealized${mode === 'estimated' ? ' (estimated)' : ''}`
         }
       >
         {/* gradient only used by the confident halving arc */}
