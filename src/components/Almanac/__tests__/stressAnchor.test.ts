@@ -6,7 +6,7 @@ import { plConvergencePath } from '../../../simulation/powerLaw';
 /**
  * ⚠ REGRESSION GUARD — the price-stress lens used to die on its own.
  *
- * `useBtcPrice` polls spot every 10s and pushes to the store on a 0.1% move OR after 60s, whichever
+ * The live price (lib/liveBtc.ts, BL64; before it `useBtcPrice`'s 10 s poll) pushes to the store on a 0.1% move OR after 60s, whichever
  * comes first. Every push rewrote `s.btcPrice` → rebuilt `pricePath` → tripped both faces' "an input
  * changed, drop the stale scenario" effect. So an engaged lens reset to "as modeled" within a minute
  * and typically within seconds, discarding the whole scenario the owner was reading.

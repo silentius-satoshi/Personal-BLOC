@@ -516,9 +516,11 @@ src/
       crashPlaybookHardening.test.ts   # Hardening 1 — HE-12, HE-13
 
   hooks/
-    useBtcPrice.ts              # Coinbase API, 10s interval (POLL_MS); syncs the store on a ≥0.1% move or once 60s have passed (STORE_SYNC_THRESHOLD / STORE_SYNC_MS; gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick). Each store push goes through setBtcPrice, which now ALSO stamps btcPriceUpdatedAt (per-device staleness clock — DevPanel readout). Poll gated on the now-self-correcting usePageVisibility. MOUNTED AT AppShell ROOT so the poll runs for the whole session (Simple Mode mounts no price-consuming sidebar — without this, btcPrice froze at its last persisted value in Simple Mode); per-tab sidebar calls remain (harmless co-mounts)
+    useBtcPrice.ts              # BL64: the live price at its OLD cadence (about every 10 s) for the screens that read it as before — the sidebars' LIVE badge, the Converter, the Mining tab (useMiningSimulation) — from lib/liveBtc.ts's slow snapshot through useSyncExternalStore; the same shape ({ livePrice, lastUpdated, isStale } — 5-min stale line, 30 s self-tick). It no longer polls and no longer writes the store: the one feed does both (lib/liveFeed.ts). Before BL64 each mounted caller ran its own 10 s Coinbase poll and pushed the store on its own clock, and AppShell's root call re-rendered the whole tree on every poll
+    useLivePrice.ts             # BL64 — useLivePrice(opts?): the live price for what you watch, lib/liveBtc.ts's fast snapshot (a price every 5 s from Coinbase's batch feed; each second while a `perSecond` holder holds the feed), re-rendering only its reader. useLiveFeedHold(): AppShell's hold on the feed for the whole session; it reads nothing, so a tick never re-renders the frame. Readers: PriceChart, PowerLawFace's TodayTiles, PowerLawChart's LiveTodayDot
+    useClock.ts                 # BL64 v1.1 — the clocks for what reads the time as it draws (the frame's old 10 s / 30 s / on-show re-draw kept them by accident): useNow(everyMs) — now, every everyMs and at once on a show (the Emergency Console, 30 s); useLocalDay() — the local day, changed a second after local midnight (msToNextLocalDay, pure) and re-read on a show; AppShell holds it, so the open screen re-draws when the day turns, and only then. Show = usePageVisibility's signals. Tested in src/hooks/__tests__/useClock.test.ts and liveWiring.test.ts CLOCKS
     useAppUpdate.ts             # BL51 — the session's update state (lib/appUpdate) through useSyncExternalStore: the home's card and Settings → About read it. No store field
-    usePageVisibility.ts        # !document.hidden, SELF-CORRECTING (iOS-PWA resume fix): updates on visibilitychange + window focus/pageshow + a 20s interval re-read (one shared sync = setIsVisible(!document.hidden); the primitive bail-out adds no re-renders). visibilitychange ALONE misfires on iOS PWA launch/resume → isVisible could stick false → consumer polls (useBtcPrice/useBtcHistory) died forever; the extra signals recover it. Still genuinely pauses when backgrounded (NOT hardcoded true)
+    usePageVisibility.ts        # !document.hidden, SELF-CORRECTING (iOS-PWA resume fix): updates on visibilitychange + window focus/pageshow + a 20s interval re-read (one shared sync = setIsVisible(!document.hidden); the primitive bail-out adds no re-renders). visibilitychange ALONE misfires on iOS PWA launch/resume → isVisible could stick false → consumer polls (useBtcHistory, useChainTip; lib/liveBtc.ts and hooks/useClock.ts read the same signals themselves) died forever; the extra signals recover it. Still genuinely pauses when backgrounded (NOT hardcoded true)
     useBtcHistory.ts            # BTC candle history (1H/1D/1W) via same-origin /api/btc-candles proxy; usePageVisibility gate + slow 60s refresh (NOT a tight poll); NEVER written to the store; pure parseCandles (Coinbase [t,low,high,open,close,vol] newest-first → asc close series, s→ms) + RANGE_CFG. BL23 (the plan of record's Run 4): the request AND its body run inside utils/timeLimit's withTimeLimit (15 s), so a stall ends as failed; a range change or an unmount aborts the request in flight. 5e (F12): it draws the range's history from this device's copy (lib/btcCandlesCache, through useSyncExternalStore — every mounted chart redraws when any fetch lands) at ANY age and refreshes behind it; `asOf` is the history's time once it is more than 5 minutes old (the chart labels it), and a timer labels a history on screen the moment it crosses (offline, nothing renews it); a landing goes through the cache's newer-wins rule; a range draws only its own history; a load that fails keeps whatever it can draw, and only with nothing to draw sets `error` (the chart's "price history unavailable"). Run 4's `shownRange` is gone
     useCountTo.ts               # 5e (F12) — the chart's headline counts to a new figure over COUNT_MS (400 ms), easing out (pure countFrame, + − ×): the device's copy handing over to the live history, and every refresh that moves the price. Never on the first draw, from no figure (the "BTC" placeholder) or with reduced motion (useReducedMotion); frames on requestAnimationFrame's timestamps, never Date.now (the e2e fixes Date.now); the figure on screen in a ref (StrictMode-safe). Tested in src/hooks/__tests__/useCountTo.test.ts (COUNT)
     useSimulation.ts            # Smart BLOC tab simulation hook
@@ -865,7 +867,7 @@ src/
                                 # memory, with listeners for every mounted chart. A history's time = the EARLIER of `at`
                                 # (when this device's fetch landed) and its newest candle's close (t + granularity), so an
                                 # edge-cached copy is dated by its own candles. Drawn at ANY age unless future-dated or
-                                # malformed; isOld past HISTORY_FRESH_MS (5 min — useBtcPrice's stale line) → the chart
+                                # malformed; isOld past HISTORY_FRESH_MS (5 min — the live price's stale line, liveFeed's STALE_MS) → the chart
                                 # draws it muted with asOfLabel ("as of 2:05 PM" / "as of Oct 18, 2:05 PM", local, the day
                                 # by toLocalISO); msUntilOld drives the label timer; writeHistory never lets a history
                                 # replace a newer one (one held from the future gives way). Imports no store, and never
@@ -873,6 +875,24 @@ src/
                                 # in wipeLocalPlanData's inventory: kept on "Remove local key". Tested in
                                 # src/lib/__tests__/btcCandlesCache.test.ts (OLD, EDGE, NEWER, FUTURE, SHAPE, LABEL, STORE,
                                 # OWN KEY, RANGE, MONEY)
+    liveFeed.ts                 # BL64 — the live price, PURE (no store, no DOM; liveBtc.ts wires it): createLiveFeed(deps) →
+                                # hold / holdPerSecond / subscribe / get / subscribeSlow / getSlow. ONE Coinbase Exchange
+                                # socket (FEED_URL, public, no key): `ticker_batch` (a price every 5 s) while held, `ticker`
+                                # (a message per trade burst — ~12.6 a second measured, ~18 MB/h before compression) on the
+                                # same socket only while a per-second holder holds it; at most one price a second on screen
+                                # (SCREEN_MS, a burst's latest); the REST spot price (SPOT_URL) every POLL_MS once the socket
+                                # is QUIET_MS silent; reconnect 5 s after a socket that spoke, 45 s after a silent one, the
+                                # REST price alone after MAX_FAILS silent; hidden → closed, nothing asked; the last holder
+                                # gone IDLE_MS → closed, the last per-second holder gone IDLE_MS → the batch again (a
+                                # remount changes nothing). Two cadences: get (what you watch) and getSlow (≥ 9 s apart, for
+                                # useBtcPrice). The saved price by its old rule — a 0.1% move (PUSH_MOVE) or a minute (PUSH_MS),
+                                # live mode only — once for the app, weighed on the slow snapshot alone (at most once in
+                                # ~10 s on either feed, v1.1). It sends only subscribeMessage(…) for BTC-USD. Pure
+                                # parseTicker, parseSpot, withLivePoint (the chart's last point). Tested in
+                                # src/lib/__tests__/liveFeed.test.ts and liveWiring.test.ts
+    liveBtc.ts                  # BL64 — the app's one live price: liveFeed wired to WebSocket, fetch, timers, visibility
+                                # (usePageVisibility's signals: visibilitychange, focus, pageshow and a 20 s re-read) and the
+                                # store (btcPriceMode; setBtcPrice — the only place a tick writes the saved price)
     ledgerCsv.ts                # M-L1 — the Ledger face's data, PURE (no React; the Ledger writes nothing):
                                 # ledgerFaceAvailable (the face's gate — at least one logged month) · buildLedgerCsv (the
                                 # monthly log as a spreadsheet-ready CSV — Copy / Download) · the computed "→ Cold" column
@@ -938,6 +958,9 @@ src/
   components/
     Layout/
       AppShell.tsx              # ALL_TABS_META array, tab bar DndContext, sidebar/main routing,
+                                # useLiveFeedHold() — holds the one live price for the session and reads nothing (BL64;
+                                # its old useBtcPrice() re-rendered the whole tree on every 10 s poll), useLocalDay() —
+                                # the open screen re-drawn when the local day turns, and only then (BL64 v1.1),
                                 # hiddenTabs guard useEffect (full mode only — BL47), [data-active-tab] on shell div;
                                 # passes simpleView/setSimpleView as props to DailyModeView/SimpleModeView
                                 # (ViewToggle lives inside each view, not here). GESTURE P3: Branch J's owner journal
@@ -1553,7 +1576,8 @@ src/
        screen)
       EmergencyConsole.tsx      # Emergency Console (crash playbook Run 2) — the crash-day page for `ltvTriggered` CB
                                 # mode — any Coinbase loan's since the plan of record's Run 4 (D3); READ-ONLY (no
-                                # dayLog writes). Store reads above the early return; cbDebt via
+                                # dayLog writes). Store reads above the early return — and its own clock, useNow(30 s),
+                                # for the staleness banner (BL64 v1.1: the frame no longer re-draws it); cbDebt via
                                 # accruedCbBalance (the accrual boundary); support via plBandsAt (the view keeps the
                                 # crossing); card = waitingCard(input, cbLtvTriggerPct) ?? playbookCard(crashPlaybook(
                                 # input), input, hold) on playbookInputFromLive(...) at the EFFECTIVE price (simulated
@@ -2149,13 +2173,13 @@ src/
                                 # "Price history unavailable"; `!loading && error === null` → PowerLawChart) → today's
                                 # tiles → "The model" card (modelLines) → the amber disclaimer. Nothing above the chart waits
                                 # on the network, so on a phone the chart opens on screen (309.5–669.5 at 390×844) and never
-                                # moves as the numbers fill in (F2). Hooks: useBtcPrice + usePowerLawData only — NO block-
+                                # moves as the numbers fill in (F2). Hooks: useLivePrice + usePowerLawData only — NO block-
                                 # height fetch (D2: the old side panel fetched mempool.space on open, breaking the Almanac's
                                 # "live off" promise, F1). The face types no figure and no band name (I8) — its copy comes
                                 # from powerLawView; it types only "The model" and the two chart states, as DecisionFace
-                                # does. A same-file TodayTiles owns useBtcPrice() and `today` (useState(() => new Date())),
-                                # so its own poll re-renders only the tiles; AppShell's root useBtcPrice still re-renders the
-                                # face on every 10 s poll and 30 s tick, which is why PowerLawChart is memoised (R2). Tiles:
+                                # does. A same-file TodayTiles owns useLivePrice() (BL64) and `today` (useState(() => new Date())),
+                                # so a tick re-renders only the tiles; before BL64, AppShell's root poll re-rendered the face
+                                # every 10 s, which is why PowerLawChart is memoised (R2). Tiles:
                                 # two per row in the Almanac at every phone width; on the full-mode tab one per row below
                                 # 362px (a 288px grid at 360); five in one row on a computer. powerLawWiring pins all of it
       PowerLawFace.module.css   # COMPOSE-ONLY: exactly twelve rules, each `composes: <name> from
@@ -2183,8 +2207,9 @@ src/
                                 # here because only this component has chartData (chartZoomWiring reads its memo here).
                                 # Exports PowerLawChartEmpty (the loading / error state: the same title row and box).
                                 # MEMOISED (R2) — `export const PowerLawChart = memo(function PowerLawChart(…))`, the
-                                # Decision chart's pattern: AppShell's root useBtcPrice re-renders the whole tree on every
-                                # 10 s poll and 30 s tick, and the props are stable references from usePowerLawData. Chart
+                                # Decision chart's pattern: before BL64, AppShell's root poll re-rendered the whole tree every
+                                # 10 s; the props are stable references from usePowerLawData. BL64: LiveTodayDot, a
+                                # <Customized> child, draws the live price on the Today line and re-renders itself alone. Chart
                                 # renders in 40 s idle (dev, Strict Mode doubles): d521cd1 10 · the face with its own price
                                 # poll 20 · TodayTiles 10 · TodayTiles + memo 0 (powerLawWiring pins the memo)
       PowerLawChart.module.css  # The box (D4): --pl-plot 480px desktop / 360px at max-width 640px — the toolbar sits in
@@ -2558,7 +2583,9 @@ src/
                                 # The plan of record's Run 4 (D3): the crash day reads the Coinbase loan alone — no
                                 # cbPaymentStrategy here (planYearWiring INPUTS, planEdgesWiring GATE)
       PriceChart.tsx            # BTC price chart atop the Safety Dashboard — recharts AreaChart (line/area,
-                                # not candlesticks), 1H/1D/1W pills (default 1D), header price + range %Δ
+                                # not candlesticks) — BL64: its last point and headline follow useLivePrice (withLivePoint,
+                                # after the last candle while the history is fresh; only the chart re-renders on a tick),
+                                # 1H/1D/1W pills (default 1D), header price + range %Δ
                                 # (green/red), auto padded Y-domain (intraday visible), graceful loading/
                                 # "price history unavailable" states. Owns its own range state + useBtcHistory. One prop
                                 # since the plan of record's Run 2.1 (BL19): `money`, for the price and its tooltip, whole

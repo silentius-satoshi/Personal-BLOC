@@ -650,7 +650,7 @@ export function fmtPhaseShift(months: number): string {
 /**
  * Does the price-stress lens hold its anchor price?
  *
- * ⚠ WHY THIS EXISTS. `useBtcPrice` polls spot every 10s and pushes to the store whenever the price
+ * ⚠ WHY THIS EXISTS. The live price (lib/liveBtc.ts, BL64; before it, `useBtcPrice`'s 10 s poll) pushes to the store whenever the price
  * moves 0.1% (≈$80 on an $80k coin — seconds, not minutes) OR 60s elapse, whichever comes first. Each
  * push changed `s.btcPrice`, which rebuilt `pricePath`, which tripped the "an input changed, drop the
  * now-stale scenario" effect on both Almanac faces — so an engaged lens died on its own within a

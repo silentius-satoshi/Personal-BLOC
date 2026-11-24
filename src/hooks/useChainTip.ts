@@ -11,7 +11,7 @@ import { blockAtDate } from '../simulation/cycleModel';
  * off and live feed the SAME `epochProgress` geometry (§4 fallback parity / HR-1) — only the badge + a
  * height-precision marker differ.
  *
- * Lifecycle mirrors useBtcPrice: a visibility-gated poll (clears its interval on cleanup), a slow `now`
+ * Lifecycle mirrors the price poll useBtcPrice ran before the live feed (BL64): a visibility-gated poll (clears its interval on cleanup), a slow `now`
  * ticker (drives the off-estimate freshness + the staleness clock), a single-in-flight ref, and an
  * AbortController aborted on unmount / when the toggle flips off. Silent on failure (keeps the last good
  * tip). 🔴 Imports nothing from the risk/position core; reads the store ONLY for the toggle flag.

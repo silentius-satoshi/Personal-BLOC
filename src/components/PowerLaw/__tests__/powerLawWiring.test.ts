@@ -179,19 +179,19 @@ describe('⭐ the Power Law face — the four faces\' layout, on both surfaces (
     }
   });
 
-  it('⭐ no block-height fetch (D2): the face reads only the price and the history; useMempoolData is gone; only the tiles poll the price, and the chart is memoised (R2)', () => {
-    // mutations: W5 a mempool fetch added to the face → red; useBtcPrice() moved into PowerLawFace → red; the chart's
+  it('⭐ no block-height fetch (D2): the face reads only the price and the history; useMempoolData is gone; only the tiles read the live price, and the chart is memoised (R2)', () => {
+    // mutations: W5 a mempool fetch added to the face → red; useLivePrice() moved into PowerLawFace → red; the chart's
     // memo dropped → red
     const code = faceCode();
     expect(code, 'PowerLawFace.tsx').toMatch(FACE);
     expect(code.match(/useMempoolData|mempool|useChainTip|\bfetch\(/)?.[0] ?? null, 'an explorer in the face').toBeNull();
     expect(existsSync(join(ROOT, 'src/hooks/useMempoolData.ts')), 'useMempoolData.ts is gone').toBe(false);
     const hooks = [...code.matchAll(/from '\.\.\/\.\.\/hooks\/(\w+)'/g)].map((m) => m[1]).sort();
-    expect(hooks, 'the face\'s hooks').toEqual(['useBtcPrice', 'usePowerLawData']);
-    // Δ1: only the tiles poll the price, so the face's own poll re-renders the tiles alone. The app shell's root poll still
-    // re-renders the face, so the chart is memoised on its stable props (R2) — the Decision chart's pattern.
-    expect(fnBody(code, 'TodayTiles'), 'TodayTiles polls the price').toMatch(/\buseBtcPrice\(\)/);
-    expect(fnBody(code, 'PowerLawFace'), 'PowerLawFace does not').not.toMatch(/\buseBtcPrice\(/);
+    expect(hooks, 'the face\'s hooks').toEqual(['useLivePrice', 'usePowerLawData']);
+    // Δ1: only the tiles read the live price (BL64), so a tick re-renders the tiles alone. The chart stays memoised on its
+    // stable props (R2) — the Decision chart's pattern; its live dot reads the price itself.
+    expect(fnBody(code, 'TodayTiles'), 'TodayTiles reads the live price').toMatch(/\buseLivePrice\(\)/);
+    expect(fnBody(code, 'PowerLawFace'), 'PowerLawFace does not').not.toMatch(/\buseLivePrice\(|\buseBtcPrice\(/);
     expect(CHART, 'the chart is memoised').toMatch(/export const PowerLawChart = memo\(function PowerLawChart\(/);
   });
 });

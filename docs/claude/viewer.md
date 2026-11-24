@@ -159,8 +159,8 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   closed). **`viewerSafeSnapshot: SafeSnapshot | null`** is a new transient store field
   (partialize-excluded, cleared in `clearViewerData`).
 - **Render (`ViewerHomeView.tsx`):** one `useViewerSafety(injectedSafeSnap?)` seam unifies both modes into a
-  render shape — safe → `scaleSafetyView(viewerSafeSnapshot, liveBtcPrice)` (live via AppShell's
-  `useBtcPrice()`); trusted → `deriveSafetyView(selectSafetyViewInputs(s))` + computed figures. Gauges/pill/
+  render shape — safe → `scaleSafetyView(viewerSafeSnapshot, liveBtcPrice)` (live via the app's one feed,
+  held by AppShell's `useLiveFeedHold()` — BL64); trusted → `deriveSafetyView(selectSafetyViewInputs(s))` + computed figures. Gauges/pill/
   badges identical; only the SUB-LINES differ — C-safe = plain V1 language + live drop% ("Safe through a ~N%
   dip"); C-trusted = real figures (credit "$X of $Y · $Z available"; Strike/CB "Liq at ~$P · $B balance"). CB
   card gates on the seam's `hasCbLoan` (safe mode's store `hasCbLoan` is a seed default — comes from the

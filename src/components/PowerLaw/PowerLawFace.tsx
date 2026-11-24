@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useBtcPrice } from '../../hooks/useBtcPrice';
+import { useLivePrice } from '../../hooks/useLivePrice';
 import { usePowerLawData } from '../../hooks/usePowerLawData';
 import { plBandsAt } from '../../simulation/powerLaw';
 import { PowerLawChart, PowerLawChartEmpty } from './PowerLawChart';
@@ -14,10 +14,10 @@ import styles from './PowerLawFace.module.css';
  * on the network, so the chart opens on screen on a phone and never moves as the numbers fill in (F2).
  *
  * - Every class composes its namesake in CyclingFace.module.css (I2), so the face can't drift from the four.
- * - Its hooks are useBtcPrice and usePowerLawData — no block-height fetch (D2), so the Almanac's "live off" holds (F1).
+ * - Its hooks are useLivePrice and usePowerLawData — no block-height fetch (D2), so the Almanac's "live off" holds (F1).
  * - The copy that carries a figure or a band name comes from powerLawView (I8).
- * - The price lives in TodayTiles: its own poll re-renders only the tiles, never the face. The app shell's root
- *   useBtcPrice still re-renders the face on every tick, which is why PowerLawChart is memoised (R2).
+ * - The live price (BL64, a price every 5 s) lives in TodayTiles and in the chart's live dot: each re-renders itself on
+ *   a tick, never the face. PowerLawChart stays memoised on its stable props (R2).
  */
 export function PowerLawFace() {
   const { historical, bands, loading, error } = usePowerLawData();
@@ -52,9 +52,9 @@ export function PowerLawFace() {
 /** Today's tiles — the only part of the face that reads the live price. Today's lines are one Date per mount, like the
  *  chart's "Today" line: a Date taken in the render would move on every re-render. */
 function TodayTiles() {
-  const { livePrice } = useBtcPrice();
+  const live = useLivePrice();
   const [today] = useState(() => new Date());
-  const tiles = todayTiles(livePrice, plBandsAt(today));
+  const tiles = todayTiles(live?.price ?? null, plBandsAt(today));
 
   return (
     <div className={styles.statGrid}>

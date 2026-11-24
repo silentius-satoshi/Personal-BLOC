@@ -104,7 +104,7 @@ function strikeSubSafe(level: SafetyLevel, dropPct: number): string {
  */
 export function useViewerSafety(injectedSafeSnap?: SafeSnapshot | null): ViewerSafetyResult {
   const storeSnap = useStore((s) => s.viewerSafeSnapshot);
-  const livePrice = useStore((s) => s.btcPrice);                    // live via AppShell's useBtcPrice()
+  const livePrice = useStore((s) => s.btcPrice);                    // the saved price, kept live by the app's one feed (BL64)
   const inputs    = useStore(useShallow(selectSafetyViewInputs));   // trusted path (subscribed either way; harmless in safe mode)
   const safeSnap  = injectedSafeSnap !== undefined ? injectedSafeSnap : storeSnap;
   // D7 (Run 4) — the trusted path reads Coinbase at today's support; the clock read stays here, out of the pure core.

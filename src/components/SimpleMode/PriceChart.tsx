@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { useBtcHistory, type ChartRange } from '../../hooks/useBtcHistory';
 import { useCountTo } from '../../hooks/useCountTo';
+import { useLivePrice } from '../../hooks/useLivePrice';
 import { asOfLabel } from '../../lib/btcCandlesCache';
+import { withLivePoint } from '../../lib/liveFeed';
 import { fmtUSD } from '../../utils/format';
 import styles from './PriceChart.module.css';
 
@@ -20,14 +22,19 @@ function fmtTime(t: number, range: ChartRange): string {
  *
  *  5e (F12): the history is drawn at once from this device's copy. Once it is more than 5 minutes old (`asOf`), it is
  *  drawn muted, with its time in place of the % change ("as of 2:05 PM"), until a fresh one lands; then the label goes
- *  and the headline counts to the new figure. */
+ *  and the headline counts to the new figure.
+ *
+ *  The live price (BL64): its last point, and the headline, follow the app's live feed — a price every 5 s — drawn after
+ *  the history's last candle while the history is fresh. Only this chart re-renders on a tick. */
 export function PriceChart({ money = fmtUSD }: { money?: (n: number) => string } = {}) {
   const [range, setRange] = useState<ChartRange>('1D');
   const { candles, loading, error, asOf } = useBtcHistory(range);
+  const live = useLivePrice();
+  const series = useMemo(() => withLivePoint(candles, live, asOf === null), [candles, live, asOf]);
 
-  const hasData  = candles.length >= 2;
-  const first    = hasData ? candles[0].price : 0;
-  const last     = hasData ? candles[candles.length - 1].price : 0;
+  const hasData  = series.length >= 2;
+  const first    = hasData ? series[0].price : 0;
+  const last     = hasData ? series[series.length - 1].price : 0;
   const shown    = useCountTo(hasData ? last : null);
   const changePct = hasData && first > 0 ? ((last - first) / first) * 100 : 0;
   const up       = changePct >= 0;
@@ -69,7 +76,7 @@ export function PriceChart({ money = fmtUSD }: { money?: (n: number) => string }
       <div className={styles.chartArea}>
         {hasData ? (
           <ResponsiveContainer width="100%" height={120}>
-            <AreaChart data={candles} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+            <AreaChart data={series} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="priceFill" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%"   stopColor={color} stopOpacity={0.22} />

@@ -16,7 +16,7 @@ previousTab: Exclude<ActiveTab, 'settings'>;
 ```typescript
 income:           number;   // default 4000
 expenses:         number;   // default 3500
-btcPrice:         number;   // live mode (btcPriceMode === 'live'): useBtcPrice polls every 10 s and pushes the price here on a ≥0.1% move, or once 60 s have passed
+btcPrice:         number;   // live mode (btcPriceMode === 'live'): the live price (lib/liveBtc.ts, BL64) pushes the price here on a ≥0.1% move, or once 60 s have passed, weighed on its slow snapshot (at most once in ~10 s, v1.1) — one writer for the app
 btcPriceMode:     'live' | 'manual';   // default 'live'; 'manual' suppresses live overwrites
 btcPriceUpdatedAt: number | null;   // default null; ms of last setBtcPrice. PER-DEVICE, NOT synced (not in SETTINGS_FIELDS/buildSettingsPayload); persists via partialize rest; stamped by setBtcPrice → DevPanel price-age diagnostic
 activeTier:       'min' | 'rec' | 'ideal' | 'custom';  // default 'rec'

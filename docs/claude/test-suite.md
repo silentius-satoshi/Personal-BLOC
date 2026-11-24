@@ -792,7 +792,7 @@ goes red.)
       `? <PowerLawFace />` inside `<main>`, both `[data-active-tab="powerlaw"]` rules, and the four old files gone
       (W1–W3);
     - no block-height fetch — no `useMempoolData` / `mempool` / `useChainTip` / `fetch(` in the face (W5),
-      `useMempoolData.ts` gone, the face's hooks exactly `useBtcPrice` + `usePowerLawData`, `useBtcPrice(` only in
+      `useMempoolData.ts` gone, the face's hooks exactly `useLivePrice` + `usePowerLawData` (BL64; `useBtcPrice` before), `useLivePrice(` only in
       TodayTiles, and `export const PowerLawChart = memo(function PowerLawChart(` (R2 — red with the memo dropped).
   - `src/styles/__tests__/composedOverrides.test.ts` — ⭐ ONE source-reading `it`, and it IS the audit (P9–P11).
     - **What it checks.** For every composing rule in every `*.module.css` under `src/`, no single-class rule of the
@@ -951,7 +951,7 @@ goes red.)
     - ⭐ fmtCoef — `1.16 × 10⁻¹⁷`, `4.2 × 10⁻¹⁸`, `2.4 × 10⁻¹⁷`, `1 × 10⁵`, and the carry `9.999e-18 → 1 × 10⁻¹⁷` (V8; the
       carry dropped → "10 × 10⁻¹⁸").
   - powerLawWiring (12 checks — above): W1–W3 at "both surfaces bare"; W4 at ONE layout and the composedOverrides audit;
-    W5 at "no block-height fetch"; W6 at the copy check; the memo dropped (R2) and `useBtcPrice()` called in
+    W5 at "no block-height fetch"; W6 at the copy check; the memo dropped (R2) and `useLivePrice()` (BL64; `useBtcPrice()` before) called in
     PowerLawFace (Δ1) at "no block-height fetch"; the tiles above the chart (E1) at the copy check's D1 order too.
   - composedOverrides: C1 (MiningMain's `.main.main` → `.main`) is red at the audit's clashes.
   - **Red first** (the tests on d521cd1's code): 15 red — powerLaw 2 and powerLawView 7 ("not a function", except the
@@ -2730,6 +2730,41 @@ goes red.)
     pattern card: a peak ahead and a floor behind, "rising", after a low; a floor ahead and a peak behind,
     "descending", inside the first bear and in a later fall — Sep 2029's peak behind it there) · ⭐ DIAL WORDS (the cycle emphasis's `aria-valuetext` reads the epoch's progress and
     never "descending").
+- **The live price (BL64, 2026-11-23)** (spec `pbloc-spec-live-price-v1`; Standard, the reviewer's measured prototype;
+  +4 files, +21 unit tests, +8 e2e — v1.1's clocks and save rule included): one feed for the app (lib/liveFeed.ts, lib/liveBtc.ts) — Coinbase's batch feed on
+  screen, its per-second feed only while held, a price at most once a second, the REST price when it is silent, the saved
+  price by its old rule.
+  - `src/lib/__tests__/liveFeed.test.ts` (13, new; a fake socket, clock and REST price): ⭐ ONE CONNECTION (three holders,
+    one socket; a screen swap keeps it; the last holder gone a second closes it) · ⭐ CHANNELS (the batch on open; the
+    per-second feed on the same socket while held, back a second after the last holder — a remount changes nothing) · ⭐ AMOUNT-FREE (only the four subscribe and unsubscribe
+    messages) · ⭐ ONE A SECOND (a burst reaches the screen as its latest, a second on) · ⭐ SLOW (`useBtcPrice`'s screens
+    about every 10 s) · ⭐ PUSH RULE (the saved price on a 0.1% move or a minute, weighed on the slow snapshot — a 0.1% move
+    between two waits for the next — live mode alone, once however many screens) · ⭐ FAST MARKET (v1.1: a 0.1% move each second on
+    the per-second feed saves 4 times in 30 s, never closer than 9 s; v1.0's save on each tick → 30) · ⭐ QUIET (a silent socket hands over to the REST price every 10 s; a speaking one stops it) · ⭐ RECONNECT
+    (5 s after one that spoke, 45 s after a silent one, the REST price alone after three silent; shown again, a fresh
+    start) · ⭐ HIDDEN · ⭐ NO SOCKET · ⭐ GARBAGE · ⭐ LIVE POINT.
+  - `src/lib/__tests__/liveWiring.test.ts` (7, new; read off the source): ⭐ ONE SOCKET (`new WebSocket(` in liveBtc.ts
+    alone) · ⭐ ONE REST PRICE (the spot URL in liveFeed.ts alone) · ⭐ ONE WRITER (`setBtcPrice(` in the five sidebars'
+    taps and liveBtc.ts; the hooks write nothing) · ⭐ FRAME (AppShell holds the feed with `useLiveFeedHold()`, which keeps
+    no state, and reads no price) · ⭐ CADENCES (useBtcPrice on the slow snapshot; the chart, the Power Law face and its
+    chart on useLivePrice) · ⭐ CLOCKS (v1.1: the console's own `useNow(30_000)`, no `Date.now()` as it draws; AppShell's
+    `useLocalDay()`; the day clock holds the day, set to the day alone, woken at the next local midnight) · ⭐ TESTS NEVER
+    REACH COINBASE (playwright.config.ts's host rules).
+  - `src/hooks/__tests__/useClock.test.ts` (1, new; v1.1): ⭐ MIDNIGHT (`msToNextLocalDay` from any moment lands on the next
+    local midnight — 30 s before it, 1 ms before it, at midnight itself a whole day).
+  - `e2e/livePrice.spec.ts` (8, new; a fake feed through `page.routeWebSocket`, the REST price and the history routed):
+    ⭐ ONE FEED (one socket across screens, asking only for the BTC-USD batch) · ⭐ CHART (the Dashboard chart's headline
+    follows each tick) · ⭐ FRAME (React's devtools hook counts renders by name: over five ticks the chart renders on each,
+    AppShell and DailyModeView never; the counter sees all three at the start, so it isn't vacuous) · ⭐ SAVED PRICE (live
+    mode, on an installed clock: +0.05% leaves the saved price; +0.2% shows at once and is saved at the next slow snapshot)
+    · ⭐ CONSOLE CLOCK (v1.1: full mode's Emergency tab, no price for 16 minutes — the stale banner comes on its own) ·
+    ⭐ DAY (v1.1: manual mode, 23:59 → 00:01 with nothing else moving — Daily's "Today's log" turns with the day) · ⭐ POWER LAW (the price tile and the chart's live dot follow) ·
+    ⭐ NO REAL FEED (no feed routed: no frame from Coinbase, and the REST price still comes).
+  - Moved on purpose: `powerLawWiring.test.ts` D2 (the face's hooks `useLivePrice` + `usePowerLawData`; the tiles read the
+    live price), `viewerAlmanacWiring.test.ts` CALL SITES (`setBtcPrice` at `src/lib/liveBtc.ts`, not the hook), and a
+    comment in `stressAnchor.test.ts`.
+  - `playwright.config.ts`: Chromium resolves `ws-feed.exchange.coinbase.com` and `api.coinbase.com` nowhere, so no run
+    reaches the real price — every machine starts with none, as an offline one always did.
 - **Recorded Strike collateral (spec v3)** — `src/simulation/__tests__/recordedCollateral.test.ts` (pure): ⭐ each month records its OWN reading's `strikeCollateral`; ⭐ a reading without it leaves `btcHeld` ABSENT and the reroll bridge keeps the stored value (mutation `?? 0` → red); zero records 0 (truthiness mutation → red); carry-forward + provisional; ⭐ a cold-destined buy doesn't move `btcHeld`; grep guard `recomputeBtcHeld` absent from `src/` (non-vacuous walker); onboarding source-order guard (`emitBalanceReading` after `setAdvisorStartDate`, baseline write kept). `src/store/__tests__/recordedCollateralStore.test.ts` (real store): cold-destined buy; ⭐ B1 a Strike-only re-anchor records NOTHING, not 0; §9 onboarding anchor; ⭐ B2 a joining device's reconcile reopens no confirmed month (mutation: `btcHeld` in `ROLLUP_NUM_KEYS` → red); ⭐ A4 a `btcHeld`-less entry end to end (CSV → buildPlanBackup → validatePlanBackup → applyPlanBackup; mutation: `btcHeld` back in the validator's required list → red) + the validator both ways. `src/lib/__tests__/ledgerCold.test.ts` (`coldMovedByMonth`, `hasColdColumn`, the CSV column + empty Strike col). `src/components/Advisor/__tests__/monthlyLogForm.test.ts` (`strikeColFragment`: blank → omitted, "0" → 0). `viewerSync.test.ts` S4 + `sync.test.ts`: entries apply VERBATIM (recompute mutation → red). `dailyModeStore.test.ts`: a reading without `strikeCollateral` / a buy records no `btcHeld`
 - `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation). P2a: `deriveCbCollateral` (latest cbCollateral-bearing event by ts across both kinds; cache fallback; ignores readings w/o cbCollateral)
 - `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change; cb-only month creates NO entry / doesn't flip a manual month to daily; mixed cb+draw month is daily via the draw) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction. **P3:** `deleteDayEvent` writes a numeric `deletedDayEvents[id]` + removes the event; a journal-only `addDayEvent(cbCollateralReading)` sets `recordsDirty` + leaves `monthlyLog` empty (publish trigger for the no-month path); raw `setDayLog([cbColl@ts1, cbColl@ts2])` derives `cbCollateralBtc` to the newest (the fold) WITHOUT rerolling monthlyLog; `setDeletedDayEvents` raw-set; `partializeState` includes `deletedDayEvents`

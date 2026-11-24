@@ -7,6 +7,10 @@ paths:
   - "src/lib/store/**"
   - "src/lib/planEvents/**"
   - "src/hooks/useBtcPrice.ts"
+  - "src/hooks/useLivePrice.ts"
+  - "src/hooks/useClock.ts"
+  - "src/lib/liveFeed.ts"
+  - "src/lib/liveBtc.ts"
   - "src/components/Inputs/InputsPanel.tsx"
   - "src/components/CoinbaseLoan/CoinbaseLoanSidebar.tsx"
   - "src/components/LivingOnBitcoin/LivingInputsPanel.tsx"
@@ -24,6 +28,7 @@ Each rule's full text — its mechanism, measures and history — is in `docs/cl
 |---|---|
 | Zustand v7 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; adds `cbPaymentStrategy/TriggerPct/TargetPct` with defaults. `cbPaymentStrategy` is inert (no component reads or writes it); the key stays |
 | Zustand v8 migration | Adds `btcPriceMode: 'live' \| 'manual'` (default `'live'`); typing a BTC price flips to `'manual'`; LIVE/SYNC button restores `'live'` |
+| The live price (BL64) | ONE feed for the app (`lib/liveFeed.ts`, wired in `lib/liveBtc.ts`): one Coinbase socket — the batch feed while the app is on screen, the per-second feed only while held (`holdPerSecond`) — at most one price a second on screen, the REST price when it is silent, closed while hidden. The saved `btcPrice` is written only there, by the old rule (a 0.1% move or 60 s, live mode only), weighed on the slow snapshot alone — at most once in ~10 s (v1.1); `useBtcPrice` keeps its ~10 s cadence; AppShell holds the feed with `useLiveFeedHold()` and reads nothing, and holds `useLocalDay()` — the open screen re-drawn when the local day turns, and only then; a screen that ages a figure as it draws keeps its own clock (`useNow`: the Emergency Console's stale banner) (v1.1); the socket sends only its subscribe/unsubscribe for BTC-USD. Pins: `liveFeed.test.ts`, `liveWiring.test.ts`, `useClock.test.ts`, `e2e/livePrice.spec.ts` |
 | Zustand v9 migration | Adds `lastRecordsSyncAt`; independent per-d-tag watermarks |
 | Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload |
 | Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. `collateralAdjustment?` is optional (no bump) |

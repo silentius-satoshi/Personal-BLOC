@@ -36,6 +36,10 @@ export default defineConfig({
         viewport: { width: 390, height: 844 },
         hasTouch: true,
         isMobile: true,
+        // No test reaches the real Coinbase price (BL64): the live feed's socket host and the REST price's host resolve
+        // nowhere, so every run, on every machine, starts with no live price — as an offline one always did. A spec that
+        // wants a price routes it (page.route, page.routeWebSocket), which never resolves the host.
+        launchOptions: { args: ['--host-resolver-rules=MAP ws-feed.exchange.coinbase.com ~NOTFOUND, MAP api.coinbase.com ~NOTFOUND'] },
       },
     },
   ],

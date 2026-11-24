@@ -1,25 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import { useStore } from '../store/useStore';
-import { usePageVisibility } from './usePageVisibility';
-
-const BTC_API = 'https://api.coinbase.com/v2/prices/BTC-USD/spot';
-
-const POLL_MS              = 10_000;   // display refresh cadence
-const STORE_SYNC_MS        = 60_000;   // max store staleness on a quiet market
-const STORE_SYNC_THRESHOLD = 0.001;    // 0.1% move forces immediate store push
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { liveBtc } from '../lib/liveBtc';
+import { STALE_MS } from '../lib/liveFeed';
 
 interface BtcPriceState {
   livePrice:   number | null;
   lastUpdated: Date   | null;
 }
 
+/**
+ * The live price at its old cadence — about every 10 s — for the screens that read it as before (the sidebars' LIVE
+ * badge, the Converter, the Mining tab). It comes from the app's one live feed (lib/liveBtc.ts, BL64) instead of a poll
+ * per screen, and it no longer writes the store: the saved price is written there, by the rule it always had.
+ */
 export function useBtcPrice(): BtcPriceState & { isStale: boolean } {
-  const setBtcPrice = useStore((s) => s.setBtcPrice);
-  const [state, setState] = useState<BtcPriceState>({ livePrice: null, lastUpdated: null });
-  const isVisible = usePageVisibility();
-
-  const lastStorePrice  = useRef<number | null>(null);
-  const lastStorePushAt = useRef<number>(0);
+  const tick = useSyncExternalStore(liveBtc.subscribeSlow, liveBtc.getSlow, () => null);
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -27,42 +21,8 @@ export function useBtcPrice(): BtcPriceState & { isStale: boolean } {
     return () => clearInterval(id);
   }, []);
 
-  async function fetchPrice() {
-    try {
-      const res  = await fetch(BTC_API);
-      if (!res.ok) return;
-      const json  = await res.json() as { data?: { amount?: string } };
-      const price = parseFloat(json?.data?.amount ?? '');
-      if (!isNaN(price) && price > 0) {
-        setState({ livePrice: price, lastUpdated: new Date() });
-        if (useStore.getState().btcPriceMode === 'live') {
-          const moved = lastStorePrice.current == null
-            ? true
-            : Math.abs(price - lastStorePrice.current) / lastStorePrice.current >= STORE_SYNC_THRESHOLD;
-          const elapsed = Date.now() - lastStorePushAt.current >= STORE_SYNC_MS;
-          if (moved || elapsed) {
-            setBtcPrice(price);
-            lastStorePrice.current  = price;
-            lastStorePushAt.current = Date.now();
-          }
-        }
-      }
-    } catch {
-      // silent fallback
-    }
-  }
+  const lastUpdated = useMemo(() => (tick === null ? null : new Date(tick.at)), [tick]);
+  const isStale = tick !== null && now - tick.at > STALE_MS;
 
-  useEffect(() => {
-    if (!isVisible) return;
-    void fetchPrice();
-    const id = setInterval(() => void fetchPrice(), POLL_MS);
-    return () => clearInterval(id);
-  }, [isVisible]);
-
-  const STALE_MS = 5 * 60 * 1000;
-  const isStale = state.lastUpdated
-    ? (now - state.lastUpdated.getTime()) > STALE_MS
-    : false;
-
-  return { ...state, isStale };
+  return { livePrice: tick?.price ?? null, lastUpdated, isStale };
 }

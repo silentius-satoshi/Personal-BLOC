@@ -1,4 +1,4 @@
-import { memo, useCallback, useId, useMemo, useState } from 'react';
+import { createElement, memo, useCallback, useId, useMemo, useState, type ReactElement } from 'react';
 import {
   Area,
   CartesianGrid,
@@ -16,6 +16,7 @@ import {
   timeTicks, tickDensity, fmtTimeTick, logTicks, priceTickFormatter, type Domain, type Scales, type View,
 } from '../../lib/chartZoom';
 import { useChartZoom, type ChartZoom } from '../../hooks/useChartZoom';
+import { useLivePrice } from '../../hooks/useLivePrice';
 import { ChartZoomFrame, ChartZoomToolbar } from '../ui/ChartZoomFrame';
 import {
   PL_SERIES, PL_CHART_TITLE, powerLawTooltip, historyDrawn, legendEntries, type PlSeriesKey,
@@ -94,8 +95,28 @@ interface Props {
   bands: BandPoint[];
 }
 
-/** Memoised (R2) — the Decision chart's pattern. AppShell's root useBtcPrice re-renders the whole tree on every 10 s poll
- *  and 30 s tick; the props are stable references from usePowerLawData, so a price tick never re-renders the chart. */
+/** The live price on the Today line (BL64): recharts hands a Customized child the chart's axes and plot box; this one reads
+ *  the live price itself, so a tick re-renders the dot alone. Outside the plot (a zoom that leaves it), it isn't drawn. */
+interface AxisLike { scale?: (v: number) => number }
+interface PlotBox { left: number; top: number; width: number; height: number }
+function LiveTodayDot({ t, color, xAxisMap, yAxisMap, offset }: {
+  t: number; color: string; xAxisMap?: Record<string, AxisLike>; yAxisMap?: Record<string, AxisLike>; offset?: PlotBox;
+}) {
+  const live = useLivePrice();
+  const xs = xAxisMap ? Object.values(xAxisMap)[0]?.scale : undefined;
+  const ys = yAxisMap ? Object.values(yAxisMap)[0]?.scale : undefined;
+  if (live === null || !xs || !ys || !offset) return null;
+  const x = xs(t);
+  const y = ys(live.price);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x < offset.left || x > offset.left + offset.width || y < offset.top || y > offset.top + offset.height) return null;
+  return (
+    <circle data-testid="powerlaw-live-dot" cx={x} cy={y} r={3.5} fill={color} stroke="var(--bg-card)" strokeWidth={1.5} />
+  );
+}
+
+/** Memoised (R2) — the Decision chart's pattern. The props are stable references from usePowerLawData, so a price tick
+ *  never re-renders the chart: the live price reaches it only through LiveTodayDot, which re-renders itself (BL64). */
 export const PowerLawChart = memo(function PowerLawChart({ historical, bands }: Props) {
   const chartData = useMemo<ChartRow[]>(() => {
     const sortedHist = [...historical].sort((a, b) => a.timestamp - b.timestamp);
@@ -149,6 +170,8 @@ export const PowerLawChart = memo(function PowerLawChart({ historical, bands }: 
   const legend = useMemo(() => legendEntries(historyDrawn(chartData)), [chartData]);
   const history = PL_SERIES.find((s) => s.key === 'price')!;
   const bandSeries = PL_SERIES.filter((s) => s.key !== 'price');
+  // The live price on the Today line (BL64) — a stable element, so the chart never re-renders for it.
+  const liveDot: ReactElement = useMemo(() => createElement(LiveTodayDot, { t: todayT, color: history.color }), [todayT, history.color]);
 
   return (
     <div className={styles.chart}>
@@ -232,6 +255,7 @@ export const PowerLawChart = memo(function PowerLawChart({ historical, bands }: 
                 strokeDasharray="2 2"
                 label={{ value: 'Today', fill: 'var(--text-muted)', fontSize: 10, position: 'insideTopRight' }}
               />
+              <Customized component={liveDot} />
               <Customized component={zoom.probe} />
             </ComposedChart>
           </ResponsiveContainer>

@@ -411,8 +411,8 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   `EmergencyConsole` crosses it) · `income`/`expenses`/`blocApr`/`cbAprPct`/`btcPrice` · the minimum's source as
   `strikeMinFromIncome` (Run 2, D-R2-7) · `STRIKE_MAX_DRAW_LTV` · `STRIKE_MARGIN_CALL_LTV`.
   The prototype's direct CoinGecko `fetch` is GONE — no new external host. ⚠ **AMENDED:** the consented
-  `useChainTip` is not the Almanac's only *background* network call: the Power Law, Mining and Sats faces poll the
-  spot price every 10 s (`useBtcPrice`), and the Power Law, Decision and FIRE faces fetch the price history on mount
+  `useChainTip` is not the Almanac's only *background* network call: the Power Law, Mining and Sats faces read the
+  live price — the app's one feed (BL64; `useLivePrice` on the Power Law face, `useBtcPrice`'s 10 s cadence elsewhere), and the Power Law, Decision and FIRE faces fetch the price history on mount
   (`usePowerLawData`). Both cycling faces now also carry
   **`useMorphoRateOnDemand`** — same-origin `/api/morpho-rate`, **never on mount and never on a timer**,
   fires only when the owner taps "Check live rate" / "Refetch". It writes to the SESSION OVERLAY, never the
@@ -484,7 +484,7 @@ that list escapes the mirror entirely, which is the single easiest way to reintr
 It was run RED on all three (each naming `strikeCapPct`) before the Strike cap reached the reset arrays.
 
 **⚠ THE ANCHOR SPLIT — the lens freezes the SCENARIO, never the FACE.** `pricePath` is built from
-`anchorPrice`, **not** `s.btcPrice`. `useBtcPrice` polls spot every 10s and pushes to the store on a 0.1%
+`anchorPrice`, **not** `s.btcPrice`. The live price (lib/liveBtc.ts, BL64; before it `useBtcPrice`'s 10 s poll) pushes to the store on a 0.1%
 move **or** after 60s, whichever comes first (≈$80 on an $80k coin — seconds, not minutes). Every push
 rewrote `btcPrice` → rebuilt `pricePath` → tripped the reset effect above, so **an engaged lens could not
 outlive one quote**: it snapped back to "as modeled" within seconds and the owner lost the whole scenario.
@@ -2718,7 +2718,7 @@ badge + an off-mode `~`/`est.` precision marker differ.
   config-ready `PROVIDERS` array `{name,url,parse}` tried sequentially: mempool.space → blockstream.info →
   blockchain.info (plain-text height) → blockchair.com (`data.blocks` JSON); 8s AbortController each;
   plausibility guard `isPlausibleHeight` = `800_000 < h < 2_000_000`; first valid wins (else keeps the last
-  good tip, silent). Lifecycle mirrors `useBtcPrice`: Effect A = a 60s `now` ticker (off-estimate freshness
+  good tip, silent). Lifecycle mirrors the poll `useBtcPrice` ran before BL64: Effect A = a 60s `now` ticker (off-estimate freshness
   + staleness clock); Effect B = the live poll gated `[isVisible, almanacLiveEnabled]` (120s interval,
   `clearInterval` + `abortRef.abort()` on cleanup → never fetches when off/hidden, flipping off aborts
   in-flight). `inFlightRef` prevents stacked polls. `isStale` = live && lastUpdated >10min old. Exports

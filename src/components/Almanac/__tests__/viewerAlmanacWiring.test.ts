@@ -132,7 +132,7 @@ describe('⭐ what the hub\'s faces can write (V4 B)', () => {
       setInflationRate: ['Almanac/FireFace.tsx'],
       setAlmanacLiveConsented: ['Almanac/AlmanacView.tsx'],
       setAlmanacLiveEnabled: ['Almanac/AlmanacView.tsx'],
-      setBtcPrice: ['Converter/ConverterSidebar.tsx', 'src/hooks/useBtcPrice.ts'],   // the LIVE badge; the live price's sync
+      setBtcPrice: ['Converter/ConverterSidebar.tsx', 'src/lib/liveBtc.ts'],   // the LIVE badge; the live price's rule (BL64)
       setConverterActiveField: ['Converter/ConverterMain.tsx'],
       setConverterRawValue: ['Converter/ConverterMain.tsx'],
       addMiningDevice: ['Mining/MiningInputsPanel.tsx'],

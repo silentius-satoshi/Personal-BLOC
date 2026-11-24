@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
+import { useNow } from '../../hooks/useClock';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { plBandsAt } from '../../simulation/powerLaw';
 import { crashPlaybook } from '../../simulation/crashPlaybook';
@@ -86,6 +87,9 @@ export function EmergencyConsole() {
   const [cashUsd, setCashUsd]       = useState(0);
   const [checked, setChecked]       = useState<Record<number, boolean>>({});
   const [simPrice, setSimPrice]     = useState<number | null>(null);   // session-only what-if; never persisted/synced
+  // Its own clock (BL64 v1.1): the staleness banner ages the saved price as it draws, and the frame no longer re-draws
+  // the console every 10 s — so every 30 s and on each show, as before. Above the early return: a hook, unconditional.
+  const now = useNow(30_000);
 
   if (cbLoanBalance === 0 || cbCollateralBtc === 0) {
     return <div className={styles.emptyPrompt}>Enter your CB loan details in the CB Loan tab to use the Emergency Console.</div>;
@@ -115,7 +119,6 @@ export function EmergencyConsole() {
   const card = waitingCard(input, cbLtvTriggerPct) ?? playbookCard(crashPlaybook(input), input, hold);
 
   // ── Staleness ──────────────────────────────────────────────────────────────────
-  const now = Date.now();
   const priceAgeMs  = btcPriceUpdatedAt ? now - btcPriceUpdatedAt : null;
   const loanAgeDays = cbLoanBalanceAsOf ? (now - Date.parse(cbLoanBalanceAsOf)) / DAY_MS : null;
   const priceStale  = btcPriceMode === 'manual' || (priceAgeMs !== null && priceAgeMs > 15 * 60_000);

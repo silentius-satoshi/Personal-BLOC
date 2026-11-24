@@ -16,7 +16,7 @@ import { toLocalISO } from '../utils/format';
 
 export const CANDLES_KEY = 'bloc-btc-candles';
 
-/** Past this age a history is labeled with its time: the age at which the app already calls a price stale (useBtcPrice's
+/** Past this age a history is labeled with its time: the age at which the app already calls a price stale (lib/liveFeed.ts's
  *  STALE_MS — stale once older than 5 minutes). */
 export const HISTORY_FRESH_MS = 5 * 60 * 1000;
 

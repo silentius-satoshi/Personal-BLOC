@@ -29,7 +29,8 @@ import { CoinbaseLoanSidebar } from '../CoinbaseLoan/CoinbaseLoanSidebar';
 import { CoinbaseLoanMain }    from '../CoinbaseLoan/CoinbaseLoanMain';
 import { AdvisorSidebar } from '../Advisor/AdvisorSidebar';
 import { AdvisorMain }    from '../Advisor/AdvisorMain';
-import { useBtcPrice }            from '../../hooks/useBtcPrice';
+import { useLiveFeedHold }        from '../../hooks/useLivePrice';
+import { useLocalDay }            from '../../hooks/useClock';
 import { useStrikeData }          from '../../hooks/useStrikeData';
 import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
@@ -246,7 +247,8 @@ export function AppShell() {
   // can't drift. Lossless: the owner's snapshot stays on relay.
   const resetViewer = () => resetViewerSession();
 
-  useBtcPrice(); // keep store btcPrice live for the whole session — Simple Mode mounts no sidebar that calls this
+  useLiveFeedHold(); // the live price — and store btcPrice's rule — for the whole session; a tick never re-renders the frame (BL64)
+  useLocalDay();     // the frame re-draws the open screen when the local day turns, and only then — its screens read their day as they draw (BL64 v1.1)
   useStrikeData(isAuthenticated && isOwner && !viewerMode);   // Strike fetch is owner-only — viewer gets Strike from the snapshot
   useNostrAutoRestore();
   useViewerSync();   // read-only viewer pull/sub — no-op unless viewerMode
