@@ -1,0 +1,113 @@
+/* The Engine · Micro (BL61, step 1) — an Almanac face. Its frame composes CyclingFace's, as every face's does; the
+   canvas reads its colours from the same tokens (EngineCanvas.tsx). Tokens only — no colour is written here. */
+.face { composes: face from '../Almanac/CyclingFace.module.css'; }
+.head { composes: head from '../Almanac/CyclingFace.module.css'; }
+.title { composes: title from '../Almanac/CyclingFace.module.css'; }
+.framing { composes: framing from '../Almanac/CyclingFace.module.css'; }
+.card { composes: card from '../Almanac/CyclingFace.module.css'; }
+.cardLabel { composes: cardLabel from '../Almanac/CyclingFace.module.css'; }
+.note { composes: note from '../Almanac/CyclingFace.module.css'; }
+
+/* The line over the canvas: the drop to Coinbase's liquidation price, in the Dashboard's level colour. */
+.headline {
+  margin: 10px 2px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+/* The Dashboard's at-support line, while Coinbase is over the plan's limit at support (amber, as there). */
+.atSupport {
+  margin: 4px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.lvSafe { color: var(--green); }
+.lvWatch { color: var(--amber); }
+.lvAct { color: var(--red); }
+
+/* The canvas's column: the phone layout, centred from 700 px. On a phone it reaches 7 px past the face's padding on each
+   side — the prototypes' 9 px from the screen's edge — so the canvas is as wide as theirs on the same phone (372 px on a
+   390 px screen), and draws what they draw there. */
+.wrap {
+  width: min(700px, calc(100% + 14px));
+  margin: 8px 0 0 calc((100% - min(700px, calc(100% + 14px))) / 2);
+}
+/* The prototypes draw the engine on their card (#111317): --bg-card is that colour, so the backing under the names melts
+   into it as it does there. */
+.stage {
+  position: relative;
+  margin: 0 auto;
+  background: var(--bg-card);
+  border-radius: 18px;
+}
+.canvas {
+  display: block;
+  touch-action: pan-y;          /* a stroke on the picture scrolls the page … */
+  -webkit-tap-highlight-color: transparent;
+}
+/* … and the piston's handle takes the drag: it rides the piston (EngineCanvas sets its transform). */
+.handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 40px;
+  touch-action: none;
+  cursor: ns-resize;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Try a price: −10%, the price shown, +10%, and the way back. Full-size targets on a phone. */
+.tryRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.ghostBtn {
+  min-height: 40px;
+  padding: 0 14px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.ghostBtn:hover { background: var(--bg-hover); }
+.tryValue {
+  min-width: 128px;
+  text-align: center;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* The parts: each opens its card. */
+.parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.part {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.part:hover { background: var(--bg-hover); }
+.partOn {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}

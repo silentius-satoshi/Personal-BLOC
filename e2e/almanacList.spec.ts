@@ -16,7 +16,7 @@ async function hermetic(page: Page): Promise<void> {
   await page.route(/blockchain\.info/, (r) => r.fulfill({ contentType: 'application/json', body: HISTORY }));
 }
 const LOAN = `hasCbLoan: true, cbLoanBalance: 50000, cbLoanBalanceAsOf: null, cbCollateralBtc: 1, btcPriceMode: 'manual', btcPrice: 100000`;
-/** A logged month, so the Ledger's tile shows too — all thirteen faces. Round synthetic figures. */
+/** A logged month, so the Ledger's tile shows too — all fourteen faces. Round synthetic figures. */
 const LOG = `, advisorStartDate: '2026-10-01', monthBucketReconcileDone: true,
   monthlyLog: [{ month: 1, date: '2026-10-05', btcBought: 0, income: 0, paydown: 0, strikeBal: 0, strikeLtv: 0,
     loggedAt: 1, updatedAt: 1, expensesActual: 500, source: 'daily', confirmed: false }]`;
@@ -29,7 +29,7 @@ const seed = (simple: boolean, loan: boolean): string => `
   localStorage.setItem('personal-bloc-onboarded', '1');
 `;
 
-const PLAN = ['Decision', 'Strategy', 'Ownership', 'Cycling', 'Ledger', 'Scenario', 'Emergency', 'FIRE'];
+const PLAN = ['Engine', 'Decision', 'Strategy', 'Ownership', 'Cycling', 'Ledger', 'Scenario', 'Emergency', 'FIRE'];
 const BITCOIN = ['Halving Clock', 'Cycle Clock', 'Power Law', 'Mining', 'Sats'];
 const MOVE_TITLE = "The support policy's move this month";
 const OWNERSHIP = 'Held · owed · yours — never sell.';
@@ -99,7 +99,7 @@ test.describe('the Almanac on a computer (BL46)', () => {
       await expect(page.getByText('Next halving'), 'ONE CLICK a bitcoin face').toBeVisible();
       await expect(page.getByText(OWNERSHIP, { exact: true }), 'ONE CLICK one face at a time').toHaveCount(0);
       await expect(current(page), 'ONE CLICK marked again').toHaveText('Halving Clock');
-      await expect(items(page), 'ONE CLICK the list stays').toHaveCount(13);
+      await expect(items(page), 'ONE CLICK the list stays').toHaveCount(14);
       await expect(tiles(page), 'ONE CLICK no grid page').toHaveCount(0);
     } finally {
       await done();
@@ -167,10 +167,10 @@ test.describe('the Almanac on a computer (BL46)', () => {
   test('⭐ EDGE — 1199 px keeps the grid, 1200 px the list; crossing it keeps the open face, the same element', async ({ browser, baseURL }) => {
     const { page, done } = await onAlmanac(browser, baseURL, 1199, true);
     try {
-      await expect(tiles(page), 'EDGE the grid at 1199').toHaveCount(13);
+      await expect(tiles(page), 'EDGE the grid at 1199').toHaveCount(14);
       await expect(items(page), 'EDGE no list at 1199').toHaveCount(0);
       await page.setViewportSize({ width: 1200, height: 900 });
-      await expect(items(page), 'EDGE the list at 1200').toHaveCount(13);
+      await expect(items(page), 'EDGE the list at 1200').toHaveCount(14);
       await expect(current(page), 'EDGE Decision first').toHaveText('Decision');
       await expect(page.getByText(MOVE_TITLE, { exact: true })).toBeVisible({ timeout: 8000 });
       await page.setViewportSize({ width: 1199, height: 900 });

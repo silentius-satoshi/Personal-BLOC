@@ -17,7 +17,7 @@ const read = (p: string): string => readFileSync(join(ROOT, p), 'utf8');
 /** Code with its comments removed — block, JSX and line comments (a `//` after a `:` is a URL, kept). */
 const strip = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
-const ALL: Face[] = ['halving', 'cycle', 'mining', 'powerlaw', 'sats', 'defense', 'ledger', 'scenario', 'cycling', 'ownership', 'unified', 'decision', 'fire'];
+const ALL: Face[] = ['halving', 'cycle', 'mining', 'powerlaw', 'sats', 'defense', 'ledger', 'scenario', 'cycling', 'ownership', 'unified', 'decision', 'fire', 'engine'];
 /** All eight gate combinations — the owner's four and a viewer's (BL48). The FIRE face's deploy gate is gone with its
  *  borrow lane (BL57 B4): it shows on every deploy. */
 const COMBOS: FaceGates[] = [false, true].flatMap((hasCbLoan) => [false, true].flatMap((ledgerAvailable) =>
@@ -49,7 +49,7 @@ describe('⭐ the catalogue', () => {
     expect(Object.fromEntries(FACE_TILES.map((t) => [t.key, t.name])), 'CATALOGUE the names').toEqual({
       decision: 'Decision', unified: 'Strategy', ownership: 'Ownership', cycling: 'Cycling', ledger: 'Ledger',
       scenario: 'Scenario', defense: 'Emergency', fire: 'FIRE', halving: 'Halving Clock', cycle: 'Cycle Clock',
-      powerlaw: 'Power Law', mining: 'Mining', sats: 'Sats',
+      powerlaw: 'Power Law', mining: 'Mining', sats: 'Sats', engine: 'Engine',
     });
     expect(FACE_GROUPS, 'CATALOGUE the groups, in order').toEqual([
       { group: 'plan', label: 'Your plan' }, { group: 'bitcoin', label: 'Bitcoin' },
@@ -60,7 +60,7 @@ describe('⭐ the catalogue', () => {
     const all = gridGroups({ hasCbLoan: true, ledgerAvailable: true, viewer: false });
     expect(all.map((g) => g.label), 'ORDER the groups').toEqual(['Your plan', 'Bitcoin']);
     expect(all[0].tiles.map((t) => t.name), 'ORDER your plan').toEqual(
-      ['Decision', 'Strategy', 'Ownership', 'Cycling', 'Ledger', 'Scenario', 'Emergency', 'FIRE']);
+      ['Engine', 'Decision', 'Strategy', 'Ownership', 'Cycling', 'Ledger', 'Scenario', 'Emergency', 'FIRE']);
     expect(all[1].tiles.map((t) => t.name), 'ORDER bitcoin').toEqual(['Halving Clock', 'Cycle Clock', 'Power Law', 'Mining', 'Sats']);
   });
 });
@@ -72,6 +72,7 @@ describe('⭐ the gates', () => {
         decision: true, ownership: true, scenario: true, halving: true, cycle: true, powerlaw: true, mining: true, sats: true,
         unified: g.hasCbLoan, cycling: g.hasCbLoan, defense: g.hasCbLoan, ledger: g.ledgerAvailable,
         fire: !g.viewer,   // BL48 (V1) — the owner's only: a viewer has no FIRE face; on every deploy for the owner (BL57 B4)
+        engine: !g.viewer,   // BL61 — the owner's only: the Engine draws his amounts
       };
       for (const f of ALL) expect(faceShown(f, g), `GATES ${f} · ${label(g)}`).toBe(want[f]);
       const shown = gridGroups(g).flatMap((grp) => grp.tiles.map((t) => t.key));
@@ -79,10 +80,10 @@ describe('⭐ the gates', () => {
     }
   });
 
-  it('⭐ PILLS — the owner\'s grid offers exactly the faces the pill row did, in every combination (BL45); a viewer\'s, those less FIRE (BL48)', () => {
+  it('⭐ PILLS — the owner\'s grid offers exactly the faces the pill row did, and the Engine (BL61), in every combination (BL45); a viewer\'s, the pill row\'s less FIRE (BL48)', () => {
     for (const g of COMBOS) {
       const grid = gridGroups(g).flatMap((grp) => grp.tiles.map((t) => t.key));
-      const want = g.viewer ? pillRow(g).filter((f) => f !== 'fire') : pillRow(g);
+      const want = g.viewer ? pillRow(g).filter((f) => f !== 'fire') : [...pillRow(g), 'engine' as Face];
       expect([...grid].sort(), `PILLS ${label(g)}`).toEqual(want.sort());
       expect(new Set(grid).size, `PILLS no tile twice · ${label(g)}`).toBe(grid.length);
     }
@@ -238,11 +239,12 @@ describe('⭐ a trusted viewer\'s hub (BL48)', () => {
   const HUB = strip(read('src/components/Almanac/AlmanacView.tsx'));
   const FIRE = strip(read('src/components/Almanac/FireFace.tsx'));
 
-  it('⭐ OWNER ONLY — FIRE alone leaves a viewer\'s hub, before any gate: no deploy or loan brings it back', () => {
-    expect(FACE_TILES.filter((t) => t.ownerOnly).map((t) => t.key), 'OWNER ONLY FIRE alone').toEqual(['fire']);
+  it('⭐ OWNER ONLY — the Engine and FIRE alone leave a viewer\'s hub, before any gate: no deploy or loan brings them back', () => {
+    expect(FACE_TILES.filter((t) => t.ownerOnly).map((t) => t.key), 'OWNER ONLY the Engine and FIRE alone').toEqual(['engine', 'fire']);
     for (const g of COMBOS.filter((c) => c.viewer)) {
       expect(faceShown('fire', g), `OWNER ONLY no FIRE for a viewer · ${label(g)}`).toBe(false);
-      for (const f of ALL.filter((x) => x !== 'fire')) {
+      expect(faceShown('engine', g), `OWNER ONLY no Engine for a viewer · ${label(g)}`).toBe(false);
+      for (const f of ALL.filter((x) => x !== 'fire' && x !== 'engine')) {
         expect(faceShown(f, g), `OWNER ONLY ${f}: as the owner's · ${label(g)}`).toBe(faceShown(f, { ...g, viewer: false }));
       }
     }

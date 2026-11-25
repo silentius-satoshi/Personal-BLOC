@@ -3,15 +3,16 @@
  * ONE pure rule: the hub reads its gates — the Coinbase loan, the Ledger's data, and whether this device is a viewer's —
  * and passes them in; this module reads no store and no env, so every combination
  * is a unit test (`almanacGrid.test.ts`). A gated face is simply absent, as its pill was: for the owner the grid shows
- * exactly the faces the pill row showed (BL45's kill criterion). A trusted viewer gets the same faces less the
- * owner's-only — FIRE, whose assumptions are each device's own (BL48 V1, D3 A); a safe viewer never opens the hub.
+ * exactly the faces the pill row showed (BL45's kill criterion), and the Engine, which came after it (BL61). A trusted
+ * viewer gets the same faces less the owner's-only — FIRE, whose assumptions are each device's own (BL48 V1, D3 A), and
+ * the Engine, which shows his amounts; a safe viewer never opens the hub.
  */
 
-/** The thirteen faces. A face added here needs a tile below (the test counts them), a branch in `AlmanacView`'s
+/** The fourteen faces. A face added here needs a tile below (the test counts them), a branch in `AlmanacView`'s
  *  `renderFace` above its Converter fallback (C8), and an icon in `FaceIcon`. */
 export type Face =
   | 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership'
-  | 'unified' | 'decision' | 'fire';
+  | 'unified' | 'decision' | 'fire' | 'engine';
 
 export type FaceGroup = 'plan' | 'bitcoin';
 
@@ -25,8 +26,8 @@ export interface FaceTile {
   name: string;
   group: FaceGroup;
   gate?: FaceGate;
-  /** BL48 (V1) — a face no viewer gets: it reads what stays on the owner's device, so a viewer's would show other
-   *  figures. FIRE alone, until its assumptions sync (C2, with its borrow lane). */
+  /** BL48 (V1) — a face no viewer gets: FIRE reads what stays on the owner's device, so a viewer's would show other
+   *  figures (until its assumptions sync — C2, with its borrow lane); the Engine (BL61) draws the owner's amounts. */
   ownerOnly?: true;
 }
 
@@ -40,6 +41,7 @@ export interface FaceGates {
 
 /** Every face, in the grid's order: your plan's faces first, then bitcoin's (BL45). */
 export const FACE_TILES: readonly FaceTile[] = [
+  { key: 'engine',    name: 'Engine',        group: 'plan', ownerOnly: true },   // BL61 — first in your plan
   { key: 'decision',  name: 'Decision',      group: 'plan' },
   { key: 'unified',   name: 'Strategy',      group: 'plan', gate: 'cbLoan' },
   { key: 'ownership', name: 'Ownership',     group: 'plan' },

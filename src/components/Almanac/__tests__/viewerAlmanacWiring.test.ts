@@ -68,20 +68,21 @@ function hubClosure(): { path: string; code: string; storeImports: string[] }[] 
 }
 
 /** What the hub's faces may call on the store (V4 B — a viewer's what-ifs save nothing): two reads; the viewer's own
- *  device tools — the live-height switch, the Sats converter and its live quote, Mining's list; and three writes no viewer
- *  reaches — Scenario's pin (its row the owner's only: PIN) and FIRE's inputs (no FIRE face for a viewer: OWNER ONLY;
- *  locked inside it: WHAT-IF). A name not on the list is a write a trusted viewer could make from a face: decide, then
- *  list it here, or lock it. */
+ *  device tools — the live-height switch, the Sats converter and its live quote, Mining's list; and four writes no viewer
+ *  reaches — Scenario's pin (its row the owner's only: PIN), FIRE's inputs (no FIRE face for a viewer: OWNER ONLY;
+ *  locked inside it: WHAT-IF) and THIS MONTH's breaker cache, `usePlanMonth`'s own (device-local, public prices), reached
+ *  through the Engine (BL61 — no Engine face for a viewer: OWNER ONLY). A name not on the list is a write a trusted viewer
+ *  could make from a face: decide, then list it here, or lock it. */
 const HUB_STORE_CALLS = [
   'getCurrentBtcHeld', 'getCurrentColdBtc',
   'setAlmanacLiveConsented', 'setAlmanacLiveEnabled',
   'setBtcPrice', 'setConverterActiveField', 'setConverterRawValue',
   'addMiningDevice', 'removeMiningDevice', 'setMiningCurrency', 'setMiningDevice', 'setMiningInputs', 'setMiningStrategy',
-  'setPinnedScenario', 'setFireInputs', 'setInflationRate',
+  'setPinnedScenario', 'setFireInputs', 'setInflationRate', 'setPlanBreakerCache',
 ].sort();
 
 describe('⭐ what the hub\'s faces can write (V4 B)', () => {
-  it('⭐ WRITES — the faces call only the listed store functions: two reads, the viewer\'s own tools, three writes no viewer reaches', () => {
+  it('⭐ WRITES — the faces call only the listed store functions: two reads, the viewer\'s own tools, four writes no viewer reaches', () => {
     const closure = hubClosure();
     const fns = Object.entries(useStore.getState()).filter(([, v]) => typeof v === 'function').map(([k]) => k);
     const FACES = ['Almanac/HalvingClock.tsx', 'Almanac/CycleClock.tsx', 'Tools/CbDefenseTool.tsx', 'Almanac/LedgerFace.tsx',
@@ -120,7 +121,7 @@ describe('⭐ what the hub\'s faces can write (V4 B)', () => {
       "const memory = seenAsViewer ? 'seen' : 'own';");
   });
 
-  it('⭐ CALL SITES — each store function the faces may call, called only where it belongs: the three writes no viewer reaches in the two faces the lens closes, each device tool in its own tool (BL50 — the independent check)', () => {
+  it('⭐ CALL SITES — each store function the faces may call, called only where it belongs: the four writes no viewer reaches in the faces the lens closes (the breaker cache in THIS MONTH\'s hook, behind the Engine), each device tool in its own tool (BL50 — the independent check)', () => {
     const closure = hubClosure();
     const where = (fn: string): string[] => closure.filter(({ code }) => new RegExp(`\\b${fn}\\b`).test(code))
       .map((c) => c.path.replace('src/components/', '')).sort();
@@ -130,6 +131,7 @@ describe('⭐ what the hub\'s faces can write (V4 B)', () => {
       setPinnedScenario: ['Almanac/ScenarioFace.tsx'],
       setFireInputs: ['Almanac/FireFace.tsx'],
       setInflationRate: ['Almanac/FireFace.tsx'],
+      setPlanBreakerCache: ['Almanac/usePlanMonth.ts'],   // THIS MONTH's breaker cache, reached through the Engine (BL61)
       setAlmanacLiveConsented: ['Almanac/AlmanacView.tsx'],
       setAlmanacLiveEnabled: ['Almanac/AlmanacView.tsx'],
       setBtcPrice: ['Converter/ConverterSidebar.tsx', 'src/lib/liveBtc.ts'],   // the LIVE badge; the live price's rule (BL64)

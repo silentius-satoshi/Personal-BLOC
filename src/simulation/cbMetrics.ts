@@ -86,6 +86,15 @@ export function accruedCbLiquidationPrice(price: number, aprPct: number, asOf: s
   return price * Math.pow(1 + aprPct / 100 / 365, days);
 }
 
+/**
+ * Coinbase's interest for a month at a balance — `balance × APR ÷ 12`, ONE expression: the CB Loan tab's "Monthly
+ * interest" and the Engine's interest drip (BL61, step 1) both read it. Simple monthly, as the engine's own month step
+ * charges it; feed it the accrued balance (`accruedCbBalance`), as both readers do.
+ */
+export function cbMonthlyInterest(balance: number, aprPct: number): number {
+  return balance * (aprPct / 100 / 12);
+}
+
 export type SafetyLevel = 'safe' | 'watch' | 'act';
 
 /** Classify a single LTV bar into safe/watch/act by two ascending thresholds (as LTV decimals). */

@@ -3,7 +3,7 @@ import type { Face } from './almanacGrid';
 
 /**
  * The grid's line icons (BL45) — one per face, drawn for the grid the owner picked (B): a 24px box, a 1.75 stroke in the
- * tile's own colour, round ends. Thirteen, since the pills' glyphs couldn't serve — two faces shared one (₿ Cycle Clock
+ * tile's own colour, round ends. One a face — fourteen with the Engine (BL61) — since the pills' glyphs couldn't serve — two faces shared one (₿ Cycle Clock
  * and ₿ Power Law; ⚖ Scenario and ⚖ Ownership) and two showed as colour emoji on an iPhone (⛏, 🚨). Decorative: the
  * tile's name is its accessible name.
  */
@@ -22,6 +22,8 @@ const PATHS: Record<Face, ReactNode> = {
   scenario: <><rect x="3" y="5" width="7" height="14" rx="1.5" /><rect x="14" y="5" width="7" height="14" rx="1.5" /><path d="M10 12h4" /></>,
   // a warning triangle — the crash-day console
   defense: <><path d="M12 3.5l9 16H3z" /><path d="M12 10v4.5" /><path d="M12 17.5v.01" /></>,
+  // a cylinder and its piston on a rod — the loans as an engine
+  engine: <><rect x="7" y="8" width="10" height="13" rx="2" /><path d="M7 13h10" /><path d="M12 13V3" /><path d="M8.5 3h7" /></>,
   // a target — the number to stop working
   fire: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></>,
   // a clock with its quarter shaded — the halving countdown

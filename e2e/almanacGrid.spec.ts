@@ -58,7 +58,7 @@ test.describe('the Almanac grid (BL45)', () => {
     await page.getByLabel('Almanac').click();
     await expect(grid(page), 'GRID').toBeVisible();
     expect(await grid(page).getByRole('heading').allTextContents(), 'GRID the groups').toEqual(['Your plan', 'Bitcoin']);
-    expect(await tilesOf(page, 'Your plan'), 'GRID your plan').toEqual(['Decision', 'Strategy', 'Ownership', 'Cycling', 'Scenario', 'Emergency', 'FIRE']);
+    expect(await tilesOf(page, 'Your plan'), 'GRID your plan').toEqual(['Engine', 'Decision', 'Strategy', 'Ownership', 'Cycling', 'Scenario', 'Emergency', 'FIRE']);
     expect(await tilesOf(page, 'Bitcoin'), 'GRID bitcoin').toEqual(BITCOIN);
     // Three to a row on a 390px phone: the first three share a top, the fourth starts the next row under the first.
     const b = await boxes(page);
@@ -112,7 +112,7 @@ test.describe('the Almanac grid (BL45)', () => {
 
   test('⭐ GATED — no loan: its three faces are absent; a logged month brings the Ledger in, between Cycling and Scenario', async ({ page, browser, baseURL }) => {
     await openAlmanacSimple(page);   // the plain seed: no loan, nothing logged
-    expect(await tilesOf(page, 'Your plan'), 'GATED no loan, no log').toEqual(['Decision', 'Ownership', 'Scenario', 'FIRE']);
+    expect(await tilesOf(page, 'Your plan'), 'GATED no loan, no log').toEqual(['Engine', 'Decision', 'Ownership', 'Scenario', 'FIRE']);
     expect(await tilesOf(page, 'Bitcoin'), 'GATED bitcoin, always').toEqual(BITCOIN);
     const ctx = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
     try {
@@ -125,7 +125,7 @@ test.describe('the Almanac grid (BL45)', () => {
       await expect(p.getByLabel('Log an event')).toBeVisible({ timeout: 15_000 });
       await p.getByLabel('Almanac').click();
       expect(await tilesOf(p, 'Your plan'), 'GATED the loan and a log').toEqual(
-        ['Decision', 'Strategy', 'Ownership', 'Cycling', 'Ledger', 'Scenario', 'Emergency', 'FIRE']);
+        ['Engine', 'Decision', 'Strategy', 'Ownership', 'Cycling', 'Ledger', 'Scenario', 'Emergency', 'FIRE']);
     } finally {
       await ctx.close();
     }

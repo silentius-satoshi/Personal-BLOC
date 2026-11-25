@@ -2424,6 +2424,99 @@ reused, the dock's `.tsx` untouched.
 - **F17 unmoved** — the "Coinbase seizes" e2e's three targets sit above the dock's top (the BTC price path card ends
   ≈ 170 px above it; each "Price & liq" button ≈ 265 px).
 
+### Engine · Micro (the FOURTEENTH face, BL61 — the Engine's step 1; the owner's only; NO store change)
+
+The owner's two loans as an engine, right now (`src/components/Engine/`; spec `pbloc-spec-engine-micro-v1`). The first
+of the Engine's steps that draw (BL61: 0 the Clocks' leg, 1 Micro, 2 Macro, 3 the family's streams, 4 the desk's
+machine). The picture is the owner's prototypes' engine — `personal-bloc-engine-prototype-v2.html`'s Micro view, which
+draws with `family-fire-engine-v3.html`'s machine — ported function by function (spec v1.1); both stay out of the repo:
+they carry the family's figures. Every figure in it is the app's own — none of the prototypes' math came in.
+
+- **Where it lives.** An Almanac face, first of Your plan's, `ownerOnly` (`almanacGrid.ts`): no viewer's hub and no
+  trusted preview has it — it draws the owner's amounts. The header keeps its five icons (`HeaderNavCluster`'s rule).
+  `renderFace`'s `if (f === 'engine')` branch sits above the Converter fallback (C8); `FaceIcon` draws a cylinder and its
+  piston.
+- **The facts** (`useEngineFacts.ts`, reads only): the Dashboard's inputs exactly as `SafetyDashboard` builds them
+  (`selectSafetyViewInputs` and today's support, keyed on the day); THIS MONTH's run (`usePlanMonth`) and its month 1,
+  `rows[1] ?? last` — Daily's `pr1`; the Cycle Clock's leg (`cycleLegAt`, `cycleLegView`), re-read once a minute; the
+  market's last hour (`useBtcHistory('1H')`) and the live price each second (`useLivePrice({ perSecond: true })`:
+  while the Engine is open, the app's one feed carries Coinbase's per-second channel — BL64).
+- **The scene** (`engineScene.ts`, pure): facts, the canvas's width (300–700 px, the phone layout, centred wider) and a
+  tried price in; every figure, word, place and tap area out. The price drawn: live, the live price — the whole picture
+  rides it, as in the prototypes (BL64), while the saved price behind every other screen keeps its rule; manual, stale
+  or off, the saved price; a tried price swaps either. The figures: `deriveSafetyView` on the Dashboard's inputs
+  at the price drawn — Coinbase's and Strike's loan levels and words, the liquidation price, the accrued debt, the at-
+  support reading; Strike's liquidation price from `computeViewerSafety` (the Dashboard's formula); the room to
+  liquidation, the Dashboard's `liqDropPct` (`(price − liquidation) ÷ price`), shown as the buffer; what Coinbase would sell under the line,
+  at most, from the CB Loan tab's `computeLiquidationAnalysis` (its full-repayment case). The gauge's bands are
+  `cbBarLevel`'s (your trigger, the liquidation level × `CB_ACT_LTV_FACTOR`, the liquidation level). The flywheel is the
+  Cycle Clock's leg (a peak at the top, a floor at the bottom, each leg half a turn). It also gives the prototypes'
+  geometry as pure functions the drawing calls each frame — `engineLayout`, `bayOf` (each tube as wide as its coins, the
+  two filling the bay), `wheelOf`, `motorOf`, `priceScale` (their live rule: 12% over the price; under it, a fifth below a
+  liquidation line within reach, else 16% below the price; never under 0.5 in logs), `tagHeights`, `regionAt` (the last
+  drawn region wins; a fingertip finds a small one within 44 px).
+- **The month's two pipes** (`engineFlows`): in — Coinbase's interest a month at today's balance (`cbMetrics`'s
+  `cbMonthlyInterest`, the CB Loan tab's "Monthly interest", ONE expression since BL61), Strike's interest this month,
+  the bills' draw and Coinbase's fee on a refinance (`refinancedFeeUsd`, THIS MONTH's "fee $…"); out — what spare income
+  repays on both loans, Strike's minimum paid from income and the cash reserve's cure. A refinance or a defense moves
+  debt between the two loans, so the move is neither; a refinance's fee is new debt, so it is in (the card says so;
+  v1.4).
+- **A tried price** — the piston's drag, or the row's −10% · +10% — is the face's state alone: `deriveSafetyView` again
+  with the price swapped, so it moves exactly what a price moves on the Dashboard; the liquidation lines and the month
+  stay; the motor rests. Never written; leaving the face forgets it. Under the line, "Coinbase would sell · up to ₿…".
+- **The words** (`engineView.ts`, pure): the Dashboard's where it has them — "Liquidation", Safe · Fair · Poor, and the
+  at-support line (`atSupportText`: the owner's Dashboard's `ownerAtSupportLine` in the Almanac's whole dollars —
+  `cbAtSupportLine`, and "; this month's move brings it within" when THIS MONTH's move does, `planMoveBringsCbWithin`;
+  shown in amber under the headline while Coinbase is over the plan's limit at support — v1.4). A Coinbase debt with no
+  coins held against it and no liquidation price entered says so ("Coinbase: $… owed, with no coins held against it."),
+  never "nothing owed"; with one entered, the buffer to it, as the Dashboard. On the
+  canvas, the prototypes' own — "Price", "Test
+  price", "↕ drag", "↺ back to live", "Top", "Price motor", "INTEREST DRIPS IN", "PAYMENTS FLOW OUT", the tape's titles
+  (`tapeTitle`) and foot (`liqFooter`), coins to two places (`btc2`), short dollars (`usdK`), and the room to the line
+  as theirs: "41.8% buffer", one decimal rounded down (`bufferPctText`, v3's `pctDown1` — never more room than there
+  is), in the headline over the canvas too ("Today: a 41.8% buffer to Coinbase's liquidation price", BL64). The
+  Dashboard's Coinbase card says "42% drop" until its own follow-up after step 1. Dollars whole (`fmtUSD`), loan levels by
+  `fmtLtvPct`.
+  Each part's card (Price, Liquidation, Coinbase, Strike, Loan level, Cycle, Live price, This month) opens from a tap on
+  the picture or its button.
+- **The drawing** (`engineDraw.ts`) is the prototypes', ported function by function, with their motion and rates: the
+  glass tubes and their charge of particles (one for each slice of debt worth today's price × 3 ÷ 260), embers and
+  sparks, the red plate, the pistons and beam, the flywheel (kept as a cached layer), the worm gear and the price motor
+  (it turns while the price is live and kicks with each new one), the gauge and its pipe, the live tape (the last half
+  hour: the minute closes, then the live prices the canvas has heard) and its wire (a spark runs down it with each new
+  price), the pipes with flanges, the tags and rings. It computes no figure of the loans or the month — only the tape's
+  own readouts (its levels, the hover, a tick's move, the clock), the liquidation price's shift in its tag when the
+  loans move, and motion — and every dollar it prints goes through `engineView` (v1.4). The gauge's needle rests on its
+  dial (`needleOf`), past 100% or infinite at its end, and trembles there, never past it (`needleAt`); the gauge's figure
+  wears the Dashboard's bar colour whenever the loan is on (`gaugeTone`: a debt with no coins behind it is Poor, its "∞"
+  red); with no coins behind the debt the charge shakes as at 120%, where its speed stops (v1.5). BL61's walls: the
+  Dashboard's three levels colour it, not the prototypes' five zones; no valve marks, no Strike margin-call line, no
+  red-line probe; the bay on
+  the owner's own coins, not the family's floor. Two prototype flaws are not ported: under reduced motion the charge is
+  placed at once, spread out; "↺ back to live" keeps inside a phone's edge.
+- **Colour** — the theme and venue tokens, read from CSS (`EngineCanvas`'s `readTones`: Coinbase and Strike through
+  `--venue-coinbase`, `--venue-strike`); the machine's own paint (steel, glass, plates, sparks, two grey label tones) in
+  `enginePalette.ts`, the one Engine file that writes a colour, repeating no token. The type is the prototypes' system
+  sans (SF Pro on an iPhone).
+- **The canvas** (`EngineCanvas.tsx`): its frame loop runs only while the page is visible, the canvas is on screen (its
+  IntersectionObserver stops the loop itself — v1.4) and motion is allowed; under reduced motion, one still frame a
+  scene. The drag lives on a handle over the piston
+  (`touch-action: none`) — it holds where it was taken and the scale holds still under it; the rest of the picture
+  scrolls the page (`pan-y`). A tap opens a part's card, and a tap on an open part closes it; a cancelled touch opens
+  nothing (v1.4). It stands on `--bg-card`,
+  the prototypes' card colour, 9 px from a phone's edge as theirs. The app's first canvas (every chart before it is
+  SVG).
+- **Writes nothing.** No store function is named in `src/components/Engine/` (`engineWiring.test.ts`). Through
+  `usePlanMonth` the hub's closure now names THIS MONTH's breaker-cache write (device-local, public prices — as on THIS
+  MONTH and Daily): WRITES lists it, at `usePlanMonth.ts` alone (CALL SITES); no viewer reaches it — no viewer has the
+  face.
+- **Pins:** `engineScene.test.ts` (DASHBOARD, LIVE, TRIED, SELLS, NO LOAN, MONTH, MOVES BETWEEN, SHARES, PROTOTYPE, SCALE,
+  BAY, WIDTH, CYCLE, TAPE, CHARGE, TAGS, REGIONS), `engineView.test.ts` (WORDS, HEADLINE, FORMATS, CANVAS WORDS, TAPE
+  WORDS, CARDS, PRICE, MONTH CARD, CYCLE CARD), `engineWiring.test.ts` (ONE SOURCE, WRITES NOTHING, FRAMES, HAND, STAGE,
+  TOKENS, LAYERS, HUB), `almanacGrid.test.ts`
+  (OWNER ONLY), `e2e/engine.spec.ts` (LIVE FEED, OPENS, TRIED, DRAG, PARTS, MOTION), `e2e/viewerAlmanac.spec.ts` (WAY IN,
+  PARITY).
+
 ### FIRE face (THIRTEENTH Almanac face, batch 1 build 4; one device-local key, NO bump)
 
 A THIRTEENTH face **FIRE** (`◎ FIRE`, `src/components/Almanac/FireFace.tsx` + `.module.css`) — **how many years of
@@ -2445,7 +2538,7 @@ series. Its inputs are one device-local key (`docs/claude/store.md` § FIRE's ow
   `FIRE_ON_THIS_DEPLOY` and the tile's `'fireDeploy'` gate) kept the sell lane alone off the public app and the sandbox
   until the lane shipped (F6); it is gone, and the hub reads no env. A viewer still has none (BL48 — `ownerOnly`).
   ⚠ `renderFace` has an explicit `if (f === 'fire')` branch ABOVE the Converter fallback (the C8 trap); the hub's
-  header counts THIRTEEN faces.
+  header counts THIRTEEN faces (FOURTEEN since the Engine — § Engine · Micro).
 - **The files.** `FireFace.tsx` composes: every word, figure and tone comes from `fireFaceView.ts`, and the face writes
   no sentence (I31). `fireReplays.ts` is the replays' one belief crossing (D-3, as `supportPolicyInputs.ts` is the
   support line's). `FireScale.tsx` is wordless. `FireFace.module.css` composes CyclingFace's classes only; its one
@@ -2790,7 +2883,7 @@ The hub opens on its faces as a grid — the owner's ask, "a grid of apps … si
 - **Gates.** An open face whose gate closes — the loan switched off, the log emptied, FIRE off this deploy (an
   `initialFace` of 'fire' there) — goes back to the grid, where its tile has gone too: one effect on `faceShown`, in place
   of the five per-face effects that fell back to the Halving Clock.
-- **Icons.** `FaceIcon.tsx` — thirteen drawings, one a face, decorative (`aria-hidden`; a tile's name is its accessible
+- **Icons.** `FaceIcon.tsx` — fourteen drawings (the Engine's since BL61), one a face, decorative (`aria-hidden`; a tile's name is its accessible
   name). New because the pills' glyphs couldn't serve: ₿ (Cycle Clock, Power Law) and ⚖ (Scenario, Ownership) were
   shared, and ⛏ and 🚨 showed as colour emoji on an iPhone. The Decision face's own links keep their glyphs ("♻ Cycling",
   "⚖ Ownership", "◈ Strategy").
@@ -2937,7 +3030,8 @@ BL48). Heavy: spec `pbloc-spec-trusted-viewers-v1`. The routing, the tier and th
   READ-ONLY rule), or Mining's, which is the viewer's own tool (V3 A — its list is device-local and never syncs). The
   guard is a list: the hub's faces — its import closure, the store excepted — may call only the store functions
   `viewerAlmanacWiring.test.ts`'s WRITES names: two reads, the viewer's own tools (Mining, the Sats converter, the
-  live-height switch) and three writes no viewer reaches (Scenario's pin, FIRE's two); a face that names another fails
+  live-height switch) and four writes no viewer reaches (Scenario's pin, FIRE's two, and THIS MONTH's breaker cache —
+  `usePlanMonth`'s own, reached through the Engine, owner only: BL61); a face that names another fails
   it until that write is decided — locked for a viewer, or listed. WAYS IN fails on the ways in it can read that would
   hide a write from WRITES — a store module imported for anything but the hook or a type, `useStore` other than
   `useStore(` or `useStore.getState().name`, `getState()` not followed by a name, an inline arrow selector returning or
@@ -3027,7 +3121,7 @@ the bar: `viewer.md` § BL50.
   AGREE). FIRE's own lock reads `viewerMode` too (its face never shows under the lens), and so does the shared inputs'
   lock (`useViewerLocked` — lifted inside the hub either way, BL48 V4 B).
 - **Nothing saved, by construction.** The hub's faces call only WRITES' list (`viewerAlmanacWiring.test.ts`): the
-  three writes no viewer reaches — the pin, FIRE's two — sit behind the lens' gates; the rest are what-if overlays or
+  four writes no viewer reaches — the pin, FIRE's two, the breaker cache behind the Engine — sit behind the lens' gates; the rest are what-if overlays or
   the device's own tools (Mining, the Sats converter, the live-height switch), the owner's own in his preview. CALL
   SITES pins where each is named: the pin in Scenario alone, FIRE's two in FIRE's face alone, each device tool in its
   own tool — a name WRITES allows, called from another face, would reach the preview (the independent check planted
@@ -3039,7 +3133,7 @@ the bar: `viewer.md` § BL50.
   snapshot — the phone's grid, twelve faces, the owner's Mining switch on: face for face, line for line and field for
   field, but the preview's label (e2e PREVIEW HUB).
 - **His own Almanac unchanged.** Outside the preview the lens is off — no provider, false — so his grid, faces and
-  controls are as before: after the preview, all thirteen faces, his copies, his Pin and his Mining column, no note
+  controls are as before: after the preview, all fourteen faces, his copies, his Pin and his Mining column, no note
   (e2e PREVIEW WAY BACK); the flag set in full mode, with a safe roster or a trusted one, leaves his Almanac tab his
   own (e2e FULL MODE PREVIEW); the full-mode hub never gets a provider — the lens is named in its module and AppShell
   alone, the module exports nothing else to provide it (`viewerAccess.test.ts` PREVIEW WIRING). A computer's list
@@ -3057,8 +3151,8 @@ face pager (Gesture P3/P3.1) is GONE, along with everything that existed to arbi
 data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still page).
 - **`almanacGrid.ts`** is the SINGLE source for the grid's tiles (it replaced `visibleFaces`, the sub-nav pill map, at
   BL45 — § The Almanac grid). Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`,
-  cycling and strategy iff `hasCbLoan`; FIRE, the owner's only — BL48) are simply absent from the grid. Thirteen faces
-  in all; the FIRE face (batch 1 build 4), last of Your plan's, shows on every deploy since its borrow lane's build 2
+  cycling and strategy iff `hasCbLoan`; FIRE and the Engine, the owner's only — BL48, BL61) are simply absent from the
+  grid. Fourteen faces in all — the Engine (BL61) first of Your plan's; the FIRE face (batch 1 build 4), last of Your plan's, shows on every deploy since its borrow lane's build 2
   (B4, BL57 — build 4b's deploy gate is gone). `idx`/`onPage`/`canPage`/`renderPane`/
   `shouldStart` are deleted; the host renders the open face, `{face !== null && renderFace(face)}`, directly (since
   2026-10-31 in the grid's place: `face === null ? <the grid> : renderFace(face)`).

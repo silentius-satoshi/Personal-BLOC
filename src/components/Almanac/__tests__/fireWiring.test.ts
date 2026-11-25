@@ -77,10 +77,10 @@ describe('⭐ the hub', () => {
     for (const f of SOURCES) expect(strip(read(f)), `PUBLIC ${f} reads no env`).not.toContain('import.meta');
   });
 
-  it('⭐ THIRTEEN — the union carries the face and the header counts it', () => {
-    expect(GRID, 'THIRTEEN the union').toMatch(/type Face =[^;]*\| 'fire';/);
-    expect(HUB, 'THIRTEEN the header').toMatch(/for THIRTEEN faces/);
-    expect(HUB, 'THIRTEEN no stale count').not.toMatch(/TWELVE/);
+  it('⭐ THIRTEEN — the union carries the face and the header counts it (fourteen with the Engine, BL61)', () => {
+    expect(GRID, 'THIRTEEN the union').toMatch(/type Face =[^;]*\| 'fire'[ ;]/);
+    expect(HUB, 'THIRTEEN the header').toMatch(/for FOURTEEN faces/);
+    expect(HUB, 'THIRTEEN no stale count').not.toMatch(/TWELVE|for THIRTEEN/);
   });
 });
 

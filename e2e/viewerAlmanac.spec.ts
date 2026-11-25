@@ -149,13 +149,14 @@ async function readFace(page: Page, name: string): Promise<{ lines: string[]; fi
 }
 
 /** Every face the owner's hub offers, read on his device; then the same faces on a trusted viewer's, handed the real
- *  snapshot: the owner's less FIRE (V1), field for field and line for line but BL48's own lines — and, in the list, its
- *  FIRE entry. A phone with the loan and a logged month (all thirteen), or a computer's list with neither. */
+ *  snapshot: the owner's less the Engine (BL61) and FIRE (V1), field for field and line for line but BL48's own lines —
+ *  and, in the list, their entries. A phone with the loan and a logged month (all fourteen), or a computer's list with
+ *  neither. */
 async function parity(page: Page, browser: Browser, c: { loan: boolean; width: number; tag: string }): Promise<void> {
   const owner = await ownerDevice(browser, ownerState(true, c.loan), c.width);
   await owner.page.getByLabel('Almanac').click();
   const ownerFaces = await faceNames(owner.page, `${c.tag} premise:`);
-  if (c.loan) expect(ownerFaces, `${c.tag} premise: the owner gets all thirteen`).toHaveLength(13);
+  if (c.loan) expect(ownerFaces, `${c.tag} premise: the owner gets all fourteen`).toHaveLength(14);
   else expect(ownerFaces, `${c.tag} premise: no loan, no log — fewer faces, FIRE among them`).toEqual(expect.arrayContaining(['FIRE']));
   if (!c.loan) expect(ownerFaces, `${c.tag} premise: the gates closed`).not.toContain('Ledger');
   const ownerRead: Record<string, { lines: string[]; fields: string[] }> = {};
@@ -165,8 +166,9 @@ async function parity(page: Page, browser: Browser, c: { loan: boolean; width: n
   await viewerDevice(page, owner.trusted);
   await openAlmanac(page, c.tag);
   const viewerFaces = await faceNames(page, c.tag);
-  expect(viewerFaces, `${c.tag} the owner's faces, less FIRE (V1)`).toEqual(ownerFaces.filter((f) => f !== 'FIRE'));
-  const ownerOnly = c.width >= 1200 ? [...OWNER_ONLY, 'FIRE'] : OWNER_ONLY;   // the list draws its faces' names
+  expect(viewerFaces, `${c.tag} the owner's faces, less the Engine and FIRE (BL61, V1)`).toEqual(
+    ownerFaces.filter((f) => f !== 'FIRE' && f !== 'Engine'));
+  const ownerOnly = c.width >= 1200 ? [...OWNER_ONLY, 'FIRE', 'Engine'] : OWNER_ONLY;   // the list draws its faces' names
   for (const f of viewerFaces) {
     const v = await readFace(page, f);
     const o = ownerRead[f];
@@ -227,6 +229,7 @@ test.describe('trusted viewers in the Almanac — BL48', () => {
     await bar.getByRole('button', { name: 'Almanac', exact: true }).click();
     await expect(page.getByRole('navigation', { name: 'Faces' }), 'WAY IN the grid').toBeVisible();
     await expect(page.getByRole('button', { name: 'FIRE', exact: true }), 'WAY IN no FIRE (V1)').toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Engine', exact: true }), 'WAY IN no Engine (BL61)').toHaveCount(0);
     await page.getByRole('button', { name: '← Home' }).click();
     await expect(page.getByText(/^Good (morning|afternoon|evening)/), 'WAY IN back home').toBeVisible();
     // A computer: the list beside the open face (BL46's A), its first face Decision, with the note.
@@ -556,7 +559,7 @@ test.describe('the owner\'s preview of his viewer — BL50', () => {
     await page.getByLabel('Almanac').click();
     await expect(page.getByRole('button', { name: '← Journal', exact: true }), 'WAY BACK his Almanac: "← Journal"').toBeVisible();
     await expect(page.getByText(LABEL('Trusted')), 'WAY BACK his Almanac: no label').toHaveCount(0);
-    expect(await faceNames(page, 'WAY BACK his own'), 'WAY BACK his own: all thirteen, FIRE among them').toHaveLength(13);
+    expect(await faceNames(page, 'WAY BACK his own'), 'WAY BACK his own: all fourteen, the Engine and FIRE among them').toHaveLength(14);
     await readFace(page, 'Decision');
     await expect(page.getByRole('button', { name: 'Download .txt' }), 'WAY BACK his copies').toBeVisible();
     await expect(page.getByRole('note'), 'WAY BACK no note').toHaveCount(0);

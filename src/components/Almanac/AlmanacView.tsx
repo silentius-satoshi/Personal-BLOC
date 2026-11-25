@@ -19,6 +19,7 @@ import OwnershipFace from './OwnershipFace';
 import UnifiedFace from './UnifiedFace';
 import DecisionFace from './DecisionFace';
 import FireFace from './FireFace';
+import EngineFace from '../Engine/EngineFace';
 import FaceIcon from './FaceIcon';
 import { ALMANAC_LIST, faceShown, firstListFace, gridGroups, VIEWER_WHAT_IF_NOTE, viewerWhatIfNoteShown, type Face } from './almanacGrid';
 import { ViewerWhatIf } from '../ui/viewerWhatIf';
@@ -27,7 +28,7 @@ import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import styles from './AlmanacView.module.css';
 
 /**
- * Almanac — a HUB SHELL (the grid + face host; full mode's eyebrow) for THIRTEEN faces: Halving Clock / Cycle Clock
+ * Almanac — a HUB SHELL (the grid + face host; full mode's eyebrow) for FOURTEEN faces: Halving Clock / Cycle Clock
  * (both cycleModel-only, rendered inside the shared `.container`, which now itself `composes: toolContainer`),
  * Mining / Sats (each embeds the REAL tool's main content PLUS its own input panel, stacked in a `.faceStack` in
  * that tool's own mobile DOM order — mining panel-first, sats main-first, mirroring the presence/absence of
@@ -39,7 +40,8 @@ import styles from './AlmanacView.module.css';
  * in AppShell — hidden entirely when `!hasCbLoan`), plus the own-container Ledger / Scenario / Cycling /
  * Ownership / Strategy / Decision / FIRE faces (Cycling and Strategy `hasCbLoan`-gated; Strategy is one engine run read
  * through both the Ownership and the Cycling lens; FIRE is the sell lane — batch 1 build 4 — shown on the owner's deploy and in
- * dev only, build 4b). Every embedded tool brings its OWN width — the hub adds none
+ * dev only, build 4b), and the Engine — the owner's two loans as an engine, right now (BL61; `Engine/EngineFace`, owner
+ * only). Every embedded tool brings its OWN width — the hub adds none
  * of its own (§8 toolContainer adoption is now CLOSED: EmergencyConsole, Mining/Converter, and
  * AlmanacView's own `.container` all compose from the same `toolShell.module.css`; the faces, Power Law's
  * included, compose CyclingFace's 960px `.face`). Holds the local face state (nothing persisted, nothing synced). P3: the
@@ -202,6 +204,7 @@ export default function AlmanacView({ initialFace, registerBack, registerTitleLi
     if (f === 'unified')   return <UnifiedFace />;
     if (f === 'decision')  return <DecisionFace onNavigate={openFace} />;
     if (f === 'fire')      return <FireFace />;
+    if (f === 'engine')    return <EngineFace />;
     return <div className={styles.faceStack}><ConverterMain /><div className={`${styles.facePanel} ${styles.facePanelInset}`}><ConverterSidebar /></div></div>;
   };
 

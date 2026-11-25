@@ -297,7 +297,8 @@ viewer (a viewer's device, `viewerMode`) is caught by branch G before J, so view
   **Almanac face** (the existing face-registration pattern), NEVER a new header icon; no grid-modal launcher — the
   Almanac IS the app hub. (Since BL45 the hub itself opens on a grid of its faces — its own page, not a launcher over
   the app; `almanac.md` § The Almanac grid. On a computer, since BL46's A, the faces are a list beside the open face;
-  § The Almanac on a computer.)
+  § The Almanac on a computer. The Engine kept it: an Almanac face, first of Your plan's, not a sixth icon — BL61's
+  call 2.)
 - Tests: `src/store/__tests__/simpleView.test.ts` (default `'dashboard'`; setter accepts all 3; device-local /
   absent from `buildSettingsPayload`; rides `partializeState`; migrate-default no-clobber). The dashboard's
   live-figures path is the already-green `computeViewerSafety(null,…) → trusted` case in `safetyView.test.ts`.
@@ -418,7 +419,7 @@ viewer taps reaches the plan. What the faces do for a viewer: `almanac.md` § Tr
   the first roster slot's label, the owner's own nickname for one viewer). The name fields' examples say "viewer" (the
   owner's ask, BL48). Since BL50 it draws his bar, and a trusted preview's opens his Almanac (§ BL50).
 - **Not in it:** the FIRE face for a viewer (V1 — C2 later: the owner's FIRE assumptions synced across his devices and to
-  trusted viewers, with the borrow lane); the Ledger's Mining column (F1, the owner's call A: `showMiningInLog` is
+  trusted viewers, with the borrow lane); the Engine (BL61 — it draws the owner's amounts: `ownerOnly`); the Ledger's Mining column (F1, the owner's call A: `showMiningInLog` is
   device-local and a viewer's stays off — the owner's is off too; `almanac.md` § Trusted viewers). The price stays each
   device's own quote, as on the viewer home since V2.
 - Tests: `src/components/Layout/__tests__/viewerAccess.test.ts` (TIER, OPENS, ONE READ, HOME, PAGES, PUT BACK, BAR),

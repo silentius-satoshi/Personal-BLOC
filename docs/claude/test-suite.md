@@ -2765,6 +2765,61 @@ goes red.)
     comment in `stressAnchor.test.ts`.
   - `playwright.config.ts`: Chromium resolves `ws-feed.exchange.coinbase.com` and `api.coinbase.com` nowhere, so no run
     reaches the real price — every machine starts with none, as an offline one always did.
+- **Engine · Micro (step 1 of the Engine, BL61, 2026-11-23)** (spec `pbloc-spec-engine-micro-v1`; Standard, the
+  reviewer's measured prototype, v1.5: the drawing ported from the owner's prototypes, the picture riding the live price
+  each second and v3's buffer words — BL64; the plan review's fixes — v1.4; the re-check's — v1.5; +4 files, +36 tests;
+  e2e +1 spec, +6 tests). Synthetic round figures: $50,000 on 1 ₿ at Coinbase (10% APR, no as-of date), $10,000 on 0.5 ₿ at Strike,
+  $100,000:
+  - `src/components/Engine/__tests__/engineScene.test.ts` (17): ⭐ DASHBOARD (every figure at today's price is
+    `deriveSafetyView`'s on the same inputs — the levels and words, the liquidation price, the accrued debt, the gauge's
+    bands as `cbBarLevel`'s, the at-support reading — Strike's liquidation price `computeViewerSafety`'s, the buffer the
+    Dashboard's `liqDropPct`; the needle on its dial, past 100% or infinite at its end) · ⭐ LIVE (live, the whole picture rides the live price — the Dashboard's call at it, the
+    month unmoved; manual, stale or off, the saved price; a tried price over both — BL64) · ⭐ TRIED (a tried price is the same call with the price swapped: the levels move, the
+    lines and the month stay, the facts are untouched; 0 and NaN are no price; live, the motor rests) · ⭐ SELLS (at or
+    under the line, "Coinbase would sell · up to ₿…", `computeLiquidationAnalysis`'s full-repayment case; a cent above,
+    not) · ⭐ NO LOAN (no Coinbase coins with the loan off, never the store's seed
+    collateral) · ⭐ MONTH (in: the CB Loan tab's monthly interest, Strike's interest, the bills' draw; out: spare income's
+    repayments, the minimum from income, the cure) · ⭐ MOVES BETWEEN (a refinance or a defense is neither; a refinance's
+    fee is new debt, in) · ⭐ SHARES ·
+    ⭐ PROTOTYPE (the layout, the bay, the flywheel, the worm, the motor and every tap area at the prototype's own numbers,
+    a 372 px canvas) · ⭐ SCALE (the prototypes' live rule) · ⭐ BAY (each tube as wide as its coins, filling the bay; no
+    floor of anyone's coins) · ⭐ WIDTH (300–700 px, everything inside) · ⭐ CYCLE (a peak at the top, a floor at the
+    bottom, from the Cycle Clock's own leg) · ⭐ TAPE (each minute's close at its minute's end, the half hour and three
+    minutes; the live price while live or stale) · ⭐ CHARGE (a particle per slice of debt worth today's price × 3 ÷ 260)
+    · ⭐ TAGS (one rule, scene and canvas) · ⭐ REGIONS (the prototype's order, the last drawn winning; a fingertip; the
+    way back only while tried).
+  - `src/components/Engine/__tests__/engineView.test.ts` (9): ⭐ WORDS (Safe · Fair · Poor, the at-support line the
+    owner's Dashboard's — `cbAtSupportLine`, and this month's move's clause as `ownerAtSupportLine` adds it; the buffer
+    v3's — one decimal, rounded down, never more room than there is) · ⭐ HEADLINE (a debt with no coins held against it,
+    said so) · ⭐ FORMATS · ⭐ CANVAS WORDS (the prototypes',
+    "41.8% buffer" among them) · ⭐ TAPE WORDS · ⭐ CARDS (every part's card in seven states; no "should", "guarantee",
+    "recommend", NaN, Infinity, undefined) · ⭐ PRICE · ⭐ MONTH CARD · ⭐ CYCLE CARD.
+  - `src/components/Engine/__tests__/engineDraw.test.ts` (2, v1.5; on a canvas that draws nothing and notes each call):
+    ⭐ GAUGE (the needle trembles on its dial — read off its rest, so an infinite level or a price tried far under the
+    line stays on it; still under reduced motion — and the figure wears the Dashboard's bar colour, `LEVEL_COLOR[cbLevel]`,
+    whenever the loan is on: a debt with no coins behind it is Poor, its "∞" red; both as drawn too, the figure's colour
+    and the needle's tip) · ⭐ FINITE (eleven states of the loans, today or tried, moving or still, from the first frame
+    or from today's picture: no infinite or NaN number, nor a colour made of one, reaches the canvas).
+  - `src/components/Engine/__tests__/engineWiring.test.ts` (8, read off the source): ⭐ ONE SOURCE (the Dashboard's inputs
+    as it builds them; THIS MONTH's run and its month 1, Daily's `pr1`; the CB Loan tab's one expression; the scene runs
+    no engine; the live price each second while open, never the old cadence — BL64) · ⭐ WRITES NOTHING (no store function named in `src/components/Engine/`; the tried price the face's state)
+    · ⭐ FRAMES (the loop only while visible, on screen and in motion; cancelled on leaving; motion built once) · ⭐ HAND
+    (the handle drags, it holds where taken, the scale holds still, a fingertip; a cancelled touch opens nothing) · ⭐ STAGE (the prototypes' width; a still
+    charge under reduced motion) · ⭐ TOKENS (one file writes a colour — by its code, or its name in any quotes or bare in
+    the CSS (v1.5) — and no token's; the canvas reads the tokens) · ⭐
+    LAYERS (the drawing reads the scene, the words and the paint, computes no figure of the loans, and prints every
+    dollar through the words) · ⭐ HUB.
+  - Moved on purpose — the face added: `almanacGrid.test.ts` (CATALOGUE, ORDER, GATES and PILLS count the Engine, first
+    in your plan; OWNER ONLY: the Engine and FIRE), `decisionWiring.test.ts` I21 (Decision first after the Engine),
+    `fireWiring.test.ts` THIRTEEN (the header counts FOURTEEN), `viewerAlmanacWiring.test.ts` WRITES and CALL SITES (THIS
+    MONTH's breaker cache, `setPlanBreakerCache`, at `usePlanMonth.ts` alone — reached through the Engine, owner only).
+  - `e2e/engine.spec.ts` (6, new): ⭐ LIVE FEED (open, the Engine asks the feed for each second and its headline rides a
+    tick; closed, the feed goes back to 5 s — BL64) · ⭐ OPENS · ⭐ TRIED (the store keeps today's price; a reload forgets the tried one) ·
+    ⭐ DRAG (a drag on the piston's handle tries a lower price; a tap opens its card) · ⭐ PARTS (a second tap on the
+    picture closes the card) · ⭐ MOTION (the picture
+    moves; off screen the loop stops, and starts again on screen; under reduced motion it is one still frame). Moved on purpose: `almanacGrid.spec.ts` (Your plan's tiles start
+    with the Engine), `almanacList.spec.ts` (fourteen), `viewerAlmanac.spec.ts` (fourteen for the owner; a viewer's, the
+    owner's less the Engine and FIRE; WAY IN: no Engine).
 - **Recorded Strike collateral (spec v3)** — `src/simulation/__tests__/recordedCollateral.test.ts` (pure): ⭐ each month records its OWN reading's `strikeCollateral`; ⭐ a reading without it leaves `btcHeld` ABSENT and the reroll bridge keeps the stored value (mutation `?? 0` → red); zero records 0 (truthiness mutation → red); carry-forward + provisional; ⭐ a cold-destined buy doesn't move `btcHeld`; grep guard `recomputeBtcHeld` absent from `src/` (non-vacuous walker); onboarding source-order guard (`emitBalanceReading` after `setAdvisorStartDate`, baseline write kept). `src/store/__tests__/recordedCollateralStore.test.ts` (real store): cold-destined buy; ⭐ B1 a Strike-only re-anchor records NOTHING, not 0; §9 onboarding anchor; ⭐ B2 a joining device's reconcile reopens no confirmed month (mutation: `btcHeld` in `ROLLUP_NUM_KEYS` → red); ⭐ A4 a `btcHeld`-less entry end to end (CSV → buildPlanBackup → validatePlanBackup → applyPlanBackup; mutation: `btcHeld` back in the validator's required list → red) + the validator both ways. `src/lib/__tests__/ledgerCold.test.ts` (`coldMovedByMonth`, `hasColdColumn`, the CSV column + empty Strike col). `src/components/Advisor/__tests__/monthlyLogForm.test.ts` (`strikeColFragment`: blank → omitted, "0" → 0). `viewerSync.test.ts` S4 + `sync.test.ts`: entries apply VERBATIM (recompute mutation → red). `dailyModeStore.test.ts`: a reading without `strikeCollateral` / a buy records no `btcHeld`
 - `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation). P2a: `deriveCbCollateral` (latest cbCollateral-bearing event by ts across both kinds; cache fallback; ignores readings w/o cbCollateral)
 - `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change; cb-only month creates NO entry / doesn't flip a manual month to daily; mixed cb+draw month is daily via the draw) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction. **P3:** `deleteDayEvent` writes a numeric `deletedDayEvents[id]` + removes the event; a journal-only `addDayEvent(cbCollateralReading)` sets `recordsDirty` + leaves `monthlyLog` empty (publish trigger for the no-month path); raw `setDayLog([cbColl@ts1, cbColl@ts2])` derives `cbCollateralBtc` to the newest (the fold) WITHOUT rerolling monthlyLog; `setDeletedDayEvents` raw-set; `partializeState` includes `deletedDayEvents`

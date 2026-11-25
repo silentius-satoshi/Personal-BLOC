@@ -311,8 +311,9 @@ describe('⭐ I21 — the hub', () => {
     expect(branch).toBeLessThan(fallback);
   });
 
-  it('⭐ the tile is ungated, first in your plan (the grid — BL45)', () => {
-    expect(FACE_TILES[0]).toEqual({ key: 'decision', name: 'Decision', group: 'plan' });
+  it('⭐ the tile is ungated, first in your plan after the owner\'s Engine (the grid — BL45; BL61)', () => {
+    expect(FACE_TILES[0]).toEqual({ key: 'engine', name: 'Engine', group: 'plan', ownerOnly: true });
+    expect(FACE_TILES[1]).toEqual({ key: 'decision', name: 'Decision', group: 'plan' });
   });
 });
 

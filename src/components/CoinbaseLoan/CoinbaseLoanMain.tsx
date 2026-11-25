@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store/useStore';
-import { cbMetrics, accruedCbBalance, accruedCbLiquidationPrice, type SafetyLevel } from '../../simulation/cbMetrics';
+import { cbMetrics, accruedCbBalance, accruedCbLiquidationPrice, cbMonthlyInterest, type SafetyLevel } from '../../simulation/cbMetrics';
 import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
 import { isCrashDay, atTriggerLine, cbTabCrashDayLine, CONSOLE_LINK } from '../Tools/crashPlaybookView';
 import { PLAN_PATHS_LINK } from '../Almanac/planMonthView';
@@ -73,7 +73,7 @@ export function CoinbaseLoanMain({ onOpenConsole, onOpenPlanPaths }: CoinbaseLoa
   // (single source of truth — same numbers as the Simple Mode SafetyDashboard)
   const accruedBalance  = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
   const m               = cbMetrics(accruedBalance, cbCollateralBtc, btcPrice, cbLtvTriggerPct);
-  const monthlyInterest = accruedBalance * (cbAprPct / 100 / 12);
+  const monthlyInterest = cbMonthlyInterest(accruedBalance, cbAprPct);   // ONE expression, the Engine's drip too (BL61)
   const currentLtv      = m.ltv;
   const autoLiqPrice    = m.liqPrice;
   const activeLiqPrice  = cbLiquidationPrice > 0

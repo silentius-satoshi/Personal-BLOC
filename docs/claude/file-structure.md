@@ -382,7 +382,9 @@ src/
                                 # support policy card's cliff line and the three parent faces' charts (chartCliffUsd)
                                 # read it too. null on a postLiquidation row, when the debt OR the price is under the
                                 # dust floor (shownUsd, from utils/format — the price floor is Run B's R9: 60¢ on 2 ₿
-                                # seizes at 35¢) and with no collateral
+                                # seizes at 35¢) and with no collateral. + cbMonthlyInterest(balance, aprPct) (BL61) —
+                                # ONE expression, balance × APR ÷ 12: the CB Loan tab's "Monthly interest" and the
+                                # Engine's interest drip
     runAdvisor.ts               # The Advisor's helpers: getCurrentStrategyMonth / isStrategyComplete (on logUtils' month
                                 # clock) and getNdpStatus / NdpStatus / NdpInfo. The engine itself — runAdvisor, its tier
                                 # helpers (getTier / getTierColor / getTierLabel) and its projection's types — left the
@@ -1073,7 +1075,7 @@ src/
                                 # a trusted viewer) and useSeenAsViewer() = viewerMode || preview — the hub's viewer gates
                                 # read it; a face's data still reads viewerMode. § "Preview as viewer". Tests:
                                 # __tests__/seenAsViewer.test.tsx, viewerAlmanacWiring.test.ts GATES, e2e/viewerAlmanac.spec.ts.
-      FaceIcon.tsx              # BL45 — the grid's thirteen line icons, one a face (24px, stroke 1.75, aria-hidden)
+      FaceIcon.tsx              # BL45 — the grid's line icons, one a face — fourteen with the Engine's (BL61) (24px, stroke 1.75, aria-hidden)
       DecisionFace.tsx          # Decision face (Run B) — the TWELFTH face (+ .module.css, composes the parents'). THE
                                 # MOVE card, the Coinbase-loan line, the chart, the schedule (Copy · Download .txt ·
                                 # Print), the outcome strip, the what-ifs, the tap-through. ONE run, many lenses. 🔴 It
@@ -1564,6 +1566,61 @@ src/
                                 # DOUBLED to TIE the hover and focus rules (0,2,2) and win by coming after them, so a
                                 # keyboard pick stays lit (LIT pins the order); `.post` 0.55 (the tables' msPost). Batch 1
                                 # build 4: the FIRE face renders it too, under 768 px (MS_VIEWS_FIRE)
+
+    Engine/                     # BL61, step 1 — Engine · Micro, the fourteenth Almanac face (owner only): the owner's
+                                # two loans as an engine, right now (docs/claude/almanac.md § Engine · Micro)
+      EngineFace.tsx            # The face: the headline (the prototypes' buffer — BL64), the at-support line, the
+                                # canvas, the try row (−10% · +10% · back), the parts' buttons and the open card. A
+                                # tried price is its own state, never written; it writes nothing
+      EngineFace.module.css     # Composes CyclingFace's frame; the canvas's column (300–700 px, 9 px from a phone's
+                                # edge, as the prototypes'), its stage on --bg-card (their card colour), the piston's
+                                # handle (touch-action: none) over a pan-y picture. Tokens only
+      EngineCanvas.tsx          # The app's first canvas: the frame loop and the hand. Each frame drawFrame (engineDraw)
+                                # draws the scene; the loop only while visible, on screen and in motion; reduced motion →
+                                # one still frame a scene. readTones: the theme and venue tokens. The drag on the handle
+                                # → onTry (it holds where taken, the scale holds still, the price kept in the frame); a
+                                # tap → onPart (regionAt; a fingertip finds a small part), "↺ back to live" → onBack; a
+                                # mouse's hover ring; a cancelled touch → nothing. Off screen, no loop (an
+                                # IntersectionObserver — v1.4)
+      engineDraw.ts             # The owner's prototypes' drawing (personal-bloc-engine-prototype-v2.html's Micro view on
+                                # family-fire-engine-v3.html's machine), ported function by function: drawCylinders,
+                                # rotorBody/drawWheel, drawWorm/drawMotor, drawGauge, drawLiveTape and the wire,
+                                # drawFlows, drawCylLabels, drawTags, drawBanner, drawRings, sparks, embers, particles;
+                                # EngineMotion (what moves between scenes, never saved). Computes no figure of the loans
+                                # or the month: draws the scene's, in the Dashboard's three levels (BL61), never the
+                                # prototypes' five zones; every dollar through engineView (v1.4). Its two choices the
+                                # Dashboard makes, pure and exported: needleAt (the needle's place — its spring and a
+                                # tremble read off its rest, needleOf) and gaugeTone (the gauge's figure in the bar's
+                                # colour, LEVEL_COLOR[cbLevel]); an infinite level's charge shakes as at 120%, where
+                                # its speed stops (v1.5)
+      enginePalette.ts          # The machine's own paint — steel, glass, plates, sparks, two grey label tones — and the
+                                # prototypes' font: the ONE Engine file that writes a colour, repeating no token
+                                # (engineWiring TOKENS); al/wh/bk/tri, a colour at an alpha
+      engineScene.ts            # THE pure scene: facts + width + a tried price → every figure, word, place and tap
+                                # area, at rest. deriveSafetyView at the price drawn (the Dashboard's call, the price
+                                # swapped), computeViewerSafety's Strike liquidation price, the Dashboard's drop,
+                                # computeLiquidationAnalysis's full-repayment case (the banner's "up to ₿…"),
+                                # engineFlows (the month's two pipes: CB Loan tab's monthly interest + THIS MONTH's month
+                                # 1; moves between the loans neither, a refinance's fee in — v1.4), needleOf (the gauge's
+                                # needle on its dial), the Cycle Clock's leg as the flywheel. The
+                                # prototypes' geometry, pure, for the drawing each frame: engineLayout, bayOf, cylLabelX,
+                                # rotorDims, wheelOf, motorOf, priceScale (their live rule), tagHeights, tapeOf, regionAt
+                                # (their hitAt). yOfPrice/priceOfY. No store, no DOM, and no clock but the Dashboard's
+                                # own (deriveSafetyView accrues Coinbase's balance to now once it has an as-of date)
+      engineView.ts             # Every word: the canvas's labels (the prototypes'), the tape's title, foot and dollars
+                                # (tapePriceText, tapeHoverText), a tick's and a line's shift, the headline, the
+                                # at-support note (atSupportText: cbAtSupportLine and THIS MONTH's move's clause, as the
+                                # owner's Dashboard — v1.4), each part's card, the screen reader's line; the Dashboard's words
+                                # where it has them (Liquidation, Safe · Fair · Poor); the prototype's "41.8% buffer" (bufferPctText, one
+                                # decimal rounded down — BL64). fmtUSD whole,
+                                # fmtLtvPct; btc2, usdK on the canvas
+      useEngineFacts.ts         # The facts, read only: the Dashboard's inputs (selectSafetyViewInputs + today's
+                                # support), THIS MONTH's run, its month 1 (Daily's pr1) and its move's flag
+                                # (planMoveBringsCbWithin), the Cycle Clock's leg (useNow, each minute and on a show),
+                                # the last hour's candles and the live price each second (useLivePrice({ perSecond: true }):
+                                # the feed's per-second channel while the Engine is open — BL64)
+      __tests__/engineScene.test.ts, engineView.test.ts, engineDraw.test.ts, engineWiring.test.ts   # docs/claude/test-suite.md,
+                                # "Engine · Micro"
 
     Tools/
       CbDefenseTool.tsx         # THE Emergency Console's ONE gate (the plan of record's Run 4, D3): hasCbLoan ?
