@@ -86,12 +86,56 @@ describe('⭐ the frame loop', () => {
     expect(CANVAS, 'HAND a tap is not a drag').toContain('if (!d.moved && Math.abs(p.x - d.x0) + Math.abs(p.y - d.y0) <= 4) return;');
     expect(CANVAS, 'HAND it holds where it was taken').toContain('off: pistonY.current - p.y');
     expect(CANVAS, 'HAND the scale holds still under the hand').toContain('m.held = true; m.hinted = true;');
-    expect(CANVAS, 'HAND a fingertip finds a small part').toContain('regionAt(sceneRef.current, x, y, finger.current)');
+    expect(CANVAS, 'HAND a fingertip finds a small part').toContain('regionAt(sceneRef.current, x, y, lp?.finger ?? false)');
     // a cancelled touch is not a tap: it opens nothing (v1.4). Mutation: the cancel as a release → red
     expect(CANVAS, 'HAND a cancel lets go').toContain('onPointerCancel={onCancel}');
     const cancel = CANVAS.match(/const onCancel = [\s\S]*?\n {2}\};/)?.[0] ?? '';
     expect(cancel, 'HAND premise: the cancel\'s own handler').toContain('drag.current = null;');
     expect(cancel, 'HAND a cancel opens nothing').not.toMatch(/onPart|onTry/);
+  });
+
+  it('⭐ READ — the tape reads out to a finger that goes clearly sideways, so an up-and-down stroke still scrolls; let go, it stays; taken by the page, it goes; a readout is no tap (2026-11-25)', () => {
+    const css = read(`${DIR}/EngineFace.module.css`);
+    expect(css, 'READ premise: the page may take an up-and-down stroke on the picture').toMatch(/\.canvas \{[^}]*touch-action: pan-y;/);
+    // Mutation: any move reads (no sideways rule) → red
+    expect(CANVAS, 'READ clearly sideways: the prototypes\' rule for the tape').toContain('if (!pr.reading && dx > 8 && dx > dy * 1.2) { pr.reading = true; onHand(); }');
+    expect(CANVAS, 'READ only a press that began on the tape').toContain("tape: regionAt(sceneRef.current, p.x, p.y)?.id === 'tape'");
+    const up = CANVAS.match(/const onCanvasUp = [\s\S]*?\n {2}\};/)?.[0] ?? '';
+    expect(up, 'READ let go: pinned to its moment').toContain('m.read = { x, at: c.t0 + (x - c.x0) / (c.x1 - c.x0) * c.span };');
+    const cancel = CANVAS.match(/const onCanvasCancel = [\s\S]*?\n {2}\};/)?.[0] ?? '';
+    expect(cancel, 'READ taken by the page: gone').toContain('if (pr.reading) { motion.current.read = null; redraw(); }');
+    expect(cancel, 'READ premise: the cancel\'s own handler').toContain('press.current = null;');
+    // Mutation: the click after a readout opens the tape's card → red
+    expect(CANVAS, 'READ a readout, or a mouse\'s drag, is no tap').toContain('if (lp !== null && (lp.reading || (!lp.finger && lp.moved))) return;');
+    expect(CANVAS, 'READ a new touch takes a finger\'s readout away').toContain('if (finger && m.read !== null) { m.read = null; redraw(); }');
+    expect(CANVAS, 'READ the box on the Dashboard tooltip\'s tokens').toContain("card: v('--bg-card'), border: v('--border')");
+    // Mutation: a tap on no part leaves the card open → red; the piston's drag leaves it open → red
+    expect(CANVAS, 'READ a tap on no part closes the card').toContain('if (hit === null) { onNothing(); return; }');
+    expect(CANVAS, 'READ the piston\'s drag closes it, as the prototypes\'').toContain('if (!d.moved) onHand();');
+    expect(CANVAS, 'READ the canvas\'s whole stroke').toMatch(/onPointerDown=\{onCanvasDown\}[\s\S]*onPointerMove=\{onCanvasMove\}[\s\S]*onPointerUp=\{onCanvasUp\}[\s\S]*onPointerCancel=\{onCanvasCancel\}/);
+  });
+
+  it('⭐ POP — a part\'s card pops up: the face\'s last child, a sheet under 640 px sticky to the screen\'s bottom (never fixed), beside its part from 640; Escape and a press elsewhere close it (2026-11-25)', () => {
+    const css = strip(read(`${DIR}/EngineFace.module.css`));
+    expect(css, 'POP never position: fixed (ui.md: EdgeBackGesture\'s page traps it)').not.toMatch(/position:\s*fixed/);
+    expect(css, 'POP on a computer, placed in the face').toMatch(/\.face \{[^}]*position: relative;/);
+    expect(css, 'POP beside its part').toMatch(/\.pop \{[^}]*position: absolute;/);
+    // Mutation: the sheet fixed, or not sticky → red
+    expect(css, 'POP a sheet under 640 px, sticky to the bottom').toMatch(/@media \(max-width: 639px\) \{\s*\.pop \{[^}]*position: sticky;[^}]*bottom: calc\(8px \+ env\(safe-area-inset-bottom, 0px\)\);/);
+    expect(SCENE, 'POP the script\'s sheet is the CSS\'s').toContain("export const SHEET_MQ = '(max-width: 639px)';");
+    // the face's last child. Mutation: the card back under the canvas, or before the parts → red
+    const jsx = FACE.slice(FACE.indexOf('return ('));
+    const last = jsx.lastIndexOf('<section');
+    expect(last, 'POP premise: the card').toBeGreaterThan(jsx.indexOf('ref={partsRef}'));
+    expect(jsx.slice(last), 'POP the face\'s last child').toMatch(/^<section ref=\{cardRef\} className=\{styles\.pop\} role="dialog"[^>]*>[\s\S]*<\/section>\n\s*\)\}\n\s*<\/div>\n\s*\);\n\}\s*$/);
+    expect(FACE, 'POP placed as the prototypes place theirs').toContain('const p = cardPlace(open.at, open.from, el.offsetWidth, el.offsetHeight, document.documentElement.clientWidth, window.innerHeight);');
+    expect(FACE, 'POP on a phone, the part kept in view above the sheet').toContain('if (over > 0) pageScroller(face).scrollBy({ top: over, behavior: reducedMotion ? \'auto\' : \'smooth\' });');
+    // Escape and a press elsewhere. Mutation: no Escape, or a press anywhere closes (the picture's own taps then can't swap) → red
+    expect(FACE, 'POP Escape closes').toContain("if (e.key === 'Escape') closeRef.current();");
+    expect(FACE, 'POP a press elsewhere closes; the card, the picture and the buttons decide for themselves').toContain('for (const r of [cardRef, wrapRef, partsRef]) if (r.current?.contains(t)) return;');
+    expect(FACE, 'POP a press, not a click').toContain("document.addEventListener('pointerdown', onDown);");
+    expect(FACE, 'POP a press a moment after it opens was aimed at what was there').toContain('if (performance.now() - openedAt.current >= GUARD_MS) close();');
+    expect(FACE, 'POP another part swaps it; the same one closes it').toContain('setOpen((o) => (o !== null && o.part === part ? null : { part, from, at }));');
   });
 
   it('⭐ STAGE — the canvas as wide as the prototype\'s on the same phone, on its card; under reduced motion a still charge, spread out', () => {

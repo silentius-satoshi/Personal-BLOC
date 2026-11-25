@@ -76,13 +76,19 @@ export function tickDelta(by: number): string {
   return `${by > 0 ? '+' : '−'}${fmtUSD(Math.abs(by))}`;
 }
 
-/** The tape's dollars — its scale's two levels and the hover's price: whole, the app's one format (`fmtUSD`), never the
- *  drawing's own (v1.4). */
+/** The tape's dollars — its scale's two levels: whole, the app's one format (`fmtUSD`), never the drawing's own (v1.4). */
 export function tapePriceText(price: number): string {
   return fmtUSD(price);
 }
-export function tapeHoverText(clock: string, price: number): string {
-  return `${clock} · ${fmtUSD(price)}`;
+
+/** The chart's readout, in the Dashboard chart's words (`PriceChart`'s tooltip, the owner's ask of 2026-11-25): its
+ *  clock — `toLocaleTimeString('en-US')`, the device's time, as there — to the second, because the tape holds a price a
+ *  second ("8:34:12 AM"); and its price, named as there ("BTC : $100,011"), in the Almanac's whole dollars. */
+export function readoutTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+}
+export function readoutPrice(price: number): string {
+  return `BTC : ${fmtUSD(price)}`;
 }
 
 /** What a change of the loan moved Coinbase's liquidation price by, in its tag for a moment ("▼ $1,240"). */
@@ -237,6 +243,12 @@ export const ENGINE_FRAMING = 'Your two loans as an engine, right now: the price
 /** The note under the canvas while a price is tried. */
 export const TRIED_NOTE = "A price you're trying: nothing is saved, and the plan doesn't change.";
 
+/** The live price card's way to read the tape, as the Dashboard's chart reads (the owner's ask of 2026-11-25). */
+export const TAPE_READ_NOTE = 'Slide a finger along the tape, or point at it, to read its price at any moment.';
+
+/** A part's card's way out, for a screen reader. */
+export const CARD_CLOSE = 'Close';
+
 /** The try row's buttons. */
 export const TRY_DOWN = '−10%';
 export const TRY_UP = '+10%';
@@ -353,6 +365,7 @@ export function partCard(part: EnginePart, f: CardFigures): PartCard {
               : f.feed === 'live' ? 'The market\'s last half hour, price by price; the motor turns while the price is live, and each new price sparks down the wire.'
                 : f.feed === 'stale' ? 'The live price hasn\'t updated for a while; the tape shows the last prices it has.'
                   : 'No live price yet; the tape fills in as prices arrive.',
+          TAPE_READ_NOTE,
         ],
       };
     case 'month': {

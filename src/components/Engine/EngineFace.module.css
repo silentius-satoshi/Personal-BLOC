@@ -1,11 +1,12 @@
 /* The Engine · Micro (BL61, step 1) — an Almanac face. Its frame composes CyclingFace's, as every face's does; the
    canvas reads its colours from the same tokens (EngineCanvas.tsx). Tokens only — no colour is written here. */
-.face { composes: face from '../Almanac/CyclingFace.module.css'; }
+.face {
+  composes: face from '../Almanac/CyclingFace.module.css';
+  position: relative;           /* a part's card, on a computer, is placed in the face (EngineFace's cardPlace) */
+}
 .head { composes: head from '../Almanac/CyclingFace.module.css'; }
 .title { composes: title from '../Almanac/CyclingFace.module.css'; }
 .framing { composes: framing from '../Almanac/CyclingFace.module.css'; }
-.card { composes: card from '../Almanac/CyclingFace.module.css'; }
-.cardLabel { composes: cardLabel from '../Almanac/CyclingFace.module.css'; }
 .note { composes: note from '../Almanac/CyclingFace.module.css'; }
 
 /* The line over the canvas: the drop to Coinbase's liquidation price, in the Dashboard's level colour. */
@@ -111,3 +112,66 @@
   background: var(--surface-2);
   color: var(--text-primary);
 }
+
+/* A part's card, as the prototypes' pops up (the owner's look, 2026-11-25). On a computer it opens beside the part, or
+   beside the part's button — EngineFace places it in the face, on the screen. On a phone (under 640 px, SHEET_MQ in
+   engineScene.ts) it is a sheet from the bottom of the screen: the face's last child, sticky to the window's bottom
+   edge, as the plan faces' ControlDock is — never position: fixed, which EdgeBackGesture's moving page would trap. */
+.pop {
+  position: absolute;
+  z-index: 40;
+  width: 330px;
+  max-height: min(78vh, 620px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 14px 16px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-focus);
+  border-radius: 18px;
+  box-shadow: 0 18px 50px var(--bg-app);
+}
+@media (max-width: 639px) {
+  .pop {
+    position: sticky;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-height: 62vh;
+    margin: 12px -8px 0;          /* 8 px from the screen's edges: the face's gutter is 16 */
+    border-radius: 20px;
+  }
+}
+.popHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.popTitle {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.popClose {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+.popClose:hover { background: var(--bg-hover); }
+.popLine {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.popLine:last-child { margin-bottom: 0; }

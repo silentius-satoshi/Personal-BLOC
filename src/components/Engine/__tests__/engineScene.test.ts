@@ -5,8 +5,8 @@ import { computeLiquidationAnalysis } from '../../../simulation/runCoinbaseLoan'
 import { cycleLegAt } from '../../../simulation/cycleModel';
 import { cycleLegView } from '../../Almanac/cycleClockView';
 import {
-  ENGINE_MAX_W, ENGINE_MIN_W, RING_IDS, TAPE_MS, bayOf, cycleAngleOf, engineFlows, engineLayout, engineScene, priceOfY, priceScale,
-  regionAt, tagHeights, tapeOf, yOfPrice, type EngineFacts, type EngineMonthRow, type RegionId,
+  ENGINE_MAX_W, ENGINE_MIN_W, RING_IDS, TAPE_MS, bayOf, cardPlace, cycleAngleOf, engineFlows, engineLayout, engineScene, priceOfY,
+  priceScale, regionAt, tagHeights, tapeOf, yOfPrice, type EngineFacts, type EngineMonthRow, type RegionId,
 } from '../engineScene';
 
 /**
@@ -302,5 +302,21 @@ describe('⭐ the picture', () => {
     expect([back.part, regionAt(tried, back.x + 4, back.y + 4)?.id], 'REGIONS a tried price: the way back, over its tag').toEqual([null, 'untest']);
     expect(sc.regions.some((r) => r.id === 'untest'), 'REGIONS no way back at today\'s price').toBe(false);
     expect([...RING_IDS].sort(), 'REGIONS the ringed ones').toEqual(['dots', 'gauge', 'motor', 'price', 'redtag', 'strike', 'wheel']);
+  });
+
+  it('⭐ PLACE — a card on a computer goes where the prototypes put theirs: beside its part, or above its button; always on the screen (2026-11-25)', () => {
+    const at = (x: number, y: number, w: number, h: number) => ({ x, y, w, h });
+    // a part on the picture: 12 px to its right, level with it. Mutation: under it, or over it → red
+    expect(cardPlace(at(400, 200, 80, 80), 'canvas', 330, 280, 1280, 800), 'PLACE beside the part').toEqual({ x: 492, y: 100 });
+    // the screen ends: to its left. Mutation: no flip → red (it would run off the screen, clamped over the part)
+    expect(cardPlace(at(1100, 300, 60, 30), 'canvas', 330, 200, 1280, 800), 'PLACE left where the screen ends').toEqual({ x: 758, y: 215 });
+    // neither side fits: centred over it, inside the screen
+    expect(cardPlace(at(200, 300, 300, 40), 'canvas', 330, 200, 640, 800), 'PLACE centred where neither fits').toEqual({ x: 185, y: 220 });
+    // a button: above it, beside it; with no room above, under it, from its left edge
+    expect(cardPlace(at(500, 700, 90, 36), 'button', 330, 200, 1280, 800), 'PLACE above a button').toEqual({ x: 602, y: 490 });
+    expect(cardPlace(at(500, 150, 90, 36), 'button', 330, 200, 1280, 800), 'PLACE under it, with no room above').toEqual({ x: 500, y: 196 });
+    // always 8 px inside the screen. Mutation: no clamp → red
+    expect(cardPlace(at(400, 760, 80, 30), 'canvas', 330, 300, 1280, 800), 'PLACE on the screen, low down').toEqual({ x: 492, y: 492 });
+    expect(cardPlace(at(10, 10, 20, 20), 'canvas', 330, 300, 1280, 800), 'PLACE on the screen, up top').toEqual({ x: 42, y: 8 });
   });
 });

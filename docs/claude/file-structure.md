@@ -1570,17 +1570,28 @@ src/
     Engine/                     # BL61, step 1 — Engine · Micro, the fourteenth Almanac face (owner only): the owner's
                                 # two loans as an engine, right now (docs/claude/almanac.md § Engine · Micro)
       EngineFace.tsx            # The face: the headline (the prototypes' buffer — BL64), the at-support line, the
-                                # canvas, the try row (−10% · +10% · back), the parts' buttons and the open card. A
-                                # tried price is its own state, never written; it writes nothing
+                                # canvas, the try row (−10% · +10% · back), the parts' buttons and a part's card, which
+                                # pops up as the prototypes' does (BL66): under 640 px a sheet at the screen's bottom —
+                                # the face's last child, sticky, never fixed (ui.md) — the page moving the part tapped
+                                # above it (pageScroller: <body>, or the document); from 640 px beside the part or its
+                                # button (cardPlace). ✕ (after 350 ms, the prototypes' guard), Escape, a press elsewhere,
+                                # the part again or a new width close it. A tried price is its own state, never
+                                # written; it writes nothing
       EngineFace.module.css     # Composes CyclingFace's frame; the canvas's column (300–700 px, 9 px from a phone's
                                 # edge, as the prototypes'), its stage on --bg-card (their card colour), the piston's
-                                # handle (touch-action: none) over a pan-y picture. Tokens only
+                                # handle (touch-action: none) over a pan-y picture; .pop, a part's card — absolute in
+                                # the face from 640 px, a sticky sheet under it (BL66). Tokens only
       EngineCanvas.tsx          # The app's first canvas: the frame loop and the hand. Each frame drawFrame (engineDraw)
                                 # draws the scene; the loop only while visible, on screen and in motion; reduced motion →
-                                # one still frame a scene. readTones: the theme and venue tokens. The drag on the handle
-                                # → onTry (it holds where taken, the scale holds still, the price kept in the frame); a
-                                # tap → onPart (regionAt; a fingertip finds a small part), "↺ back to live" → onBack; a
-                                # mouse's hover ring; a cancelled touch → nothing. Off screen, no loop (an
+                                # one still frame a scene. readTones: the theme and venue tokens, the readout's card and
+                                # border. The drag on the handle → onTry (it holds where taken, the scale holds still,
+                                # the price kept in the frame) and onHand (an open card closes); a tap → onPart with the
+                                # part's box on the screen (regionAt; a fingertip finds a small part), on no part →
+                                # onNothing, "↺ back to live" → onBack; a press that moved is no tap; a mouse's hover
+                                # ring; a cancelled touch → nothing. The tape's readout (BL66): a mouse over it, or a
+                                # finger clearly sideways (> 8 px, more across than down — the prototypes' rule) → onHand
+                                # and EngineMotion.read; let go, pinned to its moment (from .chart) until the next touch;
+                                # the page takes an up-and-down stroke (pointercancel → gone). Off screen, no loop (an
                                 # IntersectionObserver — v1.4)
       engineDraw.ts             # The owner's prototypes' drawing (personal-bloc-engine-prototype-v2.html's Micro view on
                                 # family-fire-engine-v3.html's machine), ported function by function: drawCylinders,
@@ -1592,7 +1603,11 @@ src/
                                 # Dashboard makes, pure and exported: needleAt (the needle's place — its spring and a
                                 # tremble read off its rest, needleOf) and gaugeTone (the gauge's figure in the bar's
                                 # colour, LEVEL_COLOR[cbLevel]); an infinite level's charge shakes as at 120%, where
-                                # its speed stops (v1.5)
+                                # its speed stops (v1.5). The tape's readout, as the Dashboard's price chart (BL66):
+                                # readPoint (the nearest price from the tape's left edge, the pen too), readBoxX (the
+                                # box beside its line), a line, a dot and a box on --bg-card with readoutTime and
+                                # readoutPrice; EngineMotion.read (following, or pinned to a moment) and .chart (the
+                                # last frame's chart, for the hand)
       enginePalette.ts          # The machine's own paint — steel, glass, plates, sparks, two grey label tones — and the
                                 # prototypes' font: the ONE Engine file that writes a colour, repeating no token
                                 # (engineWiring TOKENS); al/wh/bk/tri, a colour at an alpha
@@ -1605,14 +1620,17 @@ src/
                                 # needle on its dial), the Cycle Clock's leg as the flywheel. The
                                 # prototypes' geometry, pure, for the drawing each frame: engineLayout, bayOf, cylLabelX,
                                 # rotorDims, wheelOf, motorOf, priceScale (their live rule), tagHeights, tapeOf, regionAt
-                                # (their hitAt). yOfPrice/priceOfY. No store, no DOM, and no clock but the Dashboard's
-                                # own (deriveSafetyView accrues Coinbase's balance to now once it has an as-of date)
+                                # (their hitAt); SHEET_MQ and cardPlace (their openPop: a card beside its part or above
+                                # its button, on the screen — BL66). yOfPrice/priceOfY. No store, no DOM, and no clock
+                                # but the Dashboard's own (deriveSafetyView accrues Coinbase's balance to now once it
+                                # has an as-of date)
       engineView.ts             # Every word: the canvas's labels (the prototypes'), the tape's title, foot and dollars
-                                # (tapePriceText, tapeHoverText), a tick's and a line's shift, the headline, the
+                                # (tapePriceText), its readout in the Dashboard chart's words (readoutTime, to the
+                                # second; readoutPrice, "BTC : $…" — BL66), a tick's and a line's shift, the headline, the
                                 # at-support note (atSupportText: cbAtSupportLine and THIS MONTH's move's clause, as the
                                 # owner's Dashboard — v1.4), each part's card, the screen reader's line; the Dashboard's words
                                 # where it has them (Liquidation, Safe · Fair · Poor); the prototype's "41.8% buffer" (bufferPctText, one
-                                # decimal rounded down — BL64). fmtUSD whole,
+                                # decimal rounded down — BL64); TAPE_READ_NOTE and CARD_CLOSE (BL66). fmtUSD whole,
                                 # fmtLtvPct; btc2, usdK on the canvas
       useEngineFacts.ts         # The facts, read only: the Dashboard's inputs (selectSafetyViewInputs + today's
                                 # support), THIS MONTH's run, its month 1 (Daily's pr1) and its move's flag

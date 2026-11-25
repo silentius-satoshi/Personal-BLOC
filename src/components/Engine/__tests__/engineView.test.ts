@@ -7,8 +7,9 @@ import { cycleLegView } from '../../Almanac/cycleClockView';
 import { fmtUSD } from '../../../utils/format';
 import { engineScene, type EngineFacts } from '../engineScene';
 import {
-  LEVEL_WORD, PART_NAMES, PART_ORDER, TRIED_NOTE, atSupportNote, atSupportText, btc2, btcText, bufferPctText, engineAria,
-  engineHeadline, liqFooter, liqShift, partCard, tapeHoverText, tapePriceText, tapeTitle, tickDelta, turnDate, usdK,
+  LEVEL_WORD, PART_NAMES, PART_ORDER, TAPE_READ_NOTE, TRIED_NOTE, atSupportNote, atSupportText, btc2, btcText, bufferPctText,
+  engineAria, engineHeadline, liqFooter, liqShift, partCard, readoutPrice, readoutTime, tapePriceText, tapeTitle, tickDelta,
+  turnDate, usdK,
 } from '../engineView';
 
 /**
@@ -117,8 +118,19 @@ describe('⭐ the canvas\'s words — the prototype\'s', () => {
     expect([tickDelta(21), tickDelta(-7), tickDelta(1234.4)], 'TAPE WORDS a tick').toEqual(['+$21', '−$7', '+$1,234']);
     expect([liqShift(-1240), liqShift(15_000)], 'TAPE WORDS a shift').toEqual(['▼ $1,240', '▲ $15.0K']);
     // the tape's dollars, the app's one format — never the drawing's own (v1.4)
-    expect([tapePriceText(99_850.4), tapePriceText(124_000), tapeHoverText('10:42', 99_850.6)], 'TAPE WORDS its dollars')
-      .toEqual([fmtUSD(99_850.4), '$124,000', `10:42 · ${fmtUSD(99_851)}`]);
+    expect([tapePriceText(99_850.4), tapePriceText(124_000)], 'TAPE WORDS its dollars').toEqual([fmtUSD(99_850.4), '$124,000']);
+  });
+
+  it('⭐ READOUT WORDS — the tape\'s readout in the Dashboard chart\'s words: its clock, to the second, and "BTC : $…" (2026-11-25)', () => {
+    // the device's own time, as the Dashboard's tooltip prints it (en-US), with the seconds the tape holds
+    const t = (h: number, m: number, sec: number): number => new Date(2026, 10, 23, h, m, sec).getTime();
+    expect([readoutTime(t(8, 34, 12)), readoutTime(t(14, 5, 0)), readoutTime(t(0, 0, 9))].map((x) => x.replace(/\s/g, ' ')), 'READOUT WORDS the clock')
+      .toEqual(['8:34:12 AM', '2:05:00 PM', '12:00:09 AM']);
+    expect([readoutPrice(100_011.4), readoutPrice(99_850.6)], 'READOUT WORDS the price, the Dashboard\'s name and the Almanac\'s whole dollars')
+      .toEqual(['BTC : $100,011', 'BTC : $99,851']);
+    const lines = partCard('tape', engineScene(facts(), 390, null).card).lines;
+    expect(lines[lines.length - 1], 'READOUT WORDS the live price card says how').toBe(TAPE_READ_NOTE);
+    expect(TAPE_READ_NOTE, 'READOUT WORDS the note').toBe('Slide a finger along the tape, or point at it, to read its price at any moment.');
   });
 });
 

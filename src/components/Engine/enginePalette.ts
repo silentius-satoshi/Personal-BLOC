@@ -94,9 +94,8 @@ export const MAT = {
   sparkKick: '#ffe2b0',
   flash: [255, 236, 200] as const,
   emberCore: 'rgba(255,240,210,0.9)',
-  // the backing under the names, and the tape's hover box
+  // the backing under the names
   labelBack: 'rgba(17,19,23,0.88)',
-  hoverBox: 'rgba(26,29,35,0.96)',
 } as const;
 
 /** One of the material triples at an alpha. */

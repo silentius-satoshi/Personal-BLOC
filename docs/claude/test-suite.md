@@ -2820,6 +2820,33 @@ goes red.)
     moves; off screen the loop stops, and starts again on screen; under reduced motion it is one still frame). Moved on purpose: `almanacGrid.spec.ts` (Your plan's tiles start
     with the Engine), `almanacList.spec.ts` (fourteen), `viewerAlmanac.spec.ts` (fourteen for the owner; a viewer's, the
     owner's less the Engine and FIRE; WAY IN: no Engine).
+- **The Engine's hand (BL66, 2026-11-25)** (spec `pbloc-spec-engine-hand-v1`; Standard, the reviewer's measured
+  prototype; the owner's look of step 1: its cards opened off the screen, and its tape read out to a mouse alone; +0 files,
+  +5 tests; e2e +3 tests). The same synthetic figures as step 1's:
+  - `engineScene.test.ts` ⭐ PLACE (`cardPlace`, the prototypes' `openPop`: 12 px right of a part, level with it; left of
+    it where the screen ends; centred where neither fits; above a button, else under it from its left edge; always 8 px
+    inside the screen).
+  - `engineView.test.ts` ⭐ READOUT WORDS (the Dashboard tooltip's en-US clock, to the second — "8:34:12 AM", read off a
+    local time so any zone prints it; "BTC : $100,011", whole dollars; the live price card's last line says how to read
+    the tape). TAPE WORDS loses the old hover's words.
+  - `engineDraw.test.ts` ⭐ READOUT (`readPoint`: the nearest price, the pen too, none left of the tape's edge; `readBoxX`:
+    right of its line, left at the end; as drawn — the line at the nearest price, not under the pointer, the dot on it in
+    the line's colour, the box on the card's colour with the moment and the price; a finger's, pinned, rides the tape five
+    minutes further left with the same words, and goes when its moment leaves the tape; the box flips at the right end) —
+    and FINITE now reads the tape in every state, under a mouse and pinned.
+  - `engineWiring.test.ts` ⭐ READ (clearly sideways, the prototypes' rule; only a press begun on the tape; let go,
+    pinned; taken by the page, gone; a reading or a mouse's drag is no tap; a new touch takes it away) · ⭐ POP (never
+    `position: fixed`; the face positioned; absolute from 640, a sticky sheet under it, the CSS's query the script's;
+    the face's last child; `cardPlace`; the part moved above the sheet through the page's scroller; Escape; a press
+    elsewhere, the card, the picture and the buttons deciding for themselves; the 350 ms guard; a swap). HAND reads the
+    fingertip off the press that ended.
+  - `e2e/engine.spec.ts` (9): ⭐ POP PHONE (eleven parts by a finger: each card all on the screen, a sheet 8 px from its
+    edges, the part kept above it; the ✕, Escape, a tap elsewhere, a tap on no part, the part again; a swap) · ⭐ POP
+    COMPUTER (1280 × 800: four parts' cards on the screen, 330 px, never over their part; a button's above or under it;
+    Escape) · ⭐ READ (under reduced motion: a finger sliding along the tape reads it, the readout stays where it let
+    go, no card; the next touch takes it away; an up-and-down stroke scrolls the page and reads nothing; a tap still
+    opens the tape's card, which says how; a mouse reads it and its readout goes with it; the edge swipe still leaves the
+    face). DRAG and PARTS ask for the card as a dialog on the screen.
 - **Recorded Strike collateral (spec v3)** — `src/simulation/__tests__/recordedCollateral.test.ts` (pure): ⭐ each month records its OWN reading's `strikeCollateral`; ⭐ a reading without it leaves `btcHeld` ABSENT and the reroll bridge keeps the stored value (mutation `?? 0` → red); zero records 0 (truthiness mutation → red); carry-forward + provisional; ⭐ a cold-destined buy doesn't move `btcHeld`; grep guard `recomputeBtcHeld` absent from `src/` (non-vacuous walker); onboarding source-order guard (`emitBalanceReading` after `setAdvisorStartDate`, baseline write kept). `src/store/__tests__/recordedCollateralStore.test.ts` (real store): cold-destined buy; ⭐ B1 a Strike-only re-anchor records NOTHING, not 0; §9 onboarding anchor; ⭐ B2 a joining device's reconcile reopens no confirmed month (mutation: `btcHeld` in `ROLLUP_NUM_KEYS` → red); ⭐ A4 a `btcHeld`-less entry end to end (CSV → buildPlanBackup → validatePlanBackup → applyPlanBackup; mutation: `btcHeld` back in the validator's required list → red) + the validator both ways. `src/lib/__tests__/ledgerCold.test.ts` (`coldMovedByMonth`, `hasColdColumn`, the CSV column + empty Strike col). `src/components/Advisor/__tests__/monthlyLogForm.test.ts` (`strikeColFragment`: blank → omitted, "0" → 0). `viewerSync.test.ts` S4 + `sync.test.ts`: entries apply VERBATIM (recompute mutation → red). `dailyModeStore.test.ts`: a reading without `strikeCollateral` / a buy records no `btcHeld`
 - `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation). P2a: `deriveCbCollateral` (latest cbCollateral-bearing event by ts across both kinds; cache fallback; ignores readings w/o cbCollateral)
 - `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change; cb-only month creates NO entry / doesn't flip a manual month to daily; mixed cb+draw month is daily via the draw) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction. **P3:** `deleteDayEvent` writes a numeric `deletedDayEvents[id]` + removes the event; a journal-only `addDayEvent(cbCollateralReading)` sets `recordsDirty` + leaves `monthlyLog` empty (publish trigger for the no-month path); raw `setDayLog([cbColl@ts1, cbColl@ts2])` derives `cbCollateralBtc` to the newest (the fold) WITHOUT rerolling monthlyLog; `setDeletedDayEvents` raw-set; `partializeState` includes `deletedDayEvents`

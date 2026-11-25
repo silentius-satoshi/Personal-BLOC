@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { LEVEL_COLOR, deriveSafetyView, type SafetyViewInputs } from '../../../simulation/safetyView';
-import { MAT } from '../enginePalette';
-import { engineScene, type EngineFacts, type EngineMonthRow } from '../engineScene';
-import { drawFrame, gaugeTone, needleAt, newMotion, type Tones } from '../engineDraw';
+import { MAT, wh } from '../enginePalette';
+import { TAPE_MS, engineScene, type EngineFacts, type EngineMonthRow, type TapePoint } from '../engineScene';
+import { drawFrame, gaugeTone, needleAt, newMotion, readBoxX, readPoint, type Tones } from '../engineDraw';
+import { readoutPrice, readoutTime } from '../engineView';
 
 /**
  * ⚠ The Engine · Micro's drawing (BL61, step 1; v1.5). It computes no figure of the loans (engineWiring LAYERS), but two
@@ -31,7 +32,7 @@ const facts = (s: Partial<SafetyViewInputs> = {}, o: Partial<EngineFacts> = {}):
 });
 const TONES: Tones = {
   green: '#00ff00', amber: '#ffaa00', red: '#ff0000', btc: '#ff9900', text: '#ffffff', text2: '#aaaaaa', accent: '#ff6600',
-  coinbase: '#0055ff', strike: '#aa00ff',
+  coinbase: '#0055ff', strike: '#aa00ff', card: '#111111', border: '#222222',
 };
 
 /** Every state a loan can be in, today or tried — among them the ones that broke the gauge and the charge in v1.4. */
@@ -150,8 +151,11 @@ describe('⭐ the drawing\'s two choices and its numbers', () => {
           const sc = engineScene(facts(s, o), 390, tried);
           const m = newMotion();
           const ctx = recorder(faults, count);
-          // from the first frame (clock 0), or from today's picture half a second in — the loans moving to this state
+          // from the first frame (clock 0), or from today's picture half a second in — the loans moving to this state; the
+          // tape read out under a mouse from the second half second, and a finger's readout pinned from the third
           for (let f = 0; f < 90; f++) {
+            if (f === 30) m.read = { x: sc.tape.x + sc.tape.w / 2, at: null };
+            if (f === 60) m.read = { x: sc.tape.x + 20, at: NOW + 60_000 - 10 * 60_000 };
             drawFrame(ctx, warm && f < 30 ? today : sc, m, TONES, { ts: 1_000 + f * 17, now: NOW + 60_000 + f * 17, dpr: 2, reduce, openPart: null });
           }
           const how = `${name}${reduce ? ', reduced motion' : ''}${warm ? ', from today' : ''}`;
@@ -162,5 +166,75 @@ describe('⭐ the drawing\'s two choices and its numbers', () => {
         }
       }
     }
+  });
+
+  it('⭐ READOUT — the tape reads out as the Dashboard\'s chart: the nearest price, a line, a dot and a box beside it; a finger\'s stays on its moment as the tape moves on (2026-11-25)', () => {
+    // the snap: the nearest of the tape's prices from its left edge on, and the pen; none before the edge
+    const P: TapePoint[] = [{ t: 0, p: 1 }, { t: 60, p: 2 }, { t: 120, p: 3 }];
+    const pen = { t: 200, p: 9 };
+    expect([29, 31, 89, 95, 161, 170, 260].map((at) => readPoint(P, pen, at, 0)?.p), 'READOUT the nearest, the pen too').toEqual([1, 2, 2, 3, 9, 9, 9]);
+    expect(readPoint(P, pen, 70, 61)?.p, 'READOUT none left of the edge: the next').toBe(3);
+    expect(readPoint(P, pen, 40, 61), 'READOUT a moment the tape has moved past: none').toBe(null);
+    expect(readPoint([], pen, 50, 0)?.p, 'READOUT the pen alone').toBe(9);
+    // the box: 10 px right of its line, or left of it where the chart ends, inside the chart either way
+    expect([readBoxX(100, 80, 8, 300), readBoxX(250, 80, 8, 300), readBoxX(20, 280, 8, 300)], 'READOUT the box beside its line').toEqual([110, 160, 12]);
+
+    // as drawn: a mouse a little right of a minute's close, over the tape's middle
+    const sc = engineScene(facts(), 390, null);
+    const now = NOW + 60_000;
+    const faults: string[] = [];
+    const count = { n: 0 };
+    offscreen(faults, count);
+    const m = newMotion();
+    const frame = (at: number): Call[] => {
+      const log: Call[] = [];
+      drawFrame(recorder(faults, count, log), sc, m, TONES, { ts: 1_000 + (at - now) / 10, now: at, dpr: 2, reduce: false, openPart: null });
+      return log;
+    };
+    for (let f = 0; f < 3; f++) frame(now);
+    const c = m.chart!;
+    expect(c, 'READOUT premise: the chart as drawn').not.toBe(null);
+    expect(frame(now).some((q) => q.k === 'fillText' && String(q.args[0]).startsWith('BTC : ')), 'READOUT premise: none until asked').toBe(false);
+    const x = c.x0 + (c.x1 - c.x0) / 2 + 3;
+    m.read = { x, at: null };
+    const want = c.t0 + (x - c.x0) / (c.x1 - c.x0) * c.span;
+    const pts = sc.tapePrices.closes.filter((q) => q.t >= now - TAPE_MS - 90e3);
+    const q = readPoint(pts, { t: now, p: sc.realPrice }, want, c.t0)!;
+    expect(Math.abs(q.t - want), 'READOUT premise: off the close by seconds, not on it').toBeGreaterThan(5_000);
+    const qx = c.x0 + (q.t - c.t0) / c.span * (c.x1 - c.x0);
+    const lineTone = MAT.faint;   // a manual price: the tape's line is the paint's faint grey, as the prototypes draw it held
+    expect(sc.feed, 'READOUT premise: a held price').toBe('manual');
+    const drawn = (log: Call[]) => ({
+      line: log.filter((k) => k.k === 'moveTo' && k.stroke === wh(0.7)).map((k) => k.args[0] as number),
+      dot: log.filter((k) => k.k === 'arc' && k.args[2] === 4 && k.fill === lineTone && k.stroke === wh(1)).map((k) => k.args[0] as number),
+      text: log.filter((k) => k.k === 'fillText' && (k.args[0] === readoutTime(q.t) || k.args[0] === readoutPrice(q.p))).map((k) => [k.args[0], k.fill]),
+      box: log.filter((k) => k.k === 'fill' && k.fill === TONES.card).length,
+    });
+    // Mutation: the line at the pointer, not the price → red; the time or the price off the snapped point → red
+    const a = drawn(frame(now));
+    expect(a.line.length, 'READOUT one line').toBe(1);
+    expect(a.line[0], 'READOUT the line at the nearest price, not under the pointer').toBeCloseTo(qx, 9);
+    expect(a.dot, 'READOUT the dot on it, in the line\'s colour, ringed').toHaveLength(1);
+    expect(a.dot[0], 'READOUT the dot\'s place').toBeCloseTo(qx, 9);
+    expect(a.text, 'READOUT the box: the moment, then the price in the line\'s colour').toEqual([[readoutTime(q.t), TONES.text], [readoutPrice(q.p), lineTone]]);
+    expect(a.box, 'READOUT the box on the card\'s colour').toBe(1);
+    // a finger lets go there: pinned to its moment, it rides the tape as it moves on — five minutes on, further left by
+    // five minutes of tape. Mutation: a pinned readout drawn where the finger was → red
+    m.read = { x, at: q.t };
+    const later = now + 5 * 60_000;
+    const b = drawn(frame(later));
+    const c2 = m.chart!;
+    expect(b.text, 'READOUT pinned: the same price').toEqual(a.text);
+    expect(b.line[0], 'READOUT pinned: it rides the tape').toBeCloseTo(c2.x0 + (q.t - c2.t0) / c2.span * (c2.x1 - c2.x0), 9);
+    expect(a.line[0] - b.line[0], 'READOUT pinned: five minutes further left').toBeGreaterThan(20);
+    // …until its moment leaves the tape: gone. Mutation: kept → red
+    frame(q.t + TAPE_MS + 5 * 60_000);
+    expect(m.read, 'READOUT past the tape\'s left edge: gone').toBe(null);
+    // the box flips at the chart's right end, inside the chart. Mutation: always to the right → red
+    m.read = { x: c.x1 - 2, at: null };
+    const edge = frame(now).filter((k) => k.k === 'fillText' && String(k.args[0]).startsWith('BTC : '));
+    expect(edge, 'READOUT premise: at the right end').toHaveLength(1);
+    expect(edge[0].args[1] as number, 'READOUT the box flips left of its line').toBeLessThan(c.x1 - 20);
+    expect(faults, 'READOUT no infinite or NaN number').toEqual([]);
   });
 });

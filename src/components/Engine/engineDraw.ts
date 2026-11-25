@@ -4,7 +4,7 @@ import {
   RING_IDS, TAPE_MS, bayOf, cylLabelX, priceScale, rotorDims, tagHeights, type Bay, type EngineScene, type MotorLamp, type Rect,
   type TapePoint,
 } from './engineScene';
-import { liqFooter, liqShift, tapeHoverText, tapePriceText, tapeTitle, tickDelta, type EnginePart } from './engineView';
+import { liqFooter, liqShift, readoutPrice, readoutTime, tapePriceText, tapeTitle, tickDelta, type EnginePart } from './engineView';
 
 /**
  * The Engine · Micro (BL61, step 1) — the drawing. A port of the owner's prototypes' canvas, function by function:
@@ -21,12 +21,17 @@ import { liqFooter, liqShift, tapeHoverText, tapePriceText, tapeTitle, tickDelta
  * Left out of the prototypes, on purpose: their five colour zones (the Dashboard's three levels colour the engine,
  * BL61), the valve marks on the gauge and the kids' line (the family's plan, step 3), Strike's margin-call line (the app
  * prices no such line), the red line's drag and its probe (its sums are new money math), and the desk's machine.
+ *
+ * Beyond them, on the owner's ask (2026-11-25): the tape reads out as the Dashboard's price chart does — a line, a dot
+ * and a box with the moment and the price (`readPoint`, `readBoxX`) — to a finger as well as a mouse; theirs reads out
+ * to a mouse alone, in a box at the tape's top.
  */
 
-/** The app's theme colours, read from its tokens (`EngineCanvas`'s `readTones`). */
+/** The app's theme colours, read from its tokens (`EngineCanvas`'s `readTones`) — the chart's readout box is the
+ *  Dashboard chart's tooltip, on its card and border tokens. */
 export interface Tones {
   green: string; amber: string; red: string; btc: string; text: string; text2: string; accent: string;
-  coinbase: string; strike: string;
+  coinbase: string; strike: string; card: string; border: string;
 }
 
 interface Particle { x: number; y: number; vx: number; vy: number; s: number }
@@ -61,9 +66,14 @@ export interface EngineMotion {
   sprites: Map<string, HTMLCanvasElement>;
   /** Where the two tags were drawn this frame (their rings follow them). */
   tagRects: { price: Rect | null; redtag: Rect | null };
-  /** A mouse's place and the region under it (no finger hovers). */
-  ptr: { x: number; y: number } | null;
+  /** The region under a mouse (no finger hovers): its ring and its cursor. */
   hover: string | null;
+  /** The chart's readout, as on the Dashboard's chart: where a mouse points or a finger slides (`at` null: it follows
+   *  them), or the moment a finger let go of (`at`: it stays on that price as the tape moves on). null: none. */
+  read: { x: number; at: number | null } | null;
+  /** The chart as the last frame drew it — its left and right edges and the moments they show — so the hand can name the
+   *  moment under a finger. null before the first frame. */
+  chart: { x0: number; x1: number; t0: number; span: number } | null;
   /** The piston is held: the price follows the hand at once, and the scale holds still. */
   held: boolean;
   /** The piston has been dragged: the "drag" hint has done its job. */
@@ -76,7 +86,7 @@ export function newMotion(): EngineMotion {
     clock: 0, last: 0, dtLast: 0, spin: 0, spinV: 0, mot: 0, pk: 0, rp: 0, burst: 0, burstDir: 0, kick: 0, flash2: 0, pulse: 0,
     newTick: null, deltas: [], wire: [], sparks: [], embers: { cb: [], s: [] }, parts: { cb: [], s: [] }, liqDelta: null,
     ticks: [], seenLive: 0, seenPrice: 0, seenPos: '', seenLiq: 0, layers: new Map(), sprites: new Map(),
-    tagRects: { price: null, redtag: null }, ptr: null, hover: null, held: false, hinted: false,
+    tagRects: { price: null, redtag: null }, hover: null, read: null, chart: null, held: false, hinted: false,
   };
 }
 
@@ -402,6 +412,28 @@ export function drawFrame(ctx: CanvasRenderingContext2D, s: EngineScene, m: Engi
   return geo.yP;
 }
 
+/** The chart's readout's point (the Dashboard chart's snap): of the tape's prices from its left edge's moment on, and the
+ *  pen — today's price, now — the one nearest the moment asked for; null for a moment left of the tape's edge (a pinned
+ *  one the tape has moved past) or a tape that shows none. `pts` oldest first. */
+export function readPoint(pts: readonly TapePoint[], pen: TapePoint, at: number, from: number): TapePoint | null {
+  let lo = 0;
+  let hi = pts.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (pts[mid].t < at) lo = mid + 1; else hi = mid; }   // the first at or after
+  let best: TapePoint | null = null;
+  for (const q of [pts[lo - 1], pts[lo], pen]) {
+    if (q === undefined || !(q.t >= from) || !Number.isFinite(q.p)) continue;
+    if (best === null || Math.abs(q.t - at) < Math.abs(best.t - at)) best = q;
+  }
+  return best !== null && at >= from - 1 ? best : null;
+}
+
+/** The readout's box, beside its line as the Dashboard's tooltip sits: 10 px to the right, or to the left where the
+ *  chart ends, inside the chart either way. */
+export function readBoxX(qx: number, bw: number, x0: number, x1: number): number {
+  const right = qx + 10;
+  return clamp(right + bw > x1 - 4 ? qx - 10 - bw : right, x0 + 4, Math.max(x0 + 4, x1 - bw - 4));
+}
+
 /** The live tape: the last half hour, price by price, sliding left as time passes, in its own scale. */
 function drawLiveTape(ctx: CanvasRenderingContext2D, s: EngineScene, m: EngineMotion, t: Tones, now: number, dt: number,
   snap: boolean, reduce: boolean): { penX: number; penY: number; col: string; stale: boolean } {
@@ -436,6 +468,7 @@ function drawLiveTape(ctx: CanvasRenderingContext2D, s: EngineScene, m: EngineMo
   const hi = m.lhi;
   const tx = (ms: number): number => x0 + (ms - t0) / span * TW;
   const Yt = (p: number): number => T.y + T.h - 50 - (p - lo) / (hi - lo) * (T.h - 82);
+  m.chart = { x0, x1, t0, span };
 
   ctx.fillStyle = wh(0.018); rr(ctx, x0, T.y, TW, T.h, 12); ctx.fill();
   ctx.save(); rr(ctx, x0, T.y, TW, T.h, 12); ctx.clip();
@@ -489,21 +522,32 @@ function drawLiveTape(ctx: CanvasRenderingContext2D, s: EngineScene, m: EngineMo
     ctx.textAlign = 'right'; ctx.font = `600 11px ${FONT}`; ctx.fillStyle = al(t.red, 0.95);
     ctx.fillText(liqFooter(TW, s.labels.liqText, s.labels.bufferText), x1 - 8, T.y + T.h - 26);
   }
-  // under a mouse: the time and the price there
-  if (m.ptr !== null && !m.held && m.hover === 'tape' && m.ptr.x > x0 && m.ptr.x < x1 && n > 0) {
-    const ht = t0 + (m.ptr.x - x0) / TW * span;
-    let hp = pts[0].p;
-    for (const q of pts) if (q.t <= ht) hp = q.p;
-    const hx = m.ptr.x;
-    const hy = Yt(hp);
-    const txt = tapeHoverText(hhmm(ht), hp);
-    ctx.strokeStyle = wh(0.25); ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(hx, T.y); ctx.lineTo(hx, T.y + T.h); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = t.text; ctx.beginPath(); ctx.arc(hx, hy, 3, 0, TAU); ctx.fill();
-    ctx.font = `600 11.5px ${FONT}`;
-    const tw = ctx.measureText(txt).width + 16;
-    const bx = clamp(hx - tw / 2, x0 + 4, x1 - tw - 4);
-    ctx.fillStyle = MAT.hoverBox; rr(ctx, bx, T.y + 8, tw, 20, 10); ctx.fill();
-    ctx.fillStyle = t.text; ctx.textAlign = 'left'; ctx.fillText(txt, bx + 8, T.y + 22);
+  // the readout, as on the Dashboard's chart (the owner's ask, 2026-11-25): under a mouse, or a finger sliding along the
+  // tape, the nearest price the tape holds — a line down the chart, a dot on the price line and, beside it, a box with
+  // its moment and its price. A finger's stays on its moment once it lets go, riding the tape until the next touch.
+  const rd = m.read;
+  if (rd !== null && !m.held && n > 0) {
+    const want = rd.at ?? t0 + (clamp(rd.x, x0, x1) - x0) / TW * span;
+    const q = readPoint(pts, { t: now, p: s.realPrice }, want, t0);
+    if (q === null) { if (rd.at !== null) m.read = null; } else {   // a moment the tape has moved past: gone
+      const qx = Math.min(x1, tx(q.t));
+      const qy = Yt(q.p);
+      ctx.strokeStyle = wh(0.7); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(qx, T.y); ctx.lineTo(qx, T.y + T.h); ctx.stroke();
+      ctx.fillStyle = col; ctx.strokeStyle = wh(1); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(qx, qy, 4, 0, TAU); ctx.fill(); ctx.stroke();
+      const l1 = readoutTime(q.t);
+      const l2 = readoutPrice(q.p);
+      ctx.font = `500 11px ${FONT}`;
+      const bw = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width) + 20;
+      const bx = readBoxX(qx, bw, x0, x1);
+      const by = T.y + 8;
+      ctx.fillStyle = t.card; ctx.strokeStyle = t.border; ctx.lineWidth = 1;
+      rr(ctx, bx, by, bw, 44, 8); ctx.fill(); ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = t.text; ctx.fillText(l1, bx + 10, by + 18);
+      ctx.fillStyle = col; ctx.fillText(l2, bx + 10, by + 34);
+    }
   }
   ctx.restore();
   ctx.strokeStyle = wh(0.08); ctx.lineWidth = 1; rr(ctx, x0, T.y, TW, T.h, 12); ctx.stroke();

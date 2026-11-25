@@ -404,6 +404,24 @@ export function engineScene(facts: EngineFacts, width: number, tried: number | n
   };
 }
 
+/** A part's card on a phone: a sheet from the bottom of the screen, under 640 px wide (the prototypes' `.pop.sheet`,
+ *  `window.innerWidth < 640`); wider, a card beside what opened it (`cardPlace`). The CSS reads the same query. */
+export const SHEET_MQ = '(max-width: 639px)';
+
+/** THE card's place on a computer, on the screen (the prototypes' `openPop`): beside what opened it — 12 px to the right,
+ *  or to the left where the screen ends, or centred over it where neither fits — level with a part on the picture, or
+ *  above a button (under it where there's no room above, then from its left edge); always 8 px inside the screen.
+ *  `at` is what opened it, on the screen; `w` and `h` the card's size; `vw` and `vh` the screen's. */
+export function cardPlace(at: Rect, from: 'canvas' | 'button', w: number, h: number, vw: number, vh: number): { x: number; y: number } {
+  let x = at.x + at.w + 12;
+  if (x + w > vw - 8) x = at.x - w - 12;
+  if (x < 8) x = at.x + at.w / 2 - w / 2;
+  const roomAbove = at.y - h - 10 >= 8;
+  const y = from === 'button' ? (roomAbove ? at.y - h - 10 : at.y + at.h + 10) : at.y + at.h / 2 - h / 2;
+  if (from === 'button' && !roomAbove) x = clamp(at.x, 8, Math.max(8, vw - w - 8));
+  return { x: clamp(x, 8, Math.max(8, vw - w - 8)), y: clamp(y, 8, Math.max(8, vh - h - 8)) };
+}
+
 /** The region at a point: the last drawn that holds it (the prototypes' `hitAt`). A finger also finds a small region
  *  within 44 px of it — the nearest one — as a fingertip is wider than the mouse's point. */
 export function regionAt(scene: Pick<EngineScene, 'regions'>, x: number, y: number, finger = false): EngineRegion | null {

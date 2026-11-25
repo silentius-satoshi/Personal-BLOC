@@ -2478,18 +2478,27 @@ they carry the family's figures. Every figure in it is the app's own — none of
   Dashboard's Coinbase card says "42% drop" until its own follow-up after step 1. Dollars whole (`fmtUSD`), loan levels by
   `fmtLtvPct`.
   Each part's card (Price, Liquidation, Coinbase, Strike, Loan level, Cycle, Live price, This month) opens from a tap on
-  the picture or its button.
+  the picture or its button, and pops up as the prototypes' does (BL66, the owner's look of 2026-11-25 — step 1 opened it
+  under the parts' buttons, off the screen): under 640 px (`SHEET_MQ`) a sheet at the screen's bottom, 8 px from its
+  edges, the page moving just enough that the part tapped stays in view above it; from 640 px a card beside the part —
+  12 px to its right, else its left, else centred, level with it — or above its button (`cardPlace`, the prototypes'
+  `openPop`), always on the screen. The ✕ (after 350 ms: a press that soon was aimed at what was there before),
+  Escape, a press anywhere else, the part again or its button close it; another part swaps it; a drag on the piston, a
+  finger reading the tape or a new width closes it. It is the face's last child: a sticky sheet, never `position:
+  fixed` (ui.md: EdgeBackGesture's page moves with a transform, which traps a fixed child); the page's scroller is
+  `<body>` (`utils/pageTop`), so the move goes through the nearest box that scrolls.
 - **The drawing** (`engineDraw.ts`) is the prototypes', ported function by function, with their motion and rates: the
   glass tubes and their charge of particles (one for each slice of debt worth today's price × 3 ÷ 260), embers and
   sparks, the red plate, the pistons and beam, the flywheel (kept as a cached layer), the worm gear and the price motor
   (it turns while the price is live and kicks with each new one), the gauge and its pipe, the live tape (the last half
   hour: the minute closes, then the live prices the canvas has heard) and its wire (a spark runs down it with each new
   price), the pipes with flanges, the tags and rings. It computes no figure of the loans or the month — only the tape's
-  own readouts (its levels, the hover, a tick's move, the clock), the liquidation price's shift in its tag when the
+  own readouts (its levels, the readout, a tick's move, the clock), the liquidation price's shift in its tag when the
   loans move, and motion — and every dollar it prints goes through `engineView` (v1.4). The gauge's needle rests on its
   dial (`needleOf`), past 100% or infinite at its end, and trembles there, never past it (`needleAt`); the gauge's figure
   wears the Dashboard's bar colour whenever the loan is on (`gaugeTone`: a debt with no coins behind it is Poor, its "∞"
-  red); with no coins behind the debt the charge shakes as at 120%, where its speed stops (v1.5). BL61's walls: the
+  red); with no coins behind the debt and a liquidation price entered, the charge shakes as at 120%, where its speed
+  stops — with none entered there is no line, and no charge to draw (v1.5; the line reworded with BL66). BL61's walls: the
   Dashboard's three levels colour it, not the prototypes' five zones; no valve marks, no Strike margin-call line, no
   red-line probe; the bay on
   the owner's own coins, not the family's floor. Two prototype flaws are not ported: under reduced motion the charge is
@@ -2502,20 +2511,33 @@ they carry the family's figures. Every figure in it is the app's own — none of
   IntersectionObserver stops the loop itself — v1.4) and motion is allowed; under reduced motion, one still frame a
   scene. The drag lives on a handle over the piston
   (`touch-action: none`) — it holds where it was taken and the scale holds still under it; the rest of the picture
-  scrolls the page (`pan-y`). A tap opens a part's card, and a tap on an open part closes it; a cancelled touch opens
-  nothing (v1.4). It stands on `--bg-card`,
+  scrolls the page (`pan-y`). A tap opens a part's card, a tap on an open part closes it and a tap on no part closes any
+  (BL66); a press that moved is no tap; a cancelled touch opens nothing (v1.4). It stands on `--bg-card`,
   the prototypes' card colour, 9 px from a phone's edge as theirs. The app's first canvas (every chart before it is
   SVG).
+- **The tape's readout** (BL66 — the owner's ask, beyond the prototypes, whose tape reads out to a mouse alone): as the
+  Dashboard's price chart — a line down the tape at the nearest price it holds (`readPoint`: a minute's close, a second's
+  live price, or the pen, today's price now; never one left of the tape's edge), a dot on the price line in its colour,
+  ringed, and beside them a box on the Dashboard tooltip's card and border tokens (`readBoxX`: 10 px to the right, or to
+  the left where the tape ends) with its moment, to the second, and its price — "8:34:12 AM", "BTC : $100,011"
+  (`readoutTime`, `readoutPrice`: the tooltip's en-US clock and name, the Almanac's whole dollars). A mouse over the tape
+  reads it, and the readout goes with the mouse. A finger reads it once it goes clearly sideways (more than 8 px, and
+  more across than down — the prototypes' rule for their tape), so an up-and-down stroke still scrolls the page (the
+  page takes it: `pointercancel`, and the readout goes); let go, it stays on its moment, riding the tape as the tape moves
+  on, until the next touch — as the Dashboard's stays — and goes when its moment leaves the tape. A tap without a reading
+  still opens the tape's card, which says how to read it (`TAPE_READ_NOTE`); a reading opens nothing and closes an open
+  card; the piston's drag hides it. The Almanac's swipe from the screen's edge is EdgeBackGesture's 20 px zone, over the
+  tape's first 3 px: it still leaves the face. BL65's LIVE strip reuses this readout.
 - **Writes nothing.** No store function is named in `src/components/Engine/` (`engineWiring.test.ts`). Through
   `usePlanMonth` the hub's closure now names THIS MONTH's breaker-cache write (device-local, public prices — as on THIS
   MONTH and Daily): WRITES lists it, at `usePlanMonth.ts` alone (CALL SITES); no viewer reaches it — no viewer has the
   face.
 - **Pins:** `engineScene.test.ts` (DASHBOARD, LIVE, TRIED, SELLS, NO LOAN, MONTH, MOVES BETWEEN, SHARES, PROTOTYPE, SCALE,
-  BAY, WIDTH, CYCLE, TAPE, CHARGE, TAGS, REGIONS), `engineView.test.ts` (WORDS, HEADLINE, FORMATS, CANVAS WORDS, TAPE
-  WORDS, CARDS, PRICE, MONTH CARD, CYCLE CARD), `engineWiring.test.ts` (ONE SOURCE, WRITES NOTHING, FRAMES, HAND, STAGE,
-  TOKENS, LAYERS, HUB), `almanacGrid.test.ts`
-  (OWNER ONLY), `e2e/engine.spec.ts` (LIVE FEED, OPENS, TRIED, DRAG, PARTS, MOTION), `e2e/viewerAlmanac.spec.ts` (WAY IN,
-  PARITY).
+  BAY, WIDTH, CYCLE, TAPE, CHARGE, TAGS, REGIONS, PLACE), `engineView.test.ts` (WORDS, HEADLINE, FORMATS, CANVAS WORDS,
+  TAPE WORDS, READOUT WORDS, CARDS, PRICE, MONTH CARD, CYCLE CARD), `engineDraw.test.ts` (GAUGE, FINITE, READOUT),
+  `engineWiring.test.ts` (ONE SOURCE, WRITES NOTHING, FRAMES, HAND, READ, POP, STAGE, TOKENS, LAYERS, HUB),
+  `almanacGrid.test.ts` (OWNER ONLY), `e2e/engine.spec.ts` (LIVE FEED, OPENS, TRIED, DRAG, PARTS, MOTION, POP PHONE, POP
+  COMPUTER, READ), `e2e/viewerAlmanac.spec.ts` (WAY IN, PARITY).
 
 ### FIRE face (THIRTEENTH Almanac face, batch 1 build 4; one device-local key, NO bump)
 
