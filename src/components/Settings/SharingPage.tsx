@@ -9,7 +9,6 @@ import { buildHandoffToken } from '../../lib/nostr/handoffToken';
 import { Toggle } from '../ui/Toggle';
 import { PassphraseInput } from '../ui/PassphraseInput';
 import { SecretKeyCard } from '../Auth/SecretKeyCard';
-import { toPageTop } from '../../utils/pageTop';
 import styles from './SharingPage.module.css';
 
 /** BL51 (BL50 §10) — in full mode, in the button's place: the preview is drawn in Monthly Mode (simple mode) alone. */
@@ -79,7 +78,7 @@ export function SharingPage() {
           <p className={styles.desc}>Open a live preview of the viewer experience, with a Safe / Trusted toggle.</p>
           <button
             className={styles.actionBtn}
-            onClick={() => { toPageTop(); setViewerPreview(true); setActiveTab(previousTab); }}
+            onClick={() => { setViewerPreview(true); setActiveTab(previousTab); }}
           >
             👁 Preview as viewer
           </button>

@@ -65,7 +65,17 @@ test.describe('BL51 — app updates', () => {
     await expect(card(page), 'CARD the open check finds it').toBeVisible({ timeout: 10_000 });
     await expect(card(page), 'CARD its words').toHaveText(/^New version ready\s*Update$/);
     expect(asked(), 'CARD one request').toBe(1);
-    for (let h = 1; h <= 3; h++) await page.clock.fastForward('01:00:00');
+    // Sweep 3 — each hour's check is out AND back before the next hour: a check that starts while the last is still
+    // out joins it (appUpdate.ts's `inFlight`), so three hours fast-forwarded back to back could count 3, not 4.
+    const checkedAt = () => page.evaluate(
+      async (mod) => (await import(/* @vite-ignore */ mod)).getUpdateState().checkedAt, UPDATE_MOD,
+    ) as Promise<number | null>;
+    for (let h = 1; h <= 3; h++) {
+      const before = await checkedAt();
+      await page.clock.fastForward('01:00:00');
+      await expect.poll(asked, `CARD hour ${h}: its check went out`).toBe(1 + h);
+      await expect.poll(checkedAt, `CARD hour ${h}: its check came back`).not.toBe(before);
+    }
     await expect.poll(asked, 'CARD the hourly checks ran').toBe(4);
     await expect(card(page), 'CARD still offered').toBeVisible();
     expect(await marked(page), 'CARD no restart by itself').toBe(1);

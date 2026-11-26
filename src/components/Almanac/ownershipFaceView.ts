@@ -1,5 +1,6 @@
 import { CB_LIQUIDATION_PENALTY, type CyclingResult, type CyclingRow, type CyclingMode } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
+import { SHIFT_DUST_USD } from '../../simulation/cbDefense';
 import { btcGained, strikeCapNote, strikeYieldSentence, chartCliffUsd, type StrikeCapReading } from './cyclingFaceView';
 import { policyLimitPct, shownUsd } from './supportPolicyView';
 import { fmtUSD, fmtLtvPct } from '../../utils/format';
@@ -235,3 +236,45 @@ export const MODE_NOTE: Record<CyclingMode, string> = {
   clearStrike: 'No draw. Surplus retires Strike, then buys.',
   clearBoth: 'No draw. Surplus retires Strike, then Coinbase, then buys.',
 };
+
+/**
+ * Sweep 3 (A1-10) — the debt shifts a face SHOWS: a row's shift counts at or above `SHIFT_DUST_USD`, never below it.
+ * With the policy off, a refinance capped exactly at the defense line leaves a float overage the engine books as a
+ * defense (`defended`, `defenseCount` — e.g. $7e-12): a face printed "LTV stop defense: $0 of Coinbase debt shifted to
+ * Strike across 1 month", a "Debt shifted" tile and a ⇄. ONE rule for the three faces that print them (Cycling,
+ * Ownership, Strategy): the note, the tile and every ⇄ read `shownDefense` / `shiftShown`, never the engine's count.
+ * The engine is unchanged (its dust drop stays policy-only — a change there is Heavy, behind the G1 golden).
+ */
+export const shiftShown = (r: Pick<CyclingRow, 'defenseDrawnUsd'>): boolean => r.defenseDrawnUsd >= SHIFT_DUST_USD;
+export interface ShownDefense { count: number; totalUsd: number; firstMonth: number | null }
+export function shownDefense(rows: readonly Pick<CyclingRow, 'm' | 'defenseDrawnUsd'>[]): ShownDefense {
+  let count = 0;
+  let totalUsd = 0;
+  let firstMonth: number | null = null;
+  for (const r of rows) {
+    if (!shiftShown(r)) continue;
+    count += 1;
+    totalUsd += r.defenseDrawnUsd;
+    if (firstMonth === null) firstMonth = r.m;
+  }
+  return { count, totalUsd, firstMonth };
+}
+
+/**
+ * Sweep 3 (A4-9) — the ₿ axis's decimals, from what the chart plots (held, yours, owed, cold; the axis starts at 0):
+ * one under 1 ₿ read "0.0₿ | 0.0₿ | 0.1₿ | 0.1₿ | 0.1₿". A span of 1 ₿ or more keeps one decimal, as before; from
+ * 0.1 ₿, two; under it, three. The Ownership and Strategy charts both read it.
+ */
+export function btcAxisDecimals(rows: readonly Pick<OwnershipChartRow, 'held' | 'yours' | 'owed' | 'cold'>[]): number {
+  let hi = 0;
+  let lo = 0;
+  for (const r of rows) {
+    for (const v of [r.held, r.yours, r.owed, r.cold]) {
+      if (!Number.isFinite(v)) continue;
+      if (v > hi) hi = v;
+      if (v < lo) lo = v;
+    }
+  }
+  const span = hi - lo;
+  return span >= 1 ? 1 : span >= 0.1 ? 2 : 3;
+}

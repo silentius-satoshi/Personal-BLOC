@@ -5,7 +5,7 @@ import { selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView
 import { applyOverlay, diffScenarios, type ScenarioOverlay, type DimensionDiff } from '../../simulation/scenarioDiff';
 import { NumberInput } from '../ui/NumberInput';
 import { useSeenAsViewer } from './seenAsViewer';
-import { relativeAge, todayLocalISO } from '../../utils/format';
+import { relativeAge, todayLocalISO, fmtLtvPct, fmtPpDelta } from '../../utils/format';
 import styles from './ScenarioFace.module.css';
 
 /**
@@ -38,8 +38,8 @@ const LEVERS: Lever[] = [
   { key: 'cbCollateralBtc',          label: 'CB collateral',     prefix: '₿', decimals: 5, cbOnly: true },
 ];
 
-const pct = (frac: number): string => `${(frac * 100).toFixed(1)}%`;
-const pp = (delta: number): string => `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}`;
+// Sweep 3 (A4-5) — every figure here through `fmtLtvPct` (∞ for debt on no collateral, never "Infinity%"), and every
+// change through `fmtPpDelta` (∞ − ∞ is "—", never "NaNpp").
 const chipColor = (dim: DimensionDiff): string =>
   dim.worsened ? 'var(--red)' : dim.delta < 0 ? 'var(--green)' : 'var(--text-muted)';
 
@@ -103,8 +103,8 @@ export default function ScenarioFace() {
         <div className={styles.drift}>
           Since pin: {drift.worsenedCount} of 3 worse
           <span className={styles.driftDeltas}>
-            Credit {pp(drift.capacityUsed.delta)} · Strike {pp(drift.strikeLtv.delta)}
-            {hasCbLoan && <> · CB {pp(drift.cbLtv.delta)}</>}
+            Credit {fmtPpDelta(drift.capacityUsed.delta)} · Strike {fmtPpDelta(drift.strikeLtv.delta)}
+            {hasCbLoan && <> · CB {fmtPpDelta(drift.cbLtv.delta)}</>}
           </span>
         </div>
       )}
@@ -137,17 +137,17 @@ export default function ScenarioFace() {
           <div key={label} className={styles.gridRow}>
             <span className={styles.gridLabel}>{label}</span>
             <span className={styles.gridVal}>
-              <span style={{ color: LEVEL_COLOR[dim.fromLevel] }}>{pct(dim.from)}</span>
+              <span style={{ color: LEVEL_COLOR[dim.fromLevel] }}>{fmtLtvPct(dim.from)}</span>
               <span className={styles.arrow}>→</span>
-              <span style={{ color: LEVEL_COLOR[dim.toLevel] }}>{pct(dim.to)}</span>
-              <span className={styles.chip} style={{ color: chipColor(dim) }}>{pp(dim.delta)}pp</span>
+              <span style={{ color: LEVEL_COLOR[dim.toLevel] }}>{fmtLtvPct(dim.to)}</span>
+              <span className={styles.chip} style={{ color: chipColor(dim) }}>{fmtPpDelta(dim.delta, 'pp')}</span>
             </span>
           </div>
         ))}
 
         <div className={styles.secondary}>
-          <span>Crash LTV {pct(d.crashLtv.from)} → {pct(d.crashLtv.to)}</span>
-          {hasCbLoan && <span>CB liq-frac {pct(d.cbLiqFrac.from)} → {pct(d.cbLiqFrac.to)}</span>}
+          <span>Crash LTV {fmtLtvPct(d.crashLtv.from)} → {fmtLtvPct(d.crashLtv.to)}</span>
+          {hasCbLoan && <span>CB liq-frac {fmtLtvPct(d.cbLiqFrac.from)} → {fmtLtvPct(d.cbLiqFrac.to)}</span>}
         </div>
 
         <div className={styles.verdict}>{verdict}</div>

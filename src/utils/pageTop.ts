@@ -3,8 +3,10 @@
  * as viewer" placed him part-way down the preview's home, its greeting off the screen). The app scrolls <body>
  * (global.css: html and body 100% tall, overflow-x hidden), and a page change keeps the offset the last page left:
  * Sharing's "Preview as viewer" sits at the page's foot, and the preview's "✕ Exit preview" rides its sticky bar — so the
- * preview opened at Sharing's offset (442 px down, measured on a phone) and his Dashboard at the preview's. Each of the
- * two buttons calls this first. Both scrollers, whichever a browser uses. ZERO imports.
+ * preview opened at Sharing's offset (442 px down, measured on a phone) and his Dashboard at the preview's. Both
+ * scrollers, whichever a browser uses. ZERO imports. Sweep 3 (3.4): every page opens at its top — AppShell calls this
+ * once, in a layout effect keyed on the page drawn, in place of the two buttons' own calls (full mode's "Switch to
+ * simple view" opened the Dashboard at the last page's offset).
  */
 export function toPageTop(doc: Pick<Document, 'body' | 'documentElement'> = document): void {
   doc.body.scrollTop = 0;

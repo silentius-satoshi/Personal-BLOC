@@ -10,7 +10,7 @@ import { NumberInput } from '../ui/NumberInput';
 import {
   readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, COLLATERAL_TARGET_RULES, collateralAvailableFor,
   totalHoldingsAfter, DEBT_TARGET_RULES, rebuildEditedFlow, staleCbBalanceNote, buyUsdGuess, impliedBtcPrice, rebuildEditedBuy,
-  rebuildEditedReading, latestReadingForPrefill, pastBalancesNote, COLLATERAL_FEEDS_MONTH, type SheetType, type SheetState, type CollateralTarget,
+  rebuildEditedReading, latestReadingForPrefill, pastBalancesNote, deleteConfirmText, COLLATERAL_FEEDS_MONTH, type SheetType, type SheetState, type CollateralTarget,
   type DebtTarget,
 } from './eventSheetModel';
 import { minPaymentStatus } from '../../simulation/simpleModePlan';
@@ -822,7 +822,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
         {confirmDelete ? (
           <div className={styles.confirmBox}>
             <span className={styles.confirmText}>
-              Delete this event? Month {month} will be re-rolled. If a today flow loses its reading, the month is marked provisional.
+              {deleteConfirmText(month)}
             </span>
             <div className={styles.actions}>
               <button className={styles.cancelBtn} onClick={() => setConfirmDelete(false)}>Cancel</button>

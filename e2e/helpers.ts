@@ -187,7 +187,9 @@ export async function openAlmanacSimple(page: Page): Promise<void> {
  */
 export async function openAlmanacFace(page: Page, name: string, opts: { tap?: boolean } = {}): Promise<void> {
   const grid = page.getByRole('navigation', { name: 'Faces' });
-  const back = page.getByRole('button', { name: 'Almanac', exact: true });
+  // Sweep 3 — the way back has no aria-label (AppShell's title link, the eyebrow's): the journal's header nav has a
+  // button named exactly "Almanac" too (HeaderNavCluster, aria-label="Almanac"), which would read as "the Almanac is open".
+  const back = page.getByRole('button', { name: 'Almanac', exact: true }).and(page.locator('button:not([aria-label])'));
   await expect(grid.or(back), 'the Almanac is open').toBeVisible({ timeout: 15_000 });
   if (await back.isVisible()) await (opts.tap ? back.tap() : back.click());
   const tile = grid.getByRole('button', { name, exact: true });

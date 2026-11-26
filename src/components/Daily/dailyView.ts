@@ -1,8 +1,8 @@
 // Pure display helpers for the Daily Mode view (P4a, read-only). Standalone — NO store/UI/price
 // dependency (the only imports are the pure bucketEventToMonth helper, the DayEvent type, and the
-// pure fmtUSDCents formatter). Any USD-from-spot-price estimate stays in the component.
+// pure fmtUSDCents and fmtLtvPct formatters). Any USD-from-spot-price estimate stays in the component.
 import { bucketEventToMonth, flowVenue } from '../../simulation/logUtils';
-import { fmtUSDCents } from '../../utils/format';
+import { fmtUSDCents, fmtLtvPct } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 
 /**
@@ -27,7 +27,10 @@ export interface DayEventDescriptor {
 
 // BTC amount → trimmed string (strip trailing zeros, sats-level precision). parseFloat drops the zeros.
 const btc = (n: number) => `₿ ${parseFloat(n.toFixed(8))}`;
-const pct = (frac: number) => `${(frac * 100).toFixed(1)}%`;
+/** A reading's LTV, through the app's one LTV formatter (Sweep 3, A4-4). Debt on no collateral is ∞, and JSON stores ∞
+ *  as null — so a stored null with a balance reads ∞ again, never "0.0%" (the safest reading for the worst state). */
+const ltvText = (ltv: number | null | undefined, bal: number): string =>
+  fmtLtvPct(ltv == null ? (bal > 0 ? Number.POSITIVE_INFINITY : Number.NaN) : ltv);
 const TARGET_LABEL: Record<'strike' | 'cb' | 'cold', string> = { strike: 'Strike', cb: 'Coinbase', cold: 'cold storage' };
 
 /**
@@ -65,9 +68,9 @@ export function describeDayEvent(ev: DayEvent): DayEventDescriptor {
       return { icon: '◈', label: 'CB collateral reading', detail: btc(ev.cbCollateral) };
     case 'balanceReading': {
       const r = ev.reading;
-      let detail = `Strike ${fmtUSDCents(r.strikeBal)} (${pct(r.strikeLtv)} LTV)`;
+      let detail = `Strike ${fmtUSDCents(r.strikeBal)} (${ltvText(r.strikeLtv, r.strikeBal)} LTV)`;
       if (r.cbBal !== undefined) {
-        detail += ` · CB ${fmtUSDCents(r.cbBal)}${r.cbLtv !== undefined ? ` (${pct(r.cbLtv)} LTV)` : ''}`;
+        detail += ` · CB ${fmtUSDCents(r.cbBal)}${r.cbLtv !== undefined ? ` (${ltvText(r.cbLtv, r.cbBal)} LTV)` : ''}`;
       }
       return { icon: '◉', label: 'Balance reading', detail };
     }

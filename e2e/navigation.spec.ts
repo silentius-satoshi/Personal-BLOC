@@ -289,6 +289,10 @@ test.describe('Navigation gestures (P3)', () => {
     const h = page.viewportSize()!.height / 2;
     await mouseDragX(page, 8, h, 234);                                 // x=8 → the edge-back zone
     await expect(page.getByLabel('Log an event')).toBeVisible();       // left Almanac → journal
+    // Sweep 3 — the journal is the under-layer while the swipe animates, so it shows even for a swipe that goes
+    // nowhere: the proof is the page left gone — the Almanac's grid and its edge zone.
+    await expect(page.getByRole('navigation', { name: 'Faces' }), 'the Almanac left').toHaveCount(0);
+    await expect(page.getByTestId('edge-back-zone'), 'its edge zone gone with it').toHaveCount(0);
   });
 });
 

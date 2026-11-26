@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE, unfundedNote, strikeCallVerdict, liquidationVerdict,
+  shownDefense, shiftShown, btcAxisDecimals,
 } from '../ownershipFaceView';
+import { SHIFT_DUST_USD } from '../../../simulation/cbDefense';
 import { strikeCapReading, strikeCapNote, chartCliffUsd } from '../cyclingFaceView';
 import { deriveOwnership } from '../../../simulation/ownership';
 import { CB_LLTV, CB_LIF } from '../../../simulation/runCoinbaseLoan';
@@ -314,5 +318,66 @@ describe('⭐ liquidationVerdict — a deficiency under the dust floor is never 
     expect(v.text).not.toContain('of debt survives');
     expect(v.text).not.toMatch(/\$0(?![\d,])/);
     expect(v).toEqual(liquidationVerdict({ ...r, deficiencyUsd: null }));
+  });
+});
+
+// ── Sweep 3 — the shifts a face shows (A1-10) and the ₿ axis's decimals (A4-9) ───────────────────────────────────────
+// (Hardening 2's HS-26 sits in ownershipFaceViewHardening2.test.ts.)
+
+const faceSrc = (f: string): string => readFileSync(join(process.cwd(), 'src/components/Almanac', f), 'utf8');
+
+describe('⭐ Sweep 3 — a float overage is no defense on any face (A1-10)', () => {
+  it('⭐ DUST — the policy-off defense of a refinance capped at the line: the engine books it, no face shows it', () => {
+    // The audit's case: flat $30,000, Coinbase 1 ₿ owing $20,000, a $100,000 line, $8k in, $6k out, the 70% stop.
+    const sim = runCyclingSim({
+      ...SP_REPRO, strikeCreditLine: 100_000, cbDebt: 20_000, cbAprPct: 6, strikeLtvCapPct: undefined,
+      coldStoreBufferPct: undefined, pricePath: new Array(13).fill(30_000),
+    });
+    expect(sim.defenseCount, 'DUST premise: the engine books a defense').toBeGreaterThan(0);
+    expect(sim.rows.every((r) => r.defenseDrawnUsd < SHIFT_DUST_USD), 'DUST premise: every shift is a float overage').toBe(true);
+    expect(shownDefense(sim.rows), 'DUST no note, no tile').toEqual({ count: 0, totalUsd: 0, firstMonth: null });
+    expect(sim.rows.filter(shiftShown), 'DUST no ⇄').toEqual([]);
+  });
+
+  it('⭐ REAL — a real defense reads as before: the engine\'s count, total and first month', () => {
+    const sim = runCyclingSim({ ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.35) });
+    expect(sim.defenseCount, 'REAL premise: a defense').toBeGreaterThan(0);
+    expect(sim.rows.filter((r) => r.defenseDrawnUsd > 0).every(shiftShown), 'REAL premise: no dust row').toBe(true);
+    const shown = shownDefense(sim.rows);
+    expect([shown.count, shown.firstMonth]).toEqual([sim.defenseCount, sim.firstDefenseMonth]);
+    expect(shown.totalUsd).toBeCloseTo(sim.totalDefenseDrawnUsd, 6);
+  });
+
+  it('⭐ WIRED — the three faces read the rule, never the engine\'s count or `defended`', () => {
+    for (const f of ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx']) {
+      const src = faceSrc(f);
+      expect(src, `WIRED ${f}: no engine count`).not.toMatch(/defenseCount|totalDefenseDrawnUsd|firstDefenseMonth|\.defended\b/);
+      expect(src.match(/shiftShown\(r\)/g)?.length, `WIRED ${f}: both ⇄ through shiftShown`).toBe(2);
+    }
+    for (const f of ['CyclingFace.tsx', 'OwnershipFace.tsx']) {
+      const src = faceSrc(f);
+      expect(src, `WIRED ${f}: the note and the tile gate on the shown count`).toContain('const defenseActive = defense.count > 0;');
+      expect(src, `WIRED ${f}`).toContain('const defense = shownDefense(rows);');
+    }
+  });
+});
+
+describe('⭐ Sweep 3 — the ₿ axis never repeats a label (A4-9)', () => {
+  it('⭐ AXIS — the decimals come from the span the chart plots; a stack from 1 ₿ keeps one', () => {
+    const rows = (held: number) => [{ held: 0, yours: 0, owed: 0, cold: 0 }, { held, yours: held * 0.5, owed: held * 0.5, cold: 0 }];
+    expect([rows(0.05), rows(0.12), rows(0.6), rows(1), rows(24)].map(btcAxisDecimals)).toEqual([3, 2, 2, 1, 1]);
+    // The reported axis: Recharts' ticks over [0, 0.12].
+    const ticks = [0, 0.03, 0.06, 0.09, 0.12];
+    const at = (d: number) => ticks.map((x) => `${x.toFixed(d)}₿`);
+    expect(at(1), 'AXIS the bug, as reported').toEqual(['0.0₿', '0.0₿', '0.1₿', '0.1₿', '0.1₿']);
+    expect(at(btcAxisDecimals(rows(0.12)))).toEqual(['0.00₿', '0.03₿', '0.06₿', '0.09₿', '0.12₿']);
+    // An underwater stack (yours below zero) widens the span.
+    expect(btcAxisDecimals([{ held: 0.5, yours: -0.6, owed: 1.1, cold: 0 }])).toBe(1);
+    for (const f of ['OwnershipFace.tsx', 'UnifiedFace.tsx']) {
+      const src = faceSrc(f);
+      expect(src, `AXIS ${f}`).toContain('const btcDecimals = btcAxisDecimals(chartRows);');
+      expect(src, `AXIS ${f}`).toContain('tickFormatter={(x) => `${x.toFixed(btcDecimals)}₿`}');
+      expect(src, `AXIS ${f}: no fixed one decimal`).not.toContain('tickFormatter={(x) => `${x.toFixed(1)}₿`}');
+    }
   });
 });

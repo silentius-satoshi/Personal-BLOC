@@ -1041,6 +1041,28 @@ describe('⭐ policyUnpaidNote — ONE sentence for the card and the constraints
     expect(policyUnpaidNote(read(runPolicy(pathP1()), 1))).toBeNull();
     expect(policyUnpaidNote(reading({ unpaid: { firstMonth: 3, totalUsd: 0.3, zone: 'paused' } }))).toBeNull();
   });
+
+  it('⭐ UNPAID AFTER SEIZURE (Sweep 3, A1-6) — after a seizure the cause is the seizure, never the limits at support', () => {
+    // 2.0× support at the opening, 1.3× (the buy zone) from month 1; Coinbase owes enough that it seizes below 1.4× —
+    // on the way down, in month 1, before the month acts. $4k in, $6k out, no cash: the bills go unpaid from month 1.
+    const sim = runCyclingSim({
+      ...SP_REPRO, income: 4_000, cbDebt: 0.86 * 1.4 * SUPPORT[0],
+      pricePath: multiplePath([[0, 2.0], [1, 1.3], [72, 1.3]]), supportPolicy: policyFor(SUPPORT),
+    });
+    expect([sim.liqMonth, sim.seizedOnTheWayDown], 'AFTER SEIZURE premise: seized on the way down in month 1').toEqual([1, true]);
+    const rd = read(sim, 6);
+    expect([rd.unpaid?.firstMonth, rd.unpaid?.zone], 'AFTER SEIZURE premise: unpaid from month 1, in the buy zone')
+      .toEqual([1, 'accumulate']);
+    expect(rd.unpaid?.afterLiquidation, 'AFTER SEIZURE the reading says so').toBe(true);
+    const note = policyUnpaidNote(rd)!;
+    expect(note).toBe(`From month 1, ${fmtUSD(sim.totalUnfundedUsd)} of bills went unpaid — Coinbase was liquidated in month 1, `
+      + 'and the policy borrows nothing more. Set a cash reserve to cover them.');
+    expect(note).not.toMatch(/NaN|Infinity|undefined|\$-/);
+    // The rule's edges, on readings: a month-end seizure's own month keeps the zone's cause; no seizure, no flag.
+    const atSeizure = reading({ liqMonth: 4, unpaid: { firstMonth: 4, totalUsd: 6_000, zone: 'accumulate' } });
+    expect(policyUnpaidNote(atSeizure)).toContain("the credit line and the limits at support couldn't cover them");
+    expect(read(runCyclingSim(NEVER.zone), 6).unpaid?.afterLiquidation, 'AFTER SEIZURE no seizure, no flag').toBeUndefined();
+  });
 });
 
 describe('policyAlert — the headline for a face\'s alert slot: warn / bad only, the call left to strikeCapNote', () => {

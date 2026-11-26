@@ -20,7 +20,10 @@ export function useStrikeData(enabled: boolean): void {
   const setStrikeLastFetched  = useStore((s) => s.setStrikeLastFetched);
   const isVisible = usePageVisibility();
 
-  const fetchAll = async (active = true) => {
+  // Sweep 3 (A5-8) — the guard is a GETTER, read after every await: passed as a boolean it was copied at the call, so an
+  // effect torn down mid-request (the page hidden, the owner turned viewer) never reached it, and a late answer still
+  // wrote the Strike fields.
+  const fetchAll = async (isActive: () => boolean = () => true) => {
       if (strikeProxyUnconfigured) return;
       // NIP-98: each request is signed with the owner's Nostr key (Authorization: Nostr <base64>) — no bundle
       // secret. The owner-gate (enabled) means the signer is normally present; bail safely if it isn't.
@@ -40,12 +43,12 @@ export function useStrikeData(enabled: boolean): void {
 
         // 503 = key not configured — silent, no error state
         if (balanceRes.status === 503 || rateRes.status === 503) {
-          if (!active) return;
+          if (!isActive()) return;
           strikeProxyUnconfigured = true;
           return;
         }
 
-        if (!active) return;
+        if (!isActive()) return;
         if (!balanceRes.ok || !rateRes.ok) {
           setStrikeApiConnected(false);
           return;
@@ -71,14 +74,14 @@ export function useStrikeData(enabled: boolean): void {
           : rateData;
         const strikeRate = rateEntry?.amount ? parseFloat(rateEntry.amount) : null;
 
-        if (!active) return;
+        if (!isActive()) return;
         setStrikeUsdBalance(usdBalance);
         setStrikeBtcAvailable(btcAvailable);
         setStrikeRate(strikeRate);
         setStrikeApiConnected(true);
         setStrikeLastFetched(Date.now());
       } catch {
-        if (!active) return;
+        if (!isActive()) return;
         setStrikeApiConnected(false);
       }
   };
@@ -87,7 +90,7 @@ export function useStrikeData(enabled: boolean): void {
     if (!isVisible || !enabled) return;   // owner-only — no fetch/poll for non-owner or un-authenticated
     let active = true;
     const guardedFetch = async () => {
-      await fetchAll(active);
+      await fetchAll(() => active);   // the effect's own flag, read live — the cleanup below sets it false
     };
     guardedFetch();
     const interval = setInterval(guardedFetch, POLL_INTERVAL_MS);

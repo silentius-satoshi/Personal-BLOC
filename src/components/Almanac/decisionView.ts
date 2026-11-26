@@ -12,7 +12,7 @@ import { STRIKE_CURE_LTV, STRIKE_MAX_DRAW_LTV, STRIKE_RETRIEVE_MAX_LTV } from '.
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import type { PathKind } from '../../simulation/cyclePath';
 import type { WorstBy } from '../../simulation/planSearch';
-import { STRIKE_HOLD_DAYS, atTriggerLine } from '../Tools/crashPlaybookView';
+import { FLOOR_GUARD, STRIKE_HOLD_DAYS, atTriggerLine } from '../Tools/crashPlaybookView';
 import {
   DISPLAY_DUST_BTC, fmtBelowPct, policyIgnoredNote, shownBtc, shownUsd, goalActs, GOAL_STAND_DOWN_WORDS,
 } from './supportPolicyView';
@@ -72,6 +72,11 @@ const CRASH_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>([
 
 /** BTC to 3 dp — the schedule's and the card's one ₿ format. Never called below `DISPLAY_DUST_BTC`. */
 export const fmtBtc3 = (n: number): string => n.toFixed(3);
+/** Sweep 3 (A1-7) — a MOVE's ₿ to 3 dp: under THE MOVE's threshold FLOORED (the crash console's precedent, `fmtStepBtc`'s
+ *  guard), else `fmtBtc3`. Rounded, 0.0097 printed "0.010 ₿ is under the 0.01 ₿ threshold". Every sub-threshold figure
+ *  reads it — the batch line and each "(small — can wait)" — so one move reads alike on the card and in the schedule. */
+export const fmtMoveBtc3 = (n: number): string =>
+  (n < MOVE_THRESHOLD_BTC ? (Math.floor(n * 1e3 + FLOOR_GUARD) / 1e3).toFixed(3) : fmtBtc3(n));
 
 /** A dollar formatter. The face prints whole dollars (`fmtUSD`, the default everywhere here); THIS MONTH and Daily
  *  pass `fmtUSDCents` through `planSchedule`, so "Why this plan?" reads the face's own words to the cent (Run 2.1,
@@ -79,16 +84,19 @@ export const fmtBtc3 = (n: number): string => n.toFixed(3);
 export type UsdFmt = (n: number) => string;
 
 /**
- * THE ONE field → action table, in the engine's own month order. Every row field that is an owner ACTION, an unpaid
- * bill or an event is here; the completeness sweep enumerates this list, so a field added to `CyclingRow` without a
- * row here is a step the printed schedule would silently drop.
+ * THE ONE field → action table, in a fixed order — the engine's own month order for a top-up-first month. A shift-first
+ * crash month runs its debt shift before the cold top-up, which a row can't show: the two top-up sites merge into
+ * `topUpFromColdBtc` (Sweep 3, A1-11 — a row field from the engine would; the Emergency Console gives a crash day's
+ * order). Every row field that is an owner ACTION, an unpaid bill or an event is here; the completeness sweep enumerates
+ * this list, so a field added to `CyclingRow` without a row here is a step the printed schedule would silently drop.
  */
 interface ActionField {
   kind: ActionKind;
   /** The row field this reads. `null` for the liquidation event, which is a month, not an amount. */
   field: keyof CyclingRow | null;
   unit: 'usd' | 'btc';
-  text: (row: CyclingRow, usd?: UsdFmt) => string;
+  /** `afterSeizure` — the row's month acts after Coinbase was seized (`rowActions` decides it): nothing is pledged. */
+  text: (row: CyclingRow, usd?: UsdFmt, afterSeizure?: boolean) => string;
 }
 
 export const ACTION_FIELDS: readonly ActionField[] = [
@@ -113,20 +121,22 @@ export const ACTION_FIELDS: readonly ActionField[] = [
   {
     kind: 'buy', field: 'btcBoughtUsd', unit: 'usd',
     // fmtBtc3 is never called below the dust floor: a buy under it has no "≈ 0.000 ₿" (Run 2 — THIS MONTH prints this).
-    text: (r, usd = fmtUSD) => {
+    // Sweep 3 (A1-5) — after a seizure there is no loan to pledge to, and the plan never borrows again: "keep it".
+    text: (r, usd = fmtUSD, afterSeizure = false) => {
       const btc = r.price > 0 ? r.btcBoughtUsd / r.price : 0;
-      return `Buy ${usd(r.btcBoughtUsd)} of bitcoin${shownBtc(btc) ? ` (≈ ${fmtBtc3(btc)} ₿)` : ''} and pledge it to Coinbase.`;
+      return `Buy ${usd(r.btcBoughtUsd)} of bitcoin${shownBtc(btc) ? ` (≈ ${fmtBtc3(btc)} ₿)` : ''}`
+        + (afterSeizure ? ' and keep it.' : ' and pledge it to Coinbase.');
     },
   },
   {
     kind: 'strikeToCoinbase', field: 'strikeToCbBtc', unit: 'btc',
-    text: (r) => `Release ${fmtBtc3(r.strikeToCbBtc)} ₿ of Strike collateral into Coinbase.`
+    text: (r) => `Release ${fmtMoveBtc3(r.strikeToCbBtc)} ₿ of Strike collateral into Coinbase.`
       + (r.strikeToCbBtc < MOVE_THRESHOLD_BTC ? ' (small — can wait)' : ''),
   },
   {
     // BL32 — the stand-down's step 5: Strike releases straight to cold (Today's words, `todayActions`, for a month's row).
     kind: 'strikeToCold', field: 'strikeToColdBtc', unit: 'btc',
-    text: (r) => `Release ${fmtBtc3(r.strikeToColdBtc)} ₿ of Strike collateral to cold storage.`
+    text: (r) => `Release ${fmtMoveBtc3(r.strikeToColdBtc)} ₿ of Strike collateral to cold storage.`
       + (r.strikeToColdBtc < MOVE_THRESHOLD_BTC ? ' (small — can wait)' : ''),
   },
   {
@@ -169,7 +179,7 @@ export const ACTION_FIELDS: readonly ActionField[] = [
   },
   {
     kind: 'coinbaseToCold', field: 'sweptToColdBtc', unit: 'btc',
-    text: (r) => `Move ${fmtBtc3(r.sweptToColdBtc)} ₿ from Coinbase to cold storage.`
+    text: (r) => `Move ${fmtMoveBtc3(r.sweptToColdBtc)} ₿ from Coinbase to cold storage.`
       + (r.sweptToColdBtc < MOVE_THRESHOLD_BTC ? ' (small — can wait)' : ''),
   },
   { kind: 'liquidation', field: null, unit: 'usd', text: () => 'Coinbase liquidates the loan.' },
@@ -194,6 +204,10 @@ export function rowActions(
   row: CyclingRow, liqMonth: number | null, seizure: SeizureRead = MONTH_END_SEIZURE, usd: UsdFmt = fmtUSD,
 ): Action[] {
   const out: Action[] = [];
+  // Sweep 3 (A1-5) — the month's buys are no longer pledged once Coinbase is gone: from the seizure month on the way
+  // down (seized before the month acted), from the month after a month-end seizure (that row is pushed pre-seizure —
+  // its buy was pledged, then seized).
+  const afterSeizure = liqMonth !== null && (seizure.onTheWayDown ? row.m >= liqMonth : row.m > liqMonth);
   for (const f of ACTION_FIELDS) {
     if (f.field === null) {
       if (liqMonth === null || row.m !== liqMonth) continue;
@@ -209,7 +223,9 @@ export function rowActions(
     }
     const v = amountOf(row, f);
     if (f.unit === 'usd' ? !shownUsd(v) : !shownBtc(v)) continue;
-    out.push({ kind: f.kind, usd: f.unit === 'usd' ? v : null, btc: f.unit === 'btc' ? v : null, text: f.text(row, usd) });
+    out.push({
+      kind: f.kind, usd: f.unit === 'usd' ? v : null, btc: f.unit === 'btc' ? v : null, text: f.text(row, usd, afterSeizure),
+    });
   }
   return out;
 }
@@ -300,9 +316,22 @@ export function coinbaseLoanLine(
   // policy — off or ignored, THE MOVE card names no move today.
   const movesToday = sim.policyApplied && plan.state === 'ready' && plan.worthMoving && shownBtc(plan.strikeToCbBtc);
   const firstMove = sim.rows.find((r) => r.m > 0 && shownBtc(r.strikeToCbBtc));
+  const firstBorrow = sim.rows.find((r) => r.m > 0 && shownUsd(r.refinancedUsd));
+  // Sweep 3 (A1-12) — the plan's own buys can open it too: nothing on Coinbase at the opening, then a month whose buy
+  // is pledged there before any Strike release (a release in the same month keeps the release's words below).
+  const opening = sim.rows[0];
+  const firstHeld = opening !== undefined && !shownBtc(opening.cbCollateralBtc)
+    ? sim.rows.find((r) => r.m > 0 && shownBtc(r.cbCollateralBtc))
+    : undefined;
+  if (!movesToday && firstHeld !== undefined && shownUsd(firstHeld.btcBoughtUsd) && !shownBtc(firstHeld.strikeToCbBtc)
+    && (firstMove === undefined || firstHeld.m < firstMove.m)) {
+    const lead = `You have no Coinbase loan yet. This plan opens one: your month-${firstHeld.m} buy is pledged to Coinbase`;
+    return firstBorrow === undefined
+      ? `${lead}, but this path never borrows on Coinbase.`
+      : `${lead}, and the first Coinbase borrow is in month ${firstBorrow.m}.`;
+  }
   if (!movesToday && firstMove === undefined) return null;
   const when = movesToday ? 'today' : `in month ${firstMove!.m}`;
-  const firstBorrow = sim.rows.find((r) => r.m > 0 && shownUsd(r.refinancedUsd));
   return firstBorrow === undefined
     ? `You have no Coinbase loan yet. This plan opens one: collateral moves to Coinbase ${when}, but this path never `
       + 'borrows on Coinbase.'
@@ -543,7 +572,7 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
     // The batch line, then the aligned line — an over-the-limit position replaces the latter.
     if (!plan.worthMoving && shownBtc(movedBtc)) {
       lines.push(line('batch', 'plain',
-        `Nothing worth moving yet — ${fmtBtc3(movedBtc)} ₿ is under the ${MOVE_THRESHOLD_BTC} ₿ threshold; `
+        `Nothing worth moving yet — ${fmtMoveBtc3(movedBtc)} ₿ is under the ${MOVE_THRESHOLD_BTC} ₿ threshold; `
         + "next month's re-plan picks it up."));
     } else if (plan.strikeLeg === 'nothing' && movedBtc < DISPLAY_DUST_BTC && !shownUsd(plan.cbOverCeilingUsd)) {
       lines.push(line('aligned', 'plain', plan.standDown
@@ -848,8 +877,8 @@ export function coldAhead(a: ColdAheadInput): AheadSection | null {
     for (const x of next.actions) {
       if (x.btc === null) continue;
       const small = x.btc < MOVE_THRESHOLD_BTC ? ' (small — can wait)' : '';
-      if (x.kind === 'strikeToCold') parts.push(part(`${fmtBtc3(x.btc)} ₿ from Strike${small}`, 'strike'));
-      if (x.kind === 'coinbaseToCold') parts.push(part(`${fmtBtc3(x.btc)} ₿ from Coinbase${small}`, 'coinbase'));
+      if (x.kind === 'strikeToCold') parts.push(part(`${fmtMoveBtc3(x.btc)} ₿ from Strike${small}`, 'strike'));
+      if (x.kind === 'coinbaseToCold') parts.push(part(`${fmtMoveBtc3(x.btc)} ₿ from Coinbase${small}`, 'coinbase'));
     }
     facts.push(fact('coldNext', 'Next', `in ${monthsText(next.m)}`, parts));
   }

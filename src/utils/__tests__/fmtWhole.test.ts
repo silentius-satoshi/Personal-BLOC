@@ -14,6 +14,8 @@ import type { MiningCurrency } from '../../simulation/types';
  */
 const OLD_USD = (n: number): string => '$' + Math.round(Math.abs(n)).toLocaleString();
 const OLD_MINING_USD = (n: number): string => {
+  // Sweep 3 (A4-7) — a negative is its sign, then its size's format: the old expression printed "$-1.0620" (the bug).
+  if (n < 0) return `−${OLD_MINING_USD(-n)}`;
   if (n < 0.01) return '$' + n.toFixed(4);
   if (n < 100) return '$' + n.toFixed(2);
   return '$' + Math.round(n).toLocaleString();
@@ -64,6 +66,14 @@ describe('F1 — the whole-number formats, built once, print as toLocaleString()
     }
     expect(whole, 'F1 premise — the whole-dollar branch reached').toBeGreaterThan(5_000);
   }, 60_000);
+
+  it('⭐ MINING NEGATIVE (Sweep 3, A4-7) — a negative net is "−$1.06", never "$-1.0620"', () => {
+    // The default fleet's month at a 12¢ tariff nets about −$1.06; the sign, then the same tiers on its size.
+    expect([fmtMiningUSD(-1.062), fmtMiningUSD(-0.457), fmtMiningUSD(-0.0042), fmtMiningUSD(-1_234.4)])
+      .toEqual(['−$1.06', '−$0.46', '−$0.0042', `−${fmtMiningUSD(1_234.4)}`]);
+    for (const v of [-1.062, -0.457, -0.0042]) expect(fmtMiningUSD(v)).not.toMatch(/\$-|NaN|Infinity|undefined/);
+    expect([fmtMiningUSD(1.062), fmtMiningUSD(0)], 'MINING NEGATIVE the rest as before').toEqual(['$1.06', '$0.0000']);
+  });
 
   it('⭐ F1 — fmtMining — sats, dollars and coins at four prices, byte for byte', () => {
     for (const price of [65_000.123, 100_000, 1, 0]) {

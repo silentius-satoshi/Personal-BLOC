@@ -958,8 +958,10 @@ src/
                                 # keeps the offset the last page left; Sharing's "Preview as viewer" (at its page's
                                 # foot) and the preview's "✕ Exit preview" (its sticky bar) each call it first, so the
                                 # preview opens at its top and his Dashboard after it (it opened part-way down: the
-                                # owner's report after BL50's live look). ZERO imports. Tested in
-                                # src/utils/__tests__/pageTop.test.ts (PREVIEW AT TOP)
+                                # owner's report after BL50's live look). ZERO imports. Sweep 3 (3.4): every page opens
+                                # at its top — AppShell alone calls it, in a layout effect keyed on the page drawn (mode,
+                                # tab, journal view, preview); the two buttons no longer do. Tested in
+                                # src/utils/__tests__/pageTop.test.ts (PAGE TOP) and e2e/pageTop.spec.ts
 
   components/
     Layout/
@@ -1261,6 +1263,12 @@ src/
       FireScale.tsx             # Batch 1 build 4 — the scale of years of funded spending (+ .module.css, tokens only): a
                                 # bar, a you-are-here dot, the need's marks. LAYOUT ONLY and wordless — imports only its
                                 # CSS; the view hands it every label and the aria-label (fireWiring WORDLESS)
+      OwnershipFace.tsx         # The Ownership face (default export) — the plan's engine run on the face's path, and
+                                # its futures (`useFutures`): three charts by `view` — 'ownership' (₿), 'ltv', 'price'
+                                # — their series from ownershipFaceView's chartOwnershipRows; the support policy's card
+                                # (SupportPolicyCard), the milestones, and ControlDock as its last child, after the
+                                # two-column .shell (ui.md). Most of its words come from ownershipFaceView and
+                                # cyclingFaceView. Sweep 3 (1.9): the entry it lacked.
       ownershipFaceView.ts      # Ownership face — pure: chartOwnershipRows (the three charts' series; yours / owed
                                 # through deriveOwnership, 3-arg), ownershipGained, ownershipHero, modeConstraints,
                                 # unfundedNote, liquidationVerdict, strikeCallVerdict, MODE_NOTE. BL32 (δ3):

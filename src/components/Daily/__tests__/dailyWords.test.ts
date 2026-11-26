@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pastBalancesNote, PAST_BALANCES_NOTE, COLLATERAL_FEEDS_MONTH } from '../eventSheetModel';
+import { pastBalancesNote, PAST_BALANCES_NOTE, COLLATERAL_FEEDS_MONTH, deleteConfirmText } from '../eventSheetModel';
 import { isMonthlyMeaningful } from '../../../store/dailyRouting';
 import type { DayEvent } from '../../../simulation/types';
 
@@ -65,5 +65,17 @@ describe('PAST NOTE — the past-date note promises a provisional month only whe
       expect(COLLATERAL_FEEDS_MONTH[target], `PAST NOTE the ${target} move feeds its month as the store says`).toBe(isMonthlyMeaningful(move));
     }
     expect(src, 'PAST NOTE the unconditional promise gone').not.toContain('this month is marked provisional until a reading is logged');
+  });
+});
+
+describe('DELETE NOTE — the delete confirm states the rule, which is always true (Sweep 3)', () => {
+  it('⭐ DELETE NOTE — the month re-rolls; flows with no reading carry the month before\'s balances, marked provisional', () => {
+    const text = deleteConfirmText(3);
+    expect(text).toBe('Delete this event? Month 3 will be re-rolled. If that leaves the month with flows but no reading, it '
+      + "carries the month before's balances, marked provisional, until a reading is logged.");
+    expect(text).not.toMatch(/NaN|Infinity|undefined|\$-/);
+    const src = read('EventSheet.tsx');
+    expect(src, 'DELETE NOTE the sheet reads it').toContain('{deleteConfirmText(month)}');
+    expect(src, 'DELETE NOTE the old claim gone').not.toContain('If a today flow loses its reading');
   });
 });

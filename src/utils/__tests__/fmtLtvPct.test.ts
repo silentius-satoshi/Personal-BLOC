@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { execSync } from 'node:child_process';
-import { fmtLtvPct } from '../format';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fmtLtvPct, fmtPpDelta } from '../format';
+import { describeDayEvent } from '../../components/Daily/dailyView';
+import { customTierReading } from '../../components/Collateral/TierCards';
+import { diffScenarios } from '../../simulation/scenarioDiff';
+import type { SafetyViewInputs } from '../../simulation/safetyView';
+import type { DayEvent } from '../../simulation/types';
 import { computeStrikeLtv } from '../../simulation/strikeCredit';
 import { cbMetrics } from '../../simulation/cbMetrics';
 import { computeLiquidationAnalysis, CB_LLTV } from '../../simulation/runCoinbaseLoan';
@@ -61,8 +68,9 @@ describe('fmtLtvPct', () => {
       .trim()
       .split('\n')
       .filter(Boolean)
-      // TierCards' day-one LTV is a ratio of configured constants and cannot be non-finite.
-      .filter((l) => !l.includes('TierCards'))
+      // TierCards' constant tiers (`TIERS`, a configured ratio) cannot be non-finite — that line alone. Sweep 3 (A4-6):
+      // the exemption was file-wide, and the Custom tier's computed LTV walked through it ("0.0%" for expenses on ₿0).
+      .filter((l) => !(l.includes('TierCards') && l.includes('(ltv * 100).toFixed(0)')))
       // CyclingFace guards with Number.isFinite before building a chart datum.
       .filter((l) => !l.includes('Number.isFinite'))
       // MonthlyLogSection's ltvFieldValue is an EDITABLE field value parsed back with parseFloat —
@@ -78,5 +86,61 @@ describe('fmtLtvPct', () => {
     expect(re.test('(currentCbLtv * 100).toFixed(1)')).toBe(true);
     expect(re.test('(cbLtv*100).toFixed(2)')).toBe(true);
     expect(re.test('(someTotal * 100).toFixed(0)')).toBe(false);
+  });
+});
+
+/** Sweep 3 — three LTVs the guard couldn't see (a local `pct(frac)` and a file-wide exemption), each on the state that
+ *  broke it. Synthetic round figures. No changed string prints NaN, Infinity, undefined or "$-". */
+const BROKEN = /NaN|Infinity|undefined|\$-/;
+
+describe('⭐ Sweep 3 — open-coded LTVs through fmtLtvPct (A4-4, A4-5, A4-6)', () => {
+  it('⭐ DAILY READING (A4-4) — a Strike balance on no collateral reads ∞, live and after a reload (JSON stores ∞ as null)', () => {
+    const ev = {
+      id: 'r1', ts: 1, date: '2026-06-10', kind: 'balanceReading',
+      reading: { strikeBal: 1_000, strikeLtv: Number.POSITIVE_INFINITY, cbBal: 5_000, cbLtv: Number.POSITIVE_INFINITY, price: 100_000 },
+    } as unknown as DayEvent;
+    const live = describeDayEvent(ev).detail;
+    const reloaded = describeDayEvent(JSON.parse(JSON.stringify(ev)) as DayEvent).detail;
+    expect([live, reloaded], 'DAILY READING ∞ both ways').toEqual([
+      'Strike $1,000.00 (∞ LTV) · CB $5,000.00 (∞ LTV)', 'Strike $1,000.00 (∞ LTV) · CB $5,000.00 (∞ LTV)',
+    ]);
+    // A real reading reads as before; nothing owed on nothing is no ∞.
+    const ok = { ...ev, reading: { strikeBal: 12_000, strikeLtv: 0.12, price: 100_000 } } as unknown as DayEvent;
+    expect(describeDayEvent(ok).detail).toBe('Strike $12,000.00 (12.0% LTV)');
+    const none = { ...ev, reading: { strikeBal: 0, strikeLtv: 0, price: 100_000 } } as unknown as DayEvent;
+    expect(describeDayEvent(none).detail).toBe('Strike $0.00 (0.0% LTV)');
+    for (const s of [live, reloaded]) expect(s).not.toMatch(BROKEN);
+  });
+
+  it('⭐ SCENARIO (A4-5) — no Strike collateral: "∞ → ∞ —", never "Infinity% → Infinity% NaNpp"', () => {
+    const base: SafetyViewInputs = {
+      advisorActualBlocBalance: 1_000, creditLine: 10_000, currentBtcHeld: 0, btcPrice: 100_000,
+      strikeLiquidationLtvPct: 85, hasCbLoan: false, cbLoanBalance: 0, cbAprPct: 0, cbLoanBalanceAsOf: null,
+      cbCollateralBtc: 0, cbLtvTriggerPct: 75, cbLiquidationPrice: 0,
+    };
+    const d = diffScenarios(base, base);
+    expect(d.strikeLtv.from, 'SCENARIO premise: the engine emits ∞').toBe(Number.POSITIVE_INFINITY);
+    const row = `${fmtLtvPct(d.strikeLtv.from)} → ${fmtLtvPct(d.strikeLtv.to)} ${fmtPpDelta(d.strikeLtv.delta, 'pp')}`;
+    const crash = `Crash LTV ${fmtLtvPct(d.crashLtv.from)} → ${fmtLtvPct(d.crashLtv.to)}`;
+    expect([row, crash]).toEqual(['∞ → ∞ —', 'Crash LTV ∞ → ∞']);
+    expect([fmtPpDelta(Number.POSITIVE_INFINITY, 'pp'), fmtPpDelta(Number.NaN), fmtPpDelta(0.012, 'pp'), fmtPpDelta(0)])
+      .toEqual(['—', '—', '+1.2pp', '+0.0']);
+    for (const s of [row, crash]) expect(s).not.toMatch(BROKEN);
+    // The face reads them — its local pct and pp are gone.
+    const face = readFileSync(join(process.cwd(), 'src/components/Almanac/ScenarioFace.tsx'), 'utf8');
+    expect(face, 'SCENARIO no local formatter').not.toMatch(/const (pct|pp) =/);
+    expect(face).toContain("fmtPpDelta(dim.delta, 'pp')");
+  });
+
+  it('⭐ CUSTOM TIER (A4-6) — expenses drawn on ₿0 are ∞, "Liquidated" — never "0.0%", "Safe"', () => {
+    const zero = customTierReading(3_500, 0, 100_000);
+    expect([zero.dayOneText, zero.crashText, zero.label]).toEqual(['∞', '∞', 'Liquidated']);
+    // A priced position reads exactly as before (the same ratio; the crash keeps its Math.ceil).
+    const priced = customTierReading(1_000, 0.5, 16_000);
+    expect([priced.dayOneText, priced.crashText])
+      .toEqual([fmtLtvPct(1_000 / (0.5 * 16_000)), `${Math.ceil((1_000 / (0.5 * 16_000) / 0.20) * 100)}%`]);
+    // Nothing drawn is no debt, whatever the collateral.
+    expect(customTierReading(0, 0, 100_000)).toMatchObject({ dayOneText: '0.0%', crashText: '0%', label: 'Safe' });
+    for (const s of [zero.dayOneText, zero.crashText]) expect(s).not.toMatch(BROKEN);
   });
 });

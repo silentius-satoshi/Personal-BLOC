@@ -4,7 +4,6 @@ import { useStore } from '../../store/useStore';
 import { buildViewerSnapshotPayload } from '../../store/payloads';
 import { selectSafetyViewInputs, previewSafeSnapFromPayload } from '../../simulation/safetyView';
 import { ViewerHomeView } from './ViewerHomeView';
-import { toPageTop } from '../../utils/pageTop';
 import styles from './ViewerPreview.module.css';
 
 const noop = () => {};
@@ -68,7 +67,7 @@ export function ViewerPreview({ trusted, override, setOverride, onOpenAlmanac }:
             {/* BL48 — names no viewer: it read the first roster slot's label, the owner's own nickname for one viewer. */}
             {previewLabel(effectiveTrusted)}
           </span>
-          <button className={styles.exitBtn} onClick={() => { toPageTop(); setViewerPreview(false); }}>✕ Exit preview</button>
+          <button className={styles.exitBtn} onClick={() => setViewerPreview(false)}>✕ Exit preview</button>
         </div>
         <div className={styles.previewBarBottom}>
           <div className={styles.modeToggle} role="group" aria-label="Preview privacy mode">

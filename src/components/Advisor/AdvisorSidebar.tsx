@@ -3,7 +3,7 @@ import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { fmtUSD, todayLocalISO, typedISODate } from '../../utils/format';
 import { usePlanPolicy } from '../Almanac/usePlanPolicy';
 import { planPolicySettingsOf } from '../Almanac/planRun';
 import { planRuleRows } from '../Almanac/supportPolicyView';
@@ -92,7 +92,10 @@ export function AdvisorSidebar() {
           type="date"
           className={styles.dateInput}
           value={advisorStartDate}
-          onChange={(e) => setAdvisorStartDate(e.target.value)}
+          onChange={(e) => {
+            const start = typedISODate(e.target.value);   // Sweep 3 — a cleared field writes nothing
+            if (start !== null) setAdvisorStartDate(start);
+          }}
           max={todayLocalISO()}
         />
       </div>

@@ -40,9 +40,9 @@ underscore, so it never saw `LiqSimulator.tsx`'s snake_case `cb_ltv_now`/`cb_ltv
 The guard watches FORMATTING only — it cannot catch a fallback that's computed inline and never rendered
 via `.toFixed`, which is why `LiqSimulator`'s four LTVs were extracted to the pure
 `src/components/Tools/liqSimulatorView.ts` (reusing `cbMetrics`/`computeStrikeLtv`, never a local
-`value > 0 ? … : 0`) and pinned by `liqSimulatorView.test.ts` — the repo has zero `.test.tsx`, so a figure
-computed inline in a component is a figure nothing else can pin. (Both files left with the Liq Sim in the plan of
-record's Run 4.)
+`value > 0 ? … : 0`) and pinned by `liqSimulatorView.test.ts` — a figure computed inline in a component is hard
+to pin (the few `.test.tsx` render static markup, no DOM — verify in code: `git ls-files '*.test.tsx'`). (Both
+files left with the Liq Sim in the plan of record's Run 4.)
 
 ⚠ **The ratio itself now lives in ONE place: `src/simulation/ltv.ts`.** `fmtLtvPct` is the single
 *formatter*; `ltvOf` / `ltvOfUsd` are the single *computation*. The two guards are complementary and
@@ -2920,6 +2920,83 @@ goes red.)
 - `src/lib/nostr/__tests__/establishOwnerHardening.test.ts` — Hardening 1 (HK-06); each title starts with its GAP id and names the identity.md row it pins: the signer `establishLocalOwner` stores still signs after it zeroes the payload (a held key buffer is zeroed on success/teardown, never in an establish finally; always pass a `.slice()`)
 - `src/lib/nostr/__tests__/sessionHardening.test.ts` — Hardening 1 (HK-07, HK-08); each title starts with its GAP id and names the identity.md row it pins: a restored local signer still signs after `restoreSigner` zeroes the unwrapped sk (HK-07); the `restoreSigner` single-flight guard is PIN-aware, a pinless caller after the doomed pinless restore settles joins the pinned restore (HK-08)
 - **Hardening 1** (branch `claude/hardening-1`, base c7f709e → 690c38d) — a mutation hunt, then its tests. Suite: 2,914 passed + 6 skipped in 190 files → 2,968 passed + 6 skipped in 205 files (+54 tests, +15 files, the 15 above: safety 13, store-journal 21, engine 13, keys 7). The hunt (Stage 1): 149 mutants planned (cap 160), 143 run in scratch worktrees through four tiers (own tests → vitest related → every source-reading test → `tsc -b`), all restored by md5; 36 killed (31 T1, 5 T2), 107 survived — 105 GAP, 2 EQUIVALENT (HE-20, HE-40), 0 SUSPECT; 54 GAPs tested here, HJ-04 held for audit A2-3's fix, the other 50 left to Hardening 2. Gate (8db636b): G1 `eslint.config.js` ignores `'Claude outputs/**'`; G2 `tsconfig.e2e.json` (tsconfig.node.json's flags + DOM, types node; `e2e/**/*.ts` + `playwright.config.ts`) referenced from `tsconfig.json`, so `tsc -b` type-checks the e2e; G3 `{ timeout: 60_000 }` on five sweeps (placement L108, supportPolicyView L505, crashPlaybookView L569, goalAmount L193, cyclingSimPolicy L1412); G4 `e2e/numberFieldSwipe.spec.ts` L106 `.tap()` → `.click()` (audit A6-2: the HELD test failed alone 2 of 3 before, passed 3 of 3 after). Docs (de3865c / 5aa8186): 25 STALE pointers corrected (almanac.md 13, file-structure.md 12). Records: branch `claude/hardening-1-records`, folder `hardening-1-records/`.
+- **Sweep 3, Group 1 — tests and docs (2026-11-24)** (spec `pbloc-spec-sweep-3-v1` v1.2; Light; the run's report:
+  `Claude outputs/sweep-3/report.md`):
+  - `src/lib/__tests__/rulesPaths.test.ts` (1, new): ⭐ RULES PATHS (every source file a scoped `.claude/rules/*.md`
+    names — `x.ts`, `x.tsx`, `x.css`, a path ending in one, or a slash-qualified module like `lib/planGoal` — exists
+    under `src/` and sits under one of that file's `paths:` globs; only `general.md` is unscoped; journal.md's `e.ts`
+    is no file). Mutation: drop `"src/lib/planGoal.ts"` from engine.md's `paths:` → red.
+  - Strengthened: `cyclingSim.test.ts` ⭐ the Strike leg never breaches the margin-call LTV (A6-1 — `cycleMonths: 3`
+    keeps the leg open; asserts open rows > 0 and one after a Strike sweep; RISING's `cycleMonths: 1` → red) ·
+    `goalAmount.test.ts` ⭐ GOAL KEPT (A6-6 — one assertion per side, more than 5 of 24) · `cyclePath.test.ts` 3
+    (A6-4 — ⭐ SHORTCUT, `cycleMultAt`'s exact-hit line pinned in the source, in place of the exp∘log canary;
+    deleting the line → red).
+  - e2e: `appUpdate.spec.ts` UPDATE CARD waits for each hour's check, out and back · `navigation.spec.ts` the Almanac
+    swipe proves the page left gone · `helpers.ts` `openAlmanacFace`'s way back is the button without an aria-label.
+  - Titles only: `viewerSettingsApply.test.ts` PREFS (five prefs keys) · `ledgerCold.test.ts` (→ Cold whenever the
+    moves are known).
+- **Sweep 3, Group 2 — words and display (2026-11-24)** (the same spec; each on the state that broke it, no changed string
+  with NaN, Infinity, undefined or "$-"):
+  - `decisionView.test.ts` (+4): ⭐ KEEP IT ×2 (A1-5 — a buy after a seizure is kept, from the seizure month on the way
+    down, from the month after a month-end one; a seized run's schedule pledges none) · ⭐ FLOORED (A1-7 — `fmtMoveBtc3`:
+    every sub-threshold ₿ floored, the batch line and each "(small — can wait)") · ⭐ OPENED BY BUYS (A1-12 — the
+    pledged buy's month and the first borrow's, from the rows). `coldAhead.test.ts`'s reference follows `fmtMoveBtc3`.
+  - `supportPolicyView.test.ts` (+1): ⭐ UNPAID AFTER SEIZURE (A1-6, a real run seized on the way down in the buy zone).
+  - `ownershipFaceView.test.ts` (+4): ⭐ DUST · ⭐ REAL · ⭐ WIRED (A1-10 — `shownDefense` / `shiftShown`: the note, the
+    tile and every ⇄ on Cycling, Ownership and Strategy) · ⭐ AXIS (A4-9 — `btcAxisDecimals`).
+  - `fmtLtvPct.test.ts` (+3): ⭐ DAILY READING (A4-4) · ⭐ SCENARIO (A4-5, `fmtPpDelta`) · ⭐ CUSTOM TIER (A4-6); the guard's
+    TierCards exemption narrowed to the constant tiers' line.
+  - `fmtWhole.test.ts` (+1): ⭐ MINING NEGATIVE (A4-7); F1's mining reference takes the same negative branch.
+  - `safetyAtSupport.test.ts` (+1): ⭐ VERDICT WHICH BAR · `ledgerCsv.test.ts` (+1): ⭐ DAGGER (A2-9) ·
+    `dailyWords.test.ts` (+1): ⭐ DELETE NOTE.
+- **Sweep 3, Group 3 — small fixes (2026-11-24)** (the same spec; 3.1 stopped and 3.5 left out — the report says why):
+  - `src/utils/__tests__/typedISODate.test.ts` (2, new): ⭐ START DATE · ⭐ START DATE WIRED (a cleared start-date field
+    writes nothing — Settings, the sidebar, onboarding).
+  - `src/components/ui/__tests__/edgeBackInert.test.ts` (1, new): ⭐ EDGE INERT WIRED · `e2e/edgeBackInert.spec.ts` (1, new):
+    ⭐ EDGE INERT (a real second-finger tap on the revealed nav opens nothing; the page takes taps after a cancelled and a
+    committed swipe). Plant — no `inert` → red: the Almanac opened.
+  - `src/utils/__tests__/pageTop.test.ts`: BL51's PREVIEW AT TOP becomes ⭐ PAGE TOP (AppShell alone resets, keyed on the
+    page drawn; the two buttons no longer call it) · `e2e/pageTop.spec.ts` (4, new): ⭐ PAGE TOP at 390 and 1280 px — full
+    mode's "Switch to simple view", and an edge swipe out of a scrolled Settings. Plant — the reset off → all four red.
+  - `src/hooks/__tests__/useStrikeData.test.ts` (1, new): ⭐ STRIKE GUARD (A5-8) · `demoSeed.test.ts` (+1): ⭐ SANDBOX ONLY
+    (A5-7).
+- **Sweep 3, Group 5 — Hardening 2's GAPs, tests only (2026-11-24)** (the same spec; Hardening 1's survivors, each mutant
+  re-planted on this tree: 43 kept of 45 — HS-18 and HS-19 dropped, killed now by `moveSections.test.ts`'s ⭐ FIGURES;
+  HS-37 dropped in the plan, the live price's file). 28 new files, 43 tests; each title starts with its GAP id and names
+  the rule it pins; each red under its mutant, the file restored by md5 (the report holds every red message):
+  - `src/simulation/__tests__/placementHardening2.test.ts` (HE-03 `strikeRoomUsd` is the room AT SUPPORT) ·
+    `planSearchHardening2.test.ts` (HE-33 no path rankable: every path still ranked) · `runBlocYearOneHardening2.test.ts`
+    (HE-23 Phase 4: `creditExceeded` first) · `miningUtilsHardening2.test.ts` (HS-39 `dailyEV_sats` is the gross mined sats).
+  - `src/lib/__tests__/planPolicyHardening2.test.ts` (HE-04 a non-finite saved setting reads its default) ·
+    `src/lib/planEvents/__tests__/compactHardening2.test.ts` (HY-02 the budget counts UTF-8 bytes).
+  - `src/lib/nostr/__tests__/`: `syncEngineHardening2.test.ts` (HY-03 the publish sends the compacted log it persists; HY-05
+    the `records:v1` stub carries the `minCreatedAt` floor; HY-07 a plan size refusal clears `planDirty`, raises no
+    Reconnect) · `publishHardening2.test.ts` (HY-04 the guard measures UTF-8 bytes) · `syncGuardHardening2.test.ts` (HY-06
+    exactly the step goes out, a byte past is refused) · `syncHardening2.test.ts` (HY-10 `recordsDirty` breaks a tie for the
+    local edit; HY-11 a prefs copy no newer than the watermark is never re-applied; HY-15 a manifest-only pull is
+    "absent") · `syncNowHardening2.test.ts` (HY-14 the foreground rebuild is NIP-46 only).
+  - `src/store/__tests__/`: `dailyRoutingHardening2.test.ts` (HJ-02, HJ-03 a Coinbase draw re-rolls and lags no month;
+    HJ-14 a journal-made month is dated at its anniversary; HJ-17 an emptied month goes only when the journal owns it;
+    HJ-20 the reading context carries the CB liquidation price) · `advisorJournalSliceHardening2.test.ts` (HJ-15 the
+    reconcile re-rolls month 12; HJ-16 it leaves a current signed month signed; HJ-18 a signed provisional month stays
+    provisional; HY-09 a month-log write kicks the records publish) · `dayLogSliceHardening2.test.ts` (HY-16 a
+    `cbLiquidationPrice` of 0 is never stamped on a reading).
+  - `src/hooks/__tests__/useNostrSyncHardening2.test.ts` (HY-13 `isAuthenticated` in the retry effect's deps — a source
+    read).
+  - `src/components/Almanac/__tests__/`: `planMonthViewHardening2.test.ts` (HS-15 the catch-up moves cold that exactly
+    covers it; HS-16 an unpaid-bills month paints amber) · `supportPolicyViewHardening2.test.ts` (HS-17 exactly 50¢ over
+    reads over) · `decisionViewHardening2.test.ts` (HS-23 the seizure price in the formatter handed; HS-24 the one-short
+    breaker names 10% under support; HS-25 30¢ of Strike room is "no room") · `ownershipFaceViewHardening2.test.ts` (HS-26
+    Yours counts cold once) · `planRunHardening2.test.ts` (HS-31 a broken breaker seed breaks THE MOVE's placement input).
+  - `src/components/`: `Tools/__tests__/crashPlaybookViewHardening2.test.ts` (HE-16 the 8-dp step tier floors) ·
+    `MonthBreakdown/__tests__/MonthBreakdownHardening2.test.ts` (HE-39 the tier at the starting `btcPrice` — a source pin)
+    · `Settings/__tests__/coldStorageViewHardening2.test.ts` (HS-27 a 9 pm entry reads that local day) ·
+    `ui/__tests__/numberInputModelHardening2.test.ts` (HS-28 a `'live'` field hands on a typed 0; HS-29 retyping the shown
+    figure saves nothing) · `Daily/__tests__/DailyModeViewHardening2.test.ts` (HS-34 every component's
+    `strikeAvailableCredit` call passes price third, drawn fourth — a source walk) ·
+    `Summary/__tests__/SummaryBarHardening2.test.ts` (HS-38 a deficit prints its minus — a static render, the store a mocked
+    selector) · `ui/__tests__/PassphraseInputHardening2.test.ts` (HS-40 the masked input carries all four iOS suppressions)
+    · `Settings/__tests__/SettingsMainHardening2.test.ts` (HS-43 every tab Settings lists carries the bar's own name).
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 

@@ -27,7 +27,7 @@ import {
   playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, chartCliffUsd, openPastLltvNote,
   msYearLabel, MS_TABLE, MS_VIEWS_CYCLING,
 } from './cyclingFaceView';
-import { modeConstraints, unfundedNote } from './ownershipFaceView';
+import { modeConstraints, unfundedNote, shownDefense, shiftShown } from './ownershipFaceView';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
   policyUnpaidNote, drawPauseClause, policyTileSub, defenseLineNote, policyLimitPct,
@@ -366,10 +366,11 @@ export default function CyclingFace() {
 
   const {
     rows, last, stopMonth, liqMonth,
-    firstDefenseMonth, totalDefenseDrawnUsd, defenseCount,
     firstTopUpMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
   } = sim;
-  const defenseActive = defenseCount > 0;
+  // Sweep 3 (A1-10) — the shifts a face shows (`shownDefense`): a float overage under SHIFT_DUST_USD is no defense.
+  const defense = shownDefense(rows);
+  const defenseActive = defense.count > 0;
   // What the Strike cap did — defended / short / yielded / called — in the words the face shows. A modelled call
   // (the support policy's) is a warning too: a sale bad, a cure a warning (v1.1 #5).
   const capReading = strikeCapReading(sim, strikeCapEff);
@@ -499,7 +500,7 @@ export default function CyclingFace() {
       month: m,
       year: msYearLabel(m),
       flags: [
-        ...(r.defended ? [{ text: '⇄', title: 'debt shifted to Strike' }] : []),
+        ...(shiftShown(r) ? [{ text: '⇄', title: 'debt shifted to Strike' }] : []),
         ...(collateralMovedFlag(r, applied) ? [{ text: '⇡', title: 'collateral moved into Coinbase' }] : []),
         ...(r.postLiquidation ? [{ text: 'post-liq' }] : []),
       ],
@@ -555,8 +556,8 @@ export default function CyclingFace() {
   ];
   if (defenseActive) {
     statTiles.push([
-      'Debt shifted', fmtK(totalDefenseDrawnUsd),
-      `${defenseCount} mo · CB → Strike${unhedgedMonth !== null ? ` · unheld from mo ${unhedgedMonth}` : ''}`,
+      'Debt shifted', fmtK(defense.totalUsd),
+      `${defense.count} mo · CB → Strike${unhedgedMonth !== null ? ` · unheld from mo ${unhedgedMonth}` : ''}`,
       'var(--btc)',
     ]);
   }
@@ -767,8 +768,8 @@ export default function CyclingFace() {
       {/* The policy-off defense note — its words unchanged. Under the policy the crash playbook's note replaces it. */}
       {!applied && defenseActive && (
         <p className={styles.noteQuiet}>
-          LTV stop defense: {fmtK(totalDefenseDrawnUsd)} of Coinbase debt shifted to Strike across {defenseCount}{' '}
-          month{defenseCount === 1 ? '' : 's'}{firstDefenseMonth !== null ? `, starting month ${firstDefenseMonth}` : ''}.
+          LTV stop defense: {fmtK(defense.totalUsd)} of Coinbase debt shifted to Strike across {defense.count}{' '}
+          month{defense.count === 1 ? '' : 's'}{defense.firstMonth !== null ? `, starting month ${defense.firstMonth}` : ''}.
           {totalTopUpBtc > 0 && (
             <> When the line ran short, {fmtBtc(totalTopUpBtc)} of collateral was moved into Coinbase —
             {' '}{fmtBtc(totalTopUpFromColdBtc)} from cold storage, {fmtBtc(totalTopUpFromStrikeBtc)} from the
@@ -1220,7 +1221,7 @@ export default function CyclingFace() {
                     <tr key={m} className={r.postLiquidation ? styles.msPost : undefined}>
                       <td className={`${styles.msTd} ${styles.msYear}`}>
                         {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
-                        {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
+                        {shiftShown(r) && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
                         {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
                         {r.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
                         {/* A 4-yr cycle turn, with its REAL date — the row can sit up to a month off the turn. */}

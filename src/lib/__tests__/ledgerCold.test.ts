@@ -59,7 +59,7 @@ describe('hasColdColumn', () => {
 });
 
 describe('buildLedgerCsv — → Cold column + an unrecorded Strike col', () => {
-  it('adds → Cold between Strike col and Strike LTV when a row moved cold', () => {
+  it('adds → Cold between Strike col and Strike LTV whenever the moves are known: a moved month\'s figure, a quiet month empty', () => {
     const csv = buildLedgerCsv([entry(1), entry(2)], { hasCbLoan: false, showMining: false, coldByMonth: { 1: 0.06 } });
     const [header, r1, r2] = csv.split('\r\n').map((l) => l.split(','));
     const col = header.indexOf('→ Cold');

@@ -1,4 +1,5 @@
-// C0 — sandbox demo seed. On the PUBLIC deploy (VITE_DEMO=1) this module's side-effect block writes a curated
+// C0 — sandbox demo seed. On the SANDBOX deploy (`personal-bloc-demo`, VITE_DEMO=1) — never the public or the owner's
+// deploy: real users live there (docs/claude/commercialization.md) — this module's side-effect block writes a curated
 // showcase plan into localStorage on EVERY load (that re-write IS the reload-reset), booting the real app into the
 // identity-less-shell state R2c-6b documented: onboarded, NO Nostr identity → AppShell's auth/viewer gates are all
 // skipped → Branch J renders the hydrated plan. Publish is impossible by construction (no signer can exist).

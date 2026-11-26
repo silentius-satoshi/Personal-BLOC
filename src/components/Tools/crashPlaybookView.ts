@@ -194,8 +194,9 @@ export function playbookInputFromLive(live: LivePlaybookFigures): CrashPlaybookI
 
 // ── formatting ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** Float-noise guard for the floors: 0.3 − 0.25 is 0.04999999999999999, and must still print 0.05000. */
-const FLOOR_GUARD = 1e-7;
+/** Float-noise guard for the floors: 0.3 − 0.25 is 0.04999999999999999, and must still print 0.05000. The Decision
+ *  face's sub-threshold ₿ (`fmtMoveBtc3`) floors by it too (Sweep 3). */
+export const FLOOR_GUARD = 1e-7;
 
 /** A step's BTC, FLOORED to its printed precision: 5 dp; when that is 0, 8 dp; under one satoshi → null (not a step).
  *  Non-finite or ≤ 0 → null. */

@@ -32,7 +32,8 @@ export interface PlanMonthCardProps {
   onEditMonth: (month: number) => void;
 }
 
-/** A label with its venue words coloured (Strike white, Coinbase blue, cold storage orange). */
+/** A label with its venue words in the venue colours (Strike white, Coinbase blue, cold storage orange by default —
+ *  Settings → Customization changes them; BL15). */
 export function VenueText({ text }: { text: string }) {
   return (
     <>

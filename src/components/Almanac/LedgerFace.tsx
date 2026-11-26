@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store/useStore';
-import { buildLedgerCsv, coldMovedOf, hasColdColumn, coldTotals, coldFootnote, fmtColdBtc, COLD_EPS } from '../../lib/ledgerCsv';
+import {
+  buildLedgerCsv, coldMovedOf, hasColdColumn, coldTotals, coldFootnote, fmtColdBtc, COLD_EPS, PAYDOWN_DAGGER_NOTE,
+} from '../../lib/ledgerCsv';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbBarLevel } from '../../simulation/cbMetrics';
 import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
@@ -261,7 +263,7 @@ export default function LedgerFace() {
 
         {/* Footnote sits OUTSIDE .tableWrap so the horizontal scrollbar can't overlay it (P3.1 fix). */}
         {anyNote && (
-          <div className={styles.footnote}>† includes a non-draw / minimum payment.</div>
+          <div className={styles.footnote}>{PAYDOWN_DAGGER_NOTE}</div>
         )}
         {coldNote && <div className={styles.footnote}>{coldNote}</div>}
         </>

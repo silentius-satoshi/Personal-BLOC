@@ -55,7 +55,7 @@ describe('Phase 4e — applyViewerSettings (the trusted viewer snapshot apply)',
     expect([...VIEWER_SETTINGS_FIELDS, ...VIEWER_SNAPSHOT_STRIP].sort(), 'VIEWER keys').toEqual([...SETTINGS_FIELDS].sort());
   });
 
-  it('PREFS — hydratePrefs lands the four prefs keys and nothing else (no plan scalar without its event)', () => {
+  it('PREFS — hydratePrefs lands the five prefs keys and nothing else (no plan scalar without its event)', () => {
     const before = useStore.getState().income;
     useStore.setState({ planEvents: [], planDirty: false, prefsDirty: false } as never);
     useStore.getState().hydratePrefs({ simpleMode: false, btcBuyingUnit: 'sats', income: 999999, backupVerifiedAt: 1 });

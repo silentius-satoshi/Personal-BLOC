@@ -46,7 +46,7 @@ import { biometricLabel } from '../../lib/biometricLabel';
 import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
-import { ALL_IN, ALL_IN_CAPS, fmtUSD, todayLocalISO } from '../../utils/format';
+import { ALL_IN, ALL_IN_CAPS, fmtUSD, todayLocalISO, typedISODate } from '../../utils/format';
 import { coldMovesSinceAnchor } from '../../simulation/logUtils';
 import styles from './SettingsMain.module.css';
 import YourPlanSection from './YourPlanSection';
@@ -796,7 +796,10 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
               className={styles.setupDateInput}
               value={advisorStartDate}
               max={todayLocalISO()}
-              onChange={(e) => setAdvisorStartDate(e.target.value)}
+              onChange={(e) => {
+                const start = typedISODate(e.target.value);   // Sweep 3 — a cleared field writes nothing
+                if (start !== null) setAdvisorStartDate(start);
+              }}
             />
           </div>
         </div>

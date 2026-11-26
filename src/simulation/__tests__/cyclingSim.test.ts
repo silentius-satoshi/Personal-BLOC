@@ -831,10 +831,15 @@ describe('runCyclingSim — guards', () => {
     });
 
     it('⭐ the Strike leg never breaches the margin-call LTV at the stressed price', () => {
+      // Sweep 3 (A6-1): RISING's one-month cycle moves Strike's debt to Coinbase in month 1, so this filter skipped
+      // every row and the test asserted nothing. A three-month cycle keeps the Strike leg open while the sweep takes
+      // its coins (measured: 156 open rows, the first Strike sweep in month 20, the worst stressed LTV 0.412).
       const buffer = 30;
-      const r = run({ ...RISING, coldStoreBufferPct: buffer });
-      for (const x of r.rows) {
-        if (x.m === 0 || x.postLiquidation || x.strikeBalance <= 0) continue;
+      const r = run({ ...RISING, cycleMonths: 3, coldStoreBufferPct: buffer });
+      const openRows = r.rows.filter((x) => !(x.m === 0 || x.postLiquidation || x.strikeBalance <= 0));
+      expect(openRows.length, 'the Strike leg stays open').toBeGreaterThan(0);
+      expect(openRows.some((x) => x.coldFromStrike > 0), 'an open row after the sweep took Strike coins').toBe(true);
+      for (const x of openRows) {
         const stressed = x.price * (1 - buffer / 100);
         const stressedLtv = x.strikeBalance / (x.strikeCollateralBtc * stressed);
         expect(stressedLtv).toBeLessThanOrEqual(LIVE.strikeMarginLtv + 1e-9);
