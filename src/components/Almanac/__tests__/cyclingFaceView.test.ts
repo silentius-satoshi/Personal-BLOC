@@ -29,6 +29,7 @@ import { CYCLE_TURNS } from '../../../simulation/cycleModel';
 import { CB_FEE_TIER1_PCT, CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
+import { SHIFT_DUST_USD } from '../../../simulation/cbDefense';
 
 /** A plain fixture row — no engine run needed for the display math. */
 const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
@@ -1425,6 +1426,19 @@ describe('the crash playbook in the faces\' words — playbookNote, defendedFrom
     expect(defendedFromSub(toppedUp, false)).toBeNull();                                      // today's rule: a shift only
     expect(defendedFromSub(toppedUp, true)).toBe(`defended from ${fmtLtvPct(0.72)}`);
     expect(defendedFromSub(dust, true)).toBeNull();                                           // under the display floor
+  });
+
+  it('⭐ DUST SUB (Sweep 3, A1-10) — a shift under SHIFT_DUST_USD is no defense: no "defended from", policy off or on', () => {
+    const shift = (usd: number) => mkRow({ defended: usd > 0, defenseDrawnUsd: usd, cbLtvPreDefense: 0.74 });
+    for (const applied of [false, true]) {
+      expect(defendedFromSub(shift(SHIFT_DUST_USD / 2), applied), `DUST SUB a float overage (applied ${applied})`).toBeNull();
+      expect(defendedFromSub(shift(SHIFT_DUST_USD), applied), `DUST SUB the floor itself is a shift (applied ${applied})`)
+        .toBe(`defended from ${fmtLtvPct(0.74)}`);
+    }
+    // Under the policy a month the playbook moved collateral in still reads, whatever its shift; off, the shift alone.
+    const movedIn = mkRow({ defended: true, defenseDrawnUsd: SHIFT_DUST_USD / 2, topUpBtc: 0.06, cbLtvPreDefense: 0.72 });
+    expect(defendedFromSub(movedIn, true), 'DUST SUB moved in, policy on').toBe(`defended from ${fmtLtvPct(0.72)}`);
+    expect(defendedFromSub(movedIn, false), 'DUST SUB moved in, policy off').toBeNull();
   });
 
   it('collateralMovedFlag and unheldMonth — policy on and off (off = today\'s rule)', () => {

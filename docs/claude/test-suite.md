@@ -2997,6 +2997,15 @@ goes red.)
     `Summary/__tests__/SummaryBarHardening2.test.ts` (HS-38 a deficit prints its minus — a static render, the store a mocked
     selector) · `ui/__tests__/PassphraseInputHardening2.test.ts` (HS-40 the masked input carries all four iOS suppressions)
     · `Settings/__tests__/SettingsMainHardening2.test.ts` (HS-43 every tab Settings lists carries the bar's own name).
+- **Sweep 3 — on `main` (2026-11-25)** (spec `pbloc-spec-sweep-3-landing-v1` v1.1: its commit re-applied on the
+  Engine's top, with the lines its report kept for after those merges):
+  - `cyclingFaceView.test.ts` (+1): ⭐ DUST SUB (A1-10 — the CB LTV tile's "defended from" counts a shift from
+    `SHIFT_DUST_USD`, policy off or on; under the policy a month the playbook moved collateral in still reads).
+    Mutation: `row.defended` back in `defendedFromSub` → red. `ownershipFaceView.test.ts` ⭐ DUST checks the tile's
+    sub on the audit's run too.
+  - e2e: `almanacGrid.spec.ts` ⭐ SWIPE and ⭐ LINK prove the page left gone — the grid, the face, the edge zone (1.5's
+    snippets). `engine.spec.ts` ⭐ TRIED opens the Almanac after its reload, as `futures.spec.ts` does: it had passed
+    through the old guard 1.6 fixed (`openAlmanacFace` read the journal's "Almanac" as the hub, and clicked it).
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 

@@ -6,6 +6,7 @@ import { CB_FEE_TIER1_PCT, CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbBarLevel, barLevel, cbSeizurePrice, type SafetyLevel } from '../../simulation/cbMetrics';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
+import { SHIFT_DUST_USD } from '../../simulation/cbDefense';
 import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import {
   strikeCallSummary, strikeCallSentence, shownUsd, shownBtc, billsRemainderTail, goalStopWords, goalDefenseOf, goalKeptTail,
@@ -18,7 +19,8 @@ import {
  * all-in definition), the ownership leaf (the single definition of yoursBtc, S2′), the zero-import Coinbase
  * constants (the refinance break-even fallback, CB_LLTV for the zone band), the shared gauge rules (cbMetrics'
  * barLevel/cbBarLevel) and Coinbase's per-row seizure price (cbMetrics' cbSeizurePrice — the charts' cliff, Run B), the
- * Strike draw ceiling (strikeCredit), the Strike margin-call line (emergencyModel),
+ * Strike draw ceiling (strikeCredit), the Strike margin-call line (emergencyModel), a debt shift's dust floor
+ * (cbDefense's SHIFT_DUST_USD — Sweep 3),
  * fmtUSD and fmtLtvPct, and from supportPolicyView the support policy's call sentence, the two display floors (`shownUsd`, `shownBtc`)
  * and the bills-remainder tail (that module must never import this one back).
  * No belief anywhere in that graph. Extracted so it is testable without a render harness (the repo has none).
@@ -123,16 +125,19 @@ function goalAfterShift(sim: { firstDefenseMonth: number | null; rows?: Readonly
 }
 
 /**
- * The CB LTV tile's "defended from X%" — the LTV the month's defense started from. Policy off: exactly today's rule (a
- * month that shifted debt). Policy on: also a month the playbook moved collateral in (above the display floor), since the
- * top-up-first step can hold the line with no shift at all. Null otherwise — the face keeps its usual sub-line.
+ * The CB LTV tile's "defended from X%" — the LTV the month's defense started from. Policy off: a month that shifted
+ * debt — `SHIFT_DUST_USD` or more, the faces' one rule for a shift (Sweep 3, A1-10: a float overage is no defense, as on
+ * the note, the tile and the ⇄). Policy on: also a month the playbook moved collateral in (above the display floor),
+ * since the top-up-first step can hold the line with no shift at all. Null otherwise — the face keeps its usual
+ * sub-line.
  */
 export function defendedFromSub(
-  row: Pick<CyclingRow, 'cbLtvPreDefense' | 'defended' | 'topUpBtc'>,
+  row: Pick<CyclingRow, 'cbLtvPreDefense' | 'defenseDrawnUsd' | 'topUpBtc'>,
   applied: boolean,
 ): string | null {
   if (row.cbLtvPreDefense === null) return null;
-  return row.defended || (applied && shownBtc(row.topUpBtc)) ? `defended from ${fmtLtvPct(row.cbLtvPreDefense)}` : null;
+  const shifted = row.defenseDrawnUsd >= SHIFT_DUST_USD; // shiftShown's rule (ownershipFaceView imports this module)
+  return shifted || (applied && shownBtc(row.topUpBtc)) ? `defended from ${fmtLtvPct(row.cbLtvPreDefense)}` : null;
 }
 
 /** The Milestones "⇡" flag: collateral moved into Coinbase that month (policy on, above the display floor). */

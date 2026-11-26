@@ -121,6 +121,7 @@ test.describe('the Engine · Micro (BL61)', () => {
     await expect(page.getByText(TRIED_NOTE, { exact: true }), 'TRIED nothing saved, said').toBeVisible();
     expect(await stored(page), 'TRIED nothing saved').toEqual(before);
     await page.reload();   // the tried price is the face's alone: gone with it
+    await page.getByLabel('Almanac').click();   // a reload opens the journal: the way in first (Sweep 3, 1.6)
     await openAlmanacFace(page, 'Engine');
     await expect(page.getByText(HEADLINE, { exact: true }), 'TRIED gone on leaving').toBeVisible();
     await tryRow(page).getByRole('button', { name: '+10%' }).click();

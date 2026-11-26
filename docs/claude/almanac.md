@@ -620,8 +620,9 @@ line still leaves LTV above the stop, the FALLBACK top-up moves collateral into 
   user-facing copy standardizes.
 - **Both faces**, minimal chrome: a "Debt shifted" stat + ⇄ milestone flags + a verdict defense note (which
   now appends the top-up split when it fired: `₿X from cold storage, ₿Y from the Strike pledge`); the CB
-  LTV tile sub-label reads **`defended from X%`** in a defended month (else `stop X% · liq 86%`) — under the
-  support policy also in a month the crash playbook moved collateral (`defendedFromSub`); **the unhedged month is
+  LTV tile sub-label reads **`defended from X%`** in a month that shifted debt (`SHIFT_DUST_USD` or more, Sweep 3;
+  else `stop X% · liq 86%`) — under the support policy also in a month the crash playbook moved collateral
+  (`defendedFromSub`); **the unhedged month is
   `topUpExhaustedMonth` once a top-up fired, else `defenseExhaustedMonth`** — the shift alone running short is no
   longer "unhedged" if the collateral covered it; ⚠ under the policy it is the engine's `firstUnheldMonth` instead
   (`unheldMonth`: a top-up-first step that falls short is normal there, so `topUpExhaustedMonth` would never fire for
@@ -1455,7 +1456,8 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       nothing moved. The old "LTV stop defense" note renders
       only with the policy off (`{!applied && defenseActive && (`), its ternaries collapsed to the policy-off words.
     - `defendedFromSub(row, applied)` — the CB LTV tile's sub reads "defended from X%" in a month the playbook moved
-      collateral too (policy on), not only in a shift month; otherwise each face's fallback.
+      collateral too (policy on), not only in a shift month; otherwise each face's fallback. A shift month counts from
+      `SHIFT_DUST_USD` (Sweep 3, A1-10): a float overage is no defense, here as on the note, the tile and the ⇄.
     - `collateralMovedFlag(row, applied)` — a ` ⇡` on the Milestones row (`title="collateral moved into Coinbase"`,
       all three faces), policy on.
     - `unheldMonth(sim, applied)` — the unhedged month: `firstUnheldMonth` under the policy, else today's

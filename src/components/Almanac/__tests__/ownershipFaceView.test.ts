@@ -6,7 +6,7 @@ import {
   shownDefense, shiftShown, btcAxisDecimals,
 } from '../ownershipFaceView';
 import { SHIFT_DUST_USD } from '../../../simulation/cbDefense';
-import { strikeCapReading, strikeCapNote, chartCliffUsd } from '../cyclingFaceView';
+import { strikeCapReading, strikeCapNote, chartCliffUsd, defendedFromSub } from '../cyclingFaceView';
 import { deriveOwnership } from '../../../simulation/ownership';
 import { CB_LLTV, CB_LIF } from '../../../simulation/runCoinbaseLoan';
 import {
@@ -337,6 +337,10 @@ describe('⭐ Sweep 3 — a float overage is no defense on any face (A1-10)', ()
     expect(sim.rows.every((r) => r.defenseDrawnUsd < SHIFT_DUST_USD), 'DUST premise: every shift is a float overage').toBe(true);
     expect(shownDefense(sim.rows), 'DUST no note, no tile').toEqual({ count: 0, totalUsd: 0, firstMonth: null });
     expect(sim.rows.filter(shiftShown), 'DUST no ⇄').toEqual([]);
+    // …and no "defended from" under the CB LTV tile (cyclingFaceView's `defendedFromSub`, landed after the merges).
+    expect(sim.rows.some((r) => r.defended && r.cbLtvPreDefense !== null), 'DUST premise: the engine\'s flag is set')
+      .toBe(true);
+    expect(sim.rows.map((r) => defendedFromSub(r, false)).filter((s) => s !== null), 'DUST no "defended from"').toEqual([]);
   });
 
   it('⭐ REAL — a real defense reads as before: the engine\'s count, total and first month', () => {

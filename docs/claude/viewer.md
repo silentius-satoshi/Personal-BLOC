@@ -492,13 +492,14 @@ shows.
   goal tile and Settings → Your plan, THIS MONTH's and Daily's goal line, "Why this plan?" and Daily's plan note, all
   through `goalPair` (A4-10 — § BL14); Sharing's "Preview as viewer" is Monthly Mode's (§ BL50's tier). And, from BL50's
   live look: Sharing's "Preview as viewer" opens the preview at its top, and "✕ Exit preview" opens his Dashboard at its
-  top. The app scrolls `<body>`, and a page change keeps the offset the last page left — the button sits at Sharing's
-  foot, and "✕ Exit preview" rides the preview's sticky bar, so the preview opened part-way down its home (measured: 442
-  px down, its greeting off the screen) and his Dashboard at the preview's offset. Each of the two buttons puts the page
-  at its top first (`utils/pageTop`'s `toPageTop`). Other page changes are as before — nothing sets the offset; most
-  land at the top through a short page between them, but not all: full mode's "Switch to simple view" opens his
-  Dashboard at the full-mode page's offset (measured; logged in the spec, its own item).
+  top. The app scrolls `<body>`, and a page change used to keep the offset the last page left — the button sits at
+  Sharing's foot, and "✕ Exit preview" rides the preview's sticky bar, so the preview opened part-way down its home
+  (measured: 442 px down, its greeting off the screen) and his Dashboard at the preview's offset; BL51 had each of the
+  two buttons put the page at its top first. Sweep 3 (3.4): AppShell resets it on every page change — one layout effect
+  keyed on the page drawn (`utils/pageTop`'s `toPageTop`), so the preview, his Dashboard after it, and full mode's
+  "Switch to simple view" all open at their top; the two buttons no longer call it.
 - Tests: `appUpdateViews.test.tsx` (⭐ CARD, ⭐ ABOUT — in every state), `appUpdateWiring.test.ts` (⭐ PLACES),
   `planRunWiring.test.ts` (⭐ GATE, the coin bars), `goalTile.test.tsx` (⭐ DUST DEBT), `sharingPreview.test.tsx` (⭐
-  PREVIEW BUTTON), `utils/__tests__/pageTop.test.ts` (⭐ PREVIEW AT TOP), `e2e/appUpdate.spec.ts` (UPDATE PREVIEW, UPDATE
-  VIEWER), `e2e/goal.spec.ts` (COINS) and `e2e/viewerAlmanac.spec.ts` (PREVIEW AT TOP). § Test Suite → BL51's entry.
+  PREVIEW BUTTON), `utils/__tests__/pageTop.test.ts` (⭐ PAGE TOP — BL51's PREVIEW AT TOP, moved by Sweep 3's 3.4),
+  `e2e/appUpdate.spec.ts` (UPDATE PREVIEW, UPDATE VIEWER), `e2e/goal.spec.ts` (COINS) and `e2e/viewerAlmanac.spec.ts`
+  (PREVIEW AT TOP). § Test Suite → BL51's entry.

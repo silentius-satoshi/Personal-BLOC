@@ -163,6 +163,8 @@ test.describe('the Almanac grid (BL45)', () => {
     expect(await ringed(page), 'SWIPE rings the face left, as the header\'s Almanac does').toEqual(['Halving Clock']);
     await mouseDragX(page, 8, h, 234);
     await expect(page.getByLabel('Log an event'), 'SWIPE the grid → out').toBeVisible();
+    await expect(grid(page), 'SWIPE the grid left').toHaveCount(0);
+    await expect(page.getByTestId('edge-back-zone'), 'SWIPE its edge zone gone with it').toHaveCount(0);
   });
 
   test('⭐ LINK — the plan\'s link opens the Decision face; "← Journal" or one swipe returns to THIS MONTH; the header\'s Almanac goes to the grid', async ({ page }) => {
@@ -182,12 +184,15 @@ test.describe('the Almanac grid (BL45)', () => {
     await expect(page.getByText(MOVE_TITLE).first()).toBeVisible({ timeout: 15_000 });
     await mouseDragX(page, 8, h, 234);
     await expect(link, 'LINK one swipe').toBeVisible();
+    await expect(page.getByText(MOVE_TITLE), 'LINK one swipe: the face left').toHaveCount(0);
     // The header's Almanac goes to the grid; from there the swipe leaves.
     await link.click();
     await toGrid(page).click();
     await expect(grid(page), 'LINK the header\'s Almanac, the grid').toBeVisible();
     await mouseDragX(page, 8, h, 234);
     await expect(link, 'LINK the grid, then out').toBeVisible();
+    await expect(grid(page), 'LINK the grid left').toHaveCount(0);
+    await expect(page.getByTestId('edge-back-zone'), 'LINK its edge zone gone with it').toHaveCount(0);
   });
 
   test('⭐ INSIDE — from the link\'s face, a tap to another face moves inside the hub: the swipe then goes to the grid', async ({ page }) => {
