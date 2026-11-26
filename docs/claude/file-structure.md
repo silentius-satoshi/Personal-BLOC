@@ -877,6 +877,10 @@ src/
                                 # in wipeLocalPlanData's inventory: kept on "Remove local key". Tested in
                                 # src/lib/__tests__/btcCandlesCache.test.ts (OLD, EDGE, NEWER, FUTURE, SHAPE, LABEL, STORE,
                                 # OWN KEY, RANGE, MONEY)
+    priceMove.ts                # BL67 — a price line's move, PURE: lineChangePct (its last price against its first, in
+                                # percent) and lineRange (its lowest and highest) — ONE expression for the Dashboard
+                                # chart's "(1D)" and the Engine's price bar. Tested in src/lib/__tests__/priceMove.test.ts
+                                # (MOVE, RANGE, ONE MOVE)
     liveFeed.ts                 # BL64 — the live price, PURE (no store, no DOM; liveBtc.ts wires it): createLiveFeed(deps) →
                                 # hold / holdPerSecond / subscribe / get / subscribeSlow / getSlow. ONE Coinbase Exchange
                                 # socket (FEED_URL, public, no key): `ticker_batch` (a price every 5 s) while held, `ticker`
@@ -1569,8 +1573,10 @@ src/
 
     Engine/                     # BL61, step 1 — Engine · Micro, the fourteenth Almanac face (owner only): the owner's
                                 # two loans as an engine, right now (docs/claude/almanac.md § Engine · Micro)
-      EngineFace.tsx            # The face: the headline (the prototypes' buffer — BL64), the at-support line, the
-                                # canvas, the try row (−10% · +10% · back), the parts' buttons and a part's card, which
+      EngineFace.tsx            # The face: the price bar under its title (EnginePlate — BL67), the headline (the
+                                # prototypes' buffer — BL64), the at-support line, the canvas, the try row (−10% · +10%
+                                # · back), the parts' buttons (under 640 px out of sight, kept for VoiceOver and a
+                                # keyboard — BL67) and a part's card, which
                                 # pops up as the prototypes' does (BL66): under 640 px a sheet at the screen's bottom —
                                 # the face's last child, sticky, never fixed (ui.md) — the page moving the part tapped
                                 # above it (pageScroller: <body>, or the document); from 640 px beside the part or its
@@ -1580,7 +1586,18 @@ src/
       EngineFace.module.css     # Composes CyclingFace's frame; the canvas's column (300–700 px, 9 px from a phone's
                                 # edge, as the prototypes'), its stage on --bg-card (their card colour), the piston's
                                 # handle (touch-action: none) over a pan-y picture; .pop, a part's card — absolute in
-                                # the face from 640 px, a sticky sheet under it (BL66). Tokens only
+                                # the face from 640 px, a sticky sheet under it (BL66); the price bar's .plate, its pill,
+                                # price (.up/.down, the flash), day pill and line (BL67); .parts out of sight under 640 px
+                                # until a key's focus is in the row (:not(:focus-within), clip-path — never display:
+                                # none). Tokens only — the pills' tints color-mix a token
+      EnginePlate.tsx           # BL67 — the price bar, the owner's prototypes' nameplate where the face's framing
+                                # sentence was: Bitcoin and the feed's pill (Live · Last seen · Your price · Not live),
+                                # the price the Engine draws (scene.realPrice; useCountTo, the Dashboard's count; a 650 ms
+                                # flash the way it moved, while live, never under reduced motion — one under way ends when
+                                # either stops), the day's move as a pill and a 58 × 18 line, and "Coinbase · time · 24h
+                                # range" (plateView). Its day is the Dashboard chart's 1D: useBtcHistory('1D') and
+                                # withLivePoint, the live price last, while fresh. The face's feed and live price, no feed
+                                # of its own; a named group, never a live region; writes nothing
       EngineCanvas.tsx          # The app's first canvas: the frame loop and the hand. Each frame drawFrame (engineDraw)
                                 # draws the scene; the loop only while visible, on screen and in motion; reduced motion →
                                 # one still frame a scene. readTones: the theme and venue tokens, the readout's card and
@@ -1589,8 +1606,10 @@ src/
                                 # part's box on the screen (regionAt; a fingertip finds a small part), on no part →
                                 # onNothing, "↺ back to live" → onBack; a press that moved is no tap; a mouse's hover
                                 # ring; a cancelled touch → nothing. The tape's readout (BL66): a mouse over it, or a
-                                # finger clearly sideways (> 8 px, more across than down — the prototypes' rule) → onHand
-                                # and EngineMotion.read; let go, pinned to its moment (from .chart) until the next touch;
+                                # finger clearly sideways (> 8 px, and more than 1.2× as far across as down — the
+                                # prototypes' rule)
+                                # → onHand and EngineMotion.read; let go, pinned to its moment (from .chart) until the
+                                # next touch on the picture;
                                 # the page takes an up-and-down stroke (pointercancel → gone). Off screen, no loop (an
                                 # IntersectionObserver — v1.4)
       engineDraw.ts             # The owner's prototypes' drawing (personal-bloc-engine-prototype-v2.html's Micro view on
@@ -1630,8 +1649,10 @@ src/
                                 # at-support note (atSupportText: cbAtSupportLine and THIS MONTH's move's clause, as the
                                 # owner's Dashboard — v1.4), each part's card, the screen reader's line; the Dashboard's words
                                 # where it has them (Liquidation, Safe · Fair · Poor); the prototype's "41.8% buffer" (bufferPctText, one
-                                # decimal rounded down — BL64); TAPE_READ_NOTE and CARD_CLOSE (BL66). fmtUSD whole,
-                                # fmtLtvPct; btc2, usdK on the canvas
+                                # decimal rounded down — BL64); TAPE_READ_NOTE and CARD_CLOSE (BL66); the price bar's
+                                # words (BL67): platePill, plateView (the day's move "▲ 2.3%" and range from
+                                # lib/priceMove, the note), sparkPoints. fmtUSD whole, fmtLtvPct; btc2, usdK on the
+                                # canvas and in the bar's range
       useEngineFacts.ts         # The facts, read only: the Dashboard's inputs (selectSafetyViewInputs + today's
                                 # support), THIS MONTH's run, its month 1 (Daily's pr1) and its move's flag
                                 # (planMoveBringsCbWithin), the Cycle Clock's leg (useNow, each minute and on a show),
@@ -2661,7 +2682,8 @@ src/
                                 # not candlesticks) — BL64: its last point and headline follow useLivePrice (withLivePoint,
                                 # after the last candle while the history is fresh; only the chart re-renders on a tick),
                                 # 1H/1D/1W pills (default 1D), header price + range %Δ
-                                # (green/red), auto padded Y-domain (intraday visible), graceful loading/
+                                # (green/red; lib/priceMove's lineChangePct, the Engine's bar's too — BL67), auto
+                                # padded Y-domain (intraday visible), graceful loading/
                                 # "price history unavailable" states. Owns its own range state + useBtcHistory. One prop
                                 # since the plan of record's Run 2.1 (BL19): `money`, for the price and its tooltip, whole
                                 # (fmtUSD) by default — ViewerHomeView (the Dashboard, every viewer's home, ViewerPreview)

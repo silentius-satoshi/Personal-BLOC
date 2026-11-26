@@ -2441,6 +2441,20 @@ they carry the family's figures. Every figure in it is the app's own — none of
   `rows[1] ?? last` — Daily's `pr1`; the Cycle Clock's leg (`cycleLegAt`, `cycleLegView`), re-read once a minute; the
   market's last hour (`useBtcHistory('1H')`) and the live price each second (`useLivePrice({ perSecond: true })`:
   while the Engine is open, the app's one feed carries Coinbase's per-second channel — BL64).
+- **The price bar** (BL67, `EnginePlate.tsx` — the owner's ask of 2026-11-25: the prototypes' nameplate in place of the
+  framing sentence, "Your two loans as an engine…", which is gone). Under the face's title: "Bitcoin" and the feed's
+  state in a pill — Live (green, its dot beating), Last seen (stale, past 5 minutes), Your price (manual), Not live (no
+  live price yet: the saved one); the price the Engine draws (`scene.realPrice`), counting to each new one as the
+  Dashboard's does (`useCountTo`) and flashing green or red the way it moved for 650 ms — while live, never under
+  reduced motion, and a flash under way ends at once when motion is reduced or the feed stops being live; the day's move
+  as a pill, "▲ 2.3%", and a 58 × 18 line in its colour; and where and when — "Coinbase · 10:15:42 AM · 24h range $98.0K
+  to $100K" (the live price's time, `readoutTime`; the range's ends in the canvas's `usdK`). The day is the Dashboard
+  chart's 1D — `useBtcHistory('1D')`, the live price last (`withLivePoint`), while that history is fresh — and its move
+  and range one expression with the chart's "(1D)" (`lib/priceMove.ts`: `lineChangePct`, `lineRange`), so the two never
+  disagree. Manual, or with an old history, no pill, no line and no range: "Using the price you typed."; last seen,
+  "Coinbase · last price at …". A named group, never a live region (the price moves each second). On a computer the
+  words sit beside the price, cut short if they must; on a phone the price is 32 px and the words take their own line,
+  as on the prototypes' phone.
 - **The scene** (`engineScene.ts`, pure): facts, the canvas's width (300–700 px, the phone layout, centred wider) and a
   tried price in; every figure, word, place and tap area out. The price drawn: live, the live price — the whole picture
   rides it, as in the prototypes (BL64), while the saved price behind every other screen keeps its rule; manual, stale
@@ -2478,7 +2492,9 @@ they carry the family's figures. Every figure in it is the app's own — none of
   Dashboard's Coinbase card says "42% drop" until its own follow-up after step 1. Dollars whole (`fmtUSD`), loan levels by
   `fmtLtvPct`.
   Each part's card (Price, Liquidation, Coinbase, Strike, Loan level, Cycle, Live price, This month) opens from a tap on
-  the picture or its button, and pops up as the prototypes' does (BL66, the owner's look of 2026-11-25 — step 1 opened it
+  the picture or its button — on a phone the picture alone: under 640 px the parts' buttons are out of sight (BL67, the
+  owner's ask), kept for VoiceOver and a keyboard, which can't read the picture part by part (a key's focus in the row
+  shows it; never `display: none`) — and pops up as the prototypes' does (BL66, the owner's look of 2026-11-25 — step 1 opened it
   under the parts' buttons, off the screen): under 640 px (`SHEET_MQ`) a sheet at the screen's bottom, 8 px from its
   edges, the page moving just enough that the part tapped stays in view above it; from 640 px a card beside the part —
   12 px to its right, else its left, else centred, level with it — or above its button (`cardPlace`, the prototypes'
@@ -2522,9 +2538,11 @@ they carry the family's figures. Every figure in it is the app's own — none of
   the left where the tape ends) with its moment, to the second, and its price — "8:34:12 AM", "BTC : $100,011"
   (`readoutTime`, `readoutPrice`: the tooltip's en-US clock and name, the Almanac's whole dollars). A mouse over the tape
   reads it, and the readout goes with the mouse. A finger reads it once it goes clearly sideways (more than 8 px, and
-  more across than down — the prototypes' rule for their tape), so an up-and-down stroke still scrolls the page (the
+  more than 1.2 times as far across as down — the prototypes' rule for their tape), so an up-and-down stroke still
+  scrolls the page (the
   page takes it: `pointercancel`, and the readout goes); let go, it stays on its moment, riding the tape as the tape moves
-  on, until the next touch — as the Dashboard's stays — and goes when its moment leaves the tape. A tap without a reading
+  on, until the next touch on the picture — a tap elsewhere leaves it, as it leaves the Dashboard's — and goes when its
+  moment leaves the tape. A tap without a reading
   still opens the tape's card, which says how to read it (`TAPE_READ_NOTE`); a reading opens nothing and closes an open
   card; the piston's drag hides it. The Almanac's swipe from the screen's edge is EdgeBackGesture's 20 px zone, over the
   tape's first 3 px: it still leaves the face. BL65's LIVE strip reuses this readout.
@@ -2534,10 +2552,11 @@ they carry the family's figures. Every figure in it is the app's own — none of
   face.
 - **Pins:** `engineScene.test.ts` (DASHBOARD, LIVE, TRIED, SELLS, NO LOAN, MONTH, MOVES BETWEEN, SHARES, PROTOTYPE, SCALE,
   BAY, WIDTH, CYCLE, TAPE, CHARGE, TAGS, REGIONS, PLACE), `engineView.test.ts` (WORDS, HEADLINE, FORMATS, CANVAS WORDS,
-  TAPE WORDS, READOUT WORDS, CARDS, PRICE, MONTH CARD, CYCLE CARD), `engineDraw.test.ts` (GAUGE, FINITE, READOUT),
-  `engineWiring.test.ts` (ONE SOURCE, WRITES NOTHING, FRAMES, HAND, READ, POP, STAGE, TOKENS, LAYERS, HUB),
-  `almanacGrid.test.ts` (OWNER ONLY), `e2e/engine.spec.ts` (LIVE FEED, OPENS, TRIED, DRAG, PARTS, MOTION, POP PHONE, POP
-  COMPUTER, READ), `e2e/viewerAlmanac.spec.ts` (WAY IN, PARITY).
+  TAPE WORDS, READOUT WORDS, PLATE WORDS, PLATE LINE, CARDS, PRICE, MONTH CARD, CYCLE CARD), `engineDraw.test.ts`
+  (GAUGE, FINITE, READOUT), `engineWiring.test.ts` (ONE SOURCE, WRITES NOTHING, FRAMES, HAND, READ, POP, STAGE, PLATE,
+  PHONE PARTS, TOKENS, LAYERS, HUB), `src/lib/__tests__/priceMove.test.ts` (MOVE, RANGE, ONE MOVE), `almanacGrid.test.ts`
+  (OWNER ONLY), `e2e/engine.spec.ts` (LIVE FEED, OPENS, TRIED, DRAG, PARTS, MOTION, PLATE, POP PHONE, POP COMPUTER, READ),
+  `e2e/viewerAlmanac.spec.ts` (WAY IN, PARITY).
 
 ### FIRE face (THIRTEENTH Almanac face, batch 1 build 4; one device-local key, NO bump)
 

@@ -5,6 +5,7 @@ import { useCountTo } from '../../hooks/useCountTo';
 import { useLivePrice } from '../../hooks/useLivePrice';
 import { asOfLabel } from '../../lib/btcCandlesCache';
 import { withLivePoint } from '../../lib/liveFeed';
+import { lineChangePct } from '../../lib/priceMove';
 import { fmtUSD } from '../../utils/format';
 import styles from './PriceChart.module.css';
 
@@ -33,10 +34,10 @@ export function PriceChart({ money = fmtUSD }: { money?: (n: number) => string }
   const series = useMemo(() => withLivePoint(candles, live, asOf === null), [candles, live, asOf]);
 
   const hasData  = series.length >= 2;
-  const first    = hasData ? series[0].price : 0;
   const last     = hasData ? series[series.length - 1].price : 0;
   const shown    = useCountTo(hasData ? last : null);
-  const changePct = hasData && first > 0 ? ((last - first) / first) * 100 : 0;
+  // the Engine's price bar reads the same expression for its 24-hour pill (BL67)
+  const changePct = lineChangePct(series) ?? 0;
   const up       = changePct >= 0;
   const old      = asOf !== null;
   const color    = old ? 'var(--text-muted)' : up ? 'var(--green)' : 'var(--red)';

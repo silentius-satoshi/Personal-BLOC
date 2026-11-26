@@ -1,4 +1,5 @@
 import { fmtLtvPct, fmtUSD, shownUsd } from '../../utils/format';
+import { lineChangePct, lineRange, type PricePoint } from '../../lib/priceMove';
 import { CB_MOVE_BRINGS_WITHIN, cbAtSupportLine, type CbAtSupport, type SafetyLevel } from '../../simulation/safetyView';
 import type { CycleLegView } from '../Almanac/cycleClockView';
 
@@ -236,9 +237,66 @@ export function atSupportNote(f: Pick<CardFigures, 'cbAtSupport' | 'moveBringsCb
   return f.cbAtSupport !== null && f.cbAtSupport.over ? atSupportText(f.cbAtSupport, f.moveBringsCbWithin) : null;
 }
 
-/** The face's subtitle. */
-export const ENGINE_FRAMING = 'Your two loans as an engine, right now: the price drives the piston, and the red line is where '
-  + 'Coinbase sells. Drag the piston to try a price; tap a part to read it.';
+/**
+ * The price bar over the picture (BL67) — the owner's prototypes' nameplate, where the face's framing sentence was (his
+ * ask, 2026-11-25: "replace it with how it looks in the screenshot … showing the price and coinbase information"). The
+ * market's price as the Engine draws it, the feed's state in a pill, the day's move as a pill and a line, and where and
+ * when the price came from. The day's move and range are the Dashboard chart's 1D line, one expression
+ * (`lib/priceMove.ts`): the two never disagree. The pill and the line show only while the price is the market's (live, or
+ * last seen) and the line is fresh (the Dashboard then prints its "as of" instead). The range's ends print as the
+ * prototypes print them (`usdK`, above: "$98.0K").
+ */
+export const PLATE_ASSET = 'Bitcoin';
+export const PLATE_SOURCE = 'Coinbase';
+export const PLATE_LABEL = "Bitcoin's price";
+export const PLATE_DAY = 'Past 24 hours';
+
+/** The feed's state, in the prototypes' words. */
+export function platePill(feed: FeedState): string {
+  return feed === 'live' ? 'Live' : feed === 'stale' ? 'Last seen' : feed === 'manual' ? 'Your price' : 'Not live';
+}
+
+/** The day's line in a 58 × 18 box, as the prototypes draw theirs: a point per price, oldest at the left; a flat line
+ *  across the middle. */
+export function sparkPoints(line: readonly PricePoint[]): string {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const p of line) {
+    if (p.price < lo) lo = p.price;
+    if (p.price > hi) hi = p.price;
+  }
+  const n = line.length;
+  return line.map((p, i) => {
+    const x = (i / (n - 1)) * 56 + 1;
+    const y = 16 - (hi > lo ? (p.price - lo) / (hi - lo) : 0.5) * 14;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+}
+
+export interface PlateView {
+  pill: string;
+  /** The day's move — "▲ 2.3%": the Dashboard's 1D figure, one decimal. */
+  change: { up: boolean; text: string } | null;
+  spark: { up: boolean; points: string } | null;
+  note: string;
+}
+
+/** The bar's words and marks. `day` is the Dashboard chart's 1D line with the live price as its last point, while that
+ *  history is fresh — else null; `liveAt`, when this device heard the live price. */
+export function plateView(feed: FeedState, liveAt: number | null, day: readonly PricePoint[] | null): PlateView {
+  const market = feed === 'live' || feed === 'stale';
+  const line = market && day !== null && day.length >= 2 ? day : null;
+  const pct = line !== null ? lineChangePct(line) : null;
+  const change = pct === null ? null : { up: pct >= 0, text: `${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct).toFixed(1)}%` };
+  const spark = pct === null || line === null ? null : { up: pct >= 0, points: sparkPoints(line) };
+  const range = feed === 'live' && line !== null ? lineRange(line) : null;
+  let note: string;
+  if (feed === 'manual') note = 'Using the price you typed.';
+  else if (feed === 'off' || liveAt === null) note = 'Looking for a live price; this is the last one saved.';
+  else if (feed === 'stale') note = `${PLATE_SOURCE} · last price at ${readoutTime(liveAt)}`;
+  else note = `${PLATE_SOURCE} · ${readoutTime(liveAt)}${range === null ? '' : ` · 24h range ${usdK(range.lo)} to ${usdK(range.hi)}`}`;
+  return { pill: platePill(feed), change, spark, note };
+}
 
 /** The note under the canvas while a price is tried. */
 export const TRIED_NOTE = "A price you're trying: nothing is saved, and the plan doesn't change.";

@@ -146,6 +146,42 @@ describe('⭐ the frame loop', () => {
   });
 });
 
+describe('⭐ the price bar, and the parts on a phone (BL67)', () => {
+  const PLATE = strip(read(`${DIR}/EnginePlate.tsx`));
+  const CSS = strip(read(`${DIR}/EngineFace.module.css`));
+
+  it('⭐ PLATE — the bar where the framing sentence was, on the face\'s own figures; the price counts and flashes only while live; never a live region', () => {
+    // Mutation: the framing sentence back, or the bar out of the face's head → red
+    expect(FACE, 'PLATE in the face\'s head, under its title').toMatch(
+      /<div className=\{styles\.head\}>\s*<div className=\{styles\.title\}>Engine<\/div>\s*<EnginePlate feed=\{facts\.feed\} price=\{scene\.realPrice\} livePrice=\{facts\.livePrice\} liveAt=\{facts\.liveAt\}\s*reducedMotion=\{reducedMotion\} \/>\s*<\/div>/);
+    expect(FACE + VIEW + CSS, 'PLATE the framing sentence gone').not.toMatch(/ENGINE_FRAMING|styles\.framing|\.framing|Your two loans as an engine/);
+    // the price the Engine draws (live, or the saved one), as the Dashboard counts its own
+    expect(PLATE, 'PLATE counts as the Dashboard\'s price does').toContain('const shown = useCountTo(price);');
+    expect(PLATE, 'PLATE prints it whole, as the Almanac').toContain('{fmtUSD(shown ?? price)}');
+    // Mutation: the flash under reduced motion, or while not live, or one under way left on when either stops (v1.0's:
+    // the re-run's cleanup cleared its timer and returned before clearing it) → red
+    expect(PLATE, 'PLATE flashes only while live, never under reduced motion; a flash under way ends when either stops').toContain("if (feed !== 'live' || reducedMotion) { setFlash(null); return; }");
+    expect(PLATE, 'PLATE no flash without a move').toContain('if (from === price) return;');
+    expect(PLATE, 'PLATE the way it moved').toContain("setFlash(price > from ? 'up' : 'down');");
+    // the price moves each second: a screen reader reads it when asked, never on each move
+    expect(PLATE, 'PLATE never a live region').not.toMatch(/aria-live|role="status"|role="alert"/);
+    expect(PLATE, 'PLATE a group with a name').toContain('role="group" aria-label={PLATE_LABEL}');
+    expect(PLATE, 'PLATE no feed of its own: the face\'s live price').not.toMatch(/useLivePrice|useBtcPrice/);
+    expect(CSS, 'PLATE the line\'s colour is the move\'s').toMatch(/\.sparkUp \{ stroke: var\(--green\); \}[\s\S]*\.sparkDown \{ stroke: var\(--red\); \}/);
+    expect(CSS, 'PLATE under reduced motion the dot is still').toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^}]*\.pill\[data-feed='live'\] \.dot \{ animation: none; \}/);
+  });
+
+  it('⭐ PHONE PARTS — under 640 px the parts\' buttons are out of sight, never gone: VoiceOver and a keyboard keep them, and a key\'s focus shows them', () => {
+    // Mutation: the row display: none, or hidden on a computer too, or hidden for good under a key's focus → red
+    expect(CSS, 'PHONE PARTS out of sight under 640 px, until a key\'s focus is in the row').toMatch(
+      /@media \(max-width: 639px\) \{\s*\.parts:not\(:focus-within\) \{[^}]*position: absolute;[^}]*width: 1px;[^}]*height: 1px;[^}]*overflow: hidden;[^}]*clip-path: inset\(50%\);/);
+    expect(SCENE, 'PHONE PARTS the sheet\'s width, the same').toContain("export const SHEET_MQ = '(max-width: 639px)';");
+    expect(CSS, 'PHONE PARTS never taken from VoiceOver').not.toMatch(/\.parts[^{]*\{[^}]*(display:\s*none|visibility:\s*hidden)/);
+    expect(FACE, 'PHONE PARTS never hidden from VoiceOver').not.toMatch(/aria-hidden[^>]*\n?[^>]*partsRef|partsRef[^>]*aria-hidden/);
+    expect(FACE, 'PHONE PARTS the row, named').toContain('<div ref={partsRef} className={styles.parts} role="group" aria-label="The engine\'s parts">');
+  });
+});
+
 describe('⭐ the walls', () => {
   it('⭐ TOKENS — one file writes a colour, the machine\'s own paint, and none the app has a token for; the canvas reads the tokens', () => {
     expect(FILES, 'TOKENS premise: the palette is among the files').toContain(PALETTE);

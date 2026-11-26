@@ -7,9 +7,9 @@ import { cycleLegView } from '../../Almanac/cycleClockView';
 import { fmtUSD } from '../../../utils/format';
 import { engineScene, type EngineFacts } from '../engineScene';
 import {
-  LEVEL_WORD, PART_NAMES, PART_ORDER, TAPE_READ_NOTE, TRIED_NOTE, atSupportNote, atSupportText, btc2, btcText, bufferPctText,
-  engineAria, engineHeadline, liqFooter, liqShift, partCard, readoutPrice, readoutTime, tapePriceText, tapeTitle, tickDelta,
-  turnDate, usdK,
+  LEVEL_WORD, PART_NAMES, PART_ORDER, PLATE_ASSET, PLATE_DAY, PLATE_LABEL, PLATE_SOURCE, TAPE_READ_NOTE, TRIED_NOTE,
+  atSupportNote, atSupportText, btc2, btcText, bufferPctText, engineAria, engineHeadline, liqFooter, liqShift, partCard,
+  plateView, platePill, readoutPrice, readoutTime, sparkPoints, tapePriceText, tapeTitle, tickDelta, turnDate, usdK,
 } from '../engineView';
 
 /**
@@ -131,6 +131,43 @@ describe('⭐ the canvas\'s words — the prototype\'s', () => {
     const lines = partCard('tape', engineScene(facts(), 390, null).card).lines;
     expect(lines[lines.length - 1], 'READOUT WORDS the live price card says how').toBe(TAPE_READ_NOTE);
     expect(TAPE_READ_NOTE, 'READOUT WORDS the note').toBe('Slide a finger along the tape, or point at it, to read its price at any moment.');
+  });
+});
+
+describe('⭐ the price bar (BL67) — the prototypes\' nameplate, where the framing sentence was', () => {
+  // the device's clock, the same as the readout's; a day's line, oldest first (the Dashboard chart's 1D, the live price last)
+  const AT = new Date(2026, 10, 25, 13, 46, 34).getTime();
+  const at = readoutTime(AT);
+  const UP = [{ price: 50_000 }, { price: 50_400 }, { price: 51_000 }];
+  const DOWN = [{ price: 60_000 }, { price: 59_400 }];
+
+  it('⭐ PLATE WORDS — the feed\'s state in the prototypes\' words; the day\'s move, one decimal, its arrow; where and when the price came from', () => {
+    expect((['live', 'stale', 'manual', 'off'] as const).map(platePill), 'PLATE WORDS the pill').toEqual(['Live', 'Last seen', 'Your price', 'Not live']);
+    expect([PLATE_ASSET, PLATE_SOURCE, PLATE_LABEL, PLATE_DAY], 'PLATE WORDS its names').toEqual(['Bitcoin', 'Coinbase', "Bitcoin's price", 'Past 24 hours']);
+    const live = plateView('live', AT, UP);
+    expect(live.change, 'PLATE WORDS up 2%, as the Dashboard\'s 1D moves').toEqual({ up: true, text: '▲ 2.0%' });
+    expect(live.note, 'PLATE WORDS live: the source, the time, the day\'s range in the prototypes\' short dollars').toBe(`Coinbase · ${at} · 24h range $50.0K to $51.0K`);
+    expect(plateView('live', AT, DOWN).change, 'PLATE WORDS down 1%').toEqual({ up: false, text: '▼ 1.0%' });
+    expect(plateView('live', AT, [{ price: 100_000 }, { price: 100_000 }]).change, 'PLATE WORDS flat is up, as the Dashboard').toEqual({ up: true, text: '▲ 0.0%' });
+    expect(plateView('live', AT, [{ price: 98_000 }, { price: 100_250 }]).note, 'PLATE WORDS the ends as the canvas prints them (usdK)')
+      .toBe(`Coinbase · ${at} · 24h range $98.0K to $100K`);
+    const stale = plateView('stale', AT, UP);
+    expect([stale.change?.text, stale.note], 'PLATE WORDS last seen: the move kept, the time it was heard, no range').toEqual(['▲ 2.0%', `Coinbase · last price at ${at}`]);
+    const manual = plateView('manual', AT, UP);
+    expect([manual.change, manual.spark, manual.note], 'PLATE WORDS your typed price: no market move beside it').toEqual([null, null, 'Using the price you typed.']);
+    const off = plateView('off', null, UP);
+    expect([off.change, off.spark, off.note], 'PLATE WORDS no live price yet: the saved one, said')
+      .toEqual([null, null, 'Looking for a live price; this is the last one saved.']);
+    const old = plateView('live', AT, null);
+    expect([old.change, old.spark, old.note], 'PLATE WORDS an old line (the Dashboard\'s "as of"): no move, no range').toEqual([null, null, `Coinbase · ${at}`]);
+    expect(plateView('live', AT, [{ price: 50_000 }]).change, 'PLATE WORDS one price is no move').toBeNull();
+  });
+
+  it('⭐ PLATE LINE — the day\'s line in the prototypes\' 58 × 18 box, oldest at the left, its colour the move\'s', () => {
+    expect(sparkPoints([{ price: 1 }, { price: 3 }, { price: 2 }]), 'PLATE LINE lowest at the bottom, highest at the top').toBe('1.0,16.0 29.0,2.0 57.0,9.0');
+    expect(sparkPoints([{ price: 7 }, { price: 7 }]), 'PLATE LINE flat across the middle').toBe('1.0,9.0 57.0,9.0');
+    expect(plateView('live', AT, UP).spark, 'PLATE LINE up').toEqual({ up: true, points: sparkPoints(UP) });
+    expect(plateView('stale', AT, DOWN).spark?.up, 'PLATE LINE down').toBe(false);
   });
 });
 

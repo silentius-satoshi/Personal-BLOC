@@ -3,10 +3,11 @@ import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useEngineFacts } from './useEngineFacts';
 import { ENGINE_MAX_W, SHEET_MQ, cardPlace, engineScene, type Rect } from './engineScene';
 import {
-  CARD_CLOSE, ENGINE_FRAMING, PART_NAMES, PART_ORDER, TRIED_NOTE, TRY_BACK, TRY_DOWN, TRY_UP, atSupportNote, engineAria,
+  CARD_CLOSE, PART_NAMES, PART_ORDER, TRIED_NOTE, TRY_BACK, TRY_DOWN, TRY_UP, atSupportNote, engineAria,
   engineHeadline, partCard, type EnginePart,
 } from './engineView';
 import EngineCanvas from './EngineCanvas';
+import EnginePlate from './EnginePlate';
 import styles from './EngineFace.module.css';
 
 /**
@@ -16,6 +17,10 @@ import styles from './EngineFace.module.css';
  *
  * A tried price — the piston's drag, or the row's buttons — is this face's state and nothing else: it is never written,
  * and leaving the face forgets it. The face writes nothing.
+ *
+ * Over the picture, the price bar (BL67, `EnginePlate`) — the prototypes' nameplate, where the framing sentence was. On a
+ * phone the parts' buttons are out of sight: a tap on the picture opens each part's card. They stay for VoiceOver and a
+ * keyboard, which can't read the picture part by part — a key's focus inside the row shows it (EngineFace.module.css).
  *
  * A part's card pops up as the prototypes' does (the owner's look, 2026-11-25): on a phone, a sheet from the bottom of the
  * screen, the page moving just enough that the part tapped stays in view above it; on a computer, a card beside the part
@@ -135,7 +140,8 @@ export default function EngineFace() {
     <div ref={faceRef} className={styles.face}>
       <div className={styles.head}>
         <div className={styles.title}>Engine</div>
-        <div className={styles.framing}>{ENGINE_FRAMING}</div>
+        <EnginePlate feed={facts.feed} price={scene.realPrice} livePrice={facts.livePrice} liveAt={facts.liveAt}
+          reducedMotion={reducedMotion} />
       </div>
       <p className={`${styles.headline} ${tone}`}>{engineHeadline(scene.card)}</p>
       {atSupport !== null && <p className={`${styles.atSupport} ${styles.lvWatch}`}>{atSupport}</p>}

@@ -15,6 +15,11 @@ import { openAlmanacFace, STORE_VERSION } from './helpers';
  * to a finger and a mouse (POP PHONE, POP COMPUTER, READ). A finger's stroke is a real touch (CDP, as
  * `numberFieldSwipe.spec.ts`), so the page takes an up-and-down one as a phone does. The parts' places are the scene's
  * at the 372 px canvas this phone draws (`engineScene` on this seed — the e2e can't import src/).
+ *
+ * The price bar (BL67, the owner's ask, 2026-11-25): the prototypes' nameplate where the framing sentence was — Bitcoin, the
+ * feed's state, the price, the day's move as a pill and a line, and where and when the price came from (PLATE; OPENS on the
+ * seed's typed price). On a phone the parts' buttons are out of sight — the picture opens each card — and stay for
+ * VoiceOver and a keyboard (PARTS); a computer keeps them (POP COMPUTER).
  */
 const NOW = new Date('2026-11-23T12:00:00');
 const SEED = `
@@ -36,6 +41,17 @@ function candles(): number[][] {
   return Array.from({ length: 60 }, (_, i) => {
     const p = 99_500 + Math.round(600 * Math.sin(i / 7)) + i * 12;
     return [end - (59 - i) * 60, p - 30, p + 30, p - 10, p, 1];
+  }).reverse();
+}
+
+/** A day of invented 15-minute closes ending at `endMs` (the Dashboard chart's 1D, newest first): $98,000 at the start,
+ *  a wave up to about $100,100, never under $98,000 — so with a live $100,250 last, the day is up 2.3% (2,250 ÷ 98,000)
+ *  and its range $98,000 to $100,250. For the price bar (BL67), whose clock runs. */
+function dayLine(endMs: number): number[][] {
+  const end = Math.floor(endMs / 1000);
+  return Array.from({ length: 96 }, (_, i) => {
+    const p = 98_000 + Math.round(i * 20 + 700 * Math.sin(i / 9));
+    return [end - (95 - i) * 900, p - 30, p + 30, p - 10, p, 1];
   }).reverse();
 }
 
@@ -77,6 +93,11 @@ test.describe('the Engine · Micro (BL61)', () => {
     await openAlmanacFace(page, 'Engine');
     await expect(page.getByText('Engine', { exact: true }), 'OPENS the title').toBeVisible();
     await expect(page.getByText(HEADLINE, { exact: true }), 'OPENS the headline').toBeVisible();
+    // the price bar where the framing sentence was (BL67): the seed's typed price, said to be his
+    const bar = page.getByRole('group', { name: "Bitcoin's price" });
+    await expect(bar, 'OPENS the bar, all of it on the screen').toBeInViewport({ ratio: 1 });
+    await expect(bar, 'OPENS the bar: Bitcoin, your price, the price, said').toHaveText('BitcoinYour price$100,000Using the price you typed.');
+    await expect(page.getByText(/^Your two loans as an engine/), 'OPENS the framing sentence gone').toHaveCount(0);
     await expect(canvas(page), 'OPENS the canvas says what it shows').toHaveAttribute('aria-label', new RegExp(`^${ARIA.replace(/[.$()]/g, '\\$&')}`));
     const inked = await canvas(page).evaluate((c: HTMLCanvasElement) => {
       const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
@@ -134,7 +155,8 @@ test.describe('the Engine · Micro (BL61)', () => {
     await expect(tryRow(page), 'DRAG a tap tries nothing').toContainText('Price $100,000');
   });
 
-  test('⭐ PARTS — a tap on the picture or a part\'s button opens its card, in the face\'s words', async ({ page }) => {
+  test('⭐ PARTS — a tap on the picture opens its card, in the face\'s words; on a phone the parts\' buttons are out of sight, kept for VoiceOver and a keyboard (BL67)', async ({ page }) => {
+    // mutations: the buttons display: none, or never shown to a key's focus → red; still in sight on a phone → red
     await start(page);
     await openAlmanacFace(page, 'Engine');
     await expect(page.getByText(HEADLINE, { exact: true })).toBeVisible();
@@ -143,12 +165,19 @@ test.describe('the Engine · Micro (BL61)', () => {
     await expect(page.getByRole('dialog', { name: 'Loan level 50.0%' }), 'PARTS the gauge\'s card').toBeInViewport({ ratio: 1 });
     await page.mouse.click(box.x + 54, box.y + 49);   // as in the prototype, a second tap on an open part closes its card
     await expect(page.getByRole('dialog', { name: 'Loan level 50.0%' }), 'PARTS a second tap on the picture closes it').toHaveCount(0);
-    await page.getByRole('group', { name: "The engine's parts" }).getByRole('button', { name: 'This month' }).click();
+    const parts = page.getByRole('group', { name: "The engine's parts" });
+    expect((await parts.boundingBox())!.width, 'PARTS out of sight on a phone').toBeLessThanOrEqual(1);
+    await expect(parts.getByRole('button'), 'PARTS still there for VoiceOver').toHaveCount(8);
+    const btn = parts.getByRole('button', { name: 'This month' });
+    await btn.focus();
+    expect((await parts.boundingBox())!.width, 'PARTS a key\'s focus shows the row').toBeGreaterThan(200);
+    await page.keyboard.press('Enter');
     const month = page.getByRole('dialog', { name: 'This month' });
+    await expect(month, 'PARTS the month, all of it on the screen').toBeInViewport({ ratio: 1 });
     await expect(month, 'PARTS the month').toContainText("In: Coinbase's interest $417 (at today's balance), Strike's interest");
     await expect(month, 'PARTS moves between the loans left out').toContainText('moves between the two loans are left out');
-    await page.getByRole('group', { name: "The engine's parts" }).getByRole('button', { name: 'This month' }).click();
-    await expect(month, 'PARTS a second tap closes it').toHaveCount(0);
+    await page.keyboard.press('Enter');
+    await expect(month, 'PARTS a second press closes it').toHaveCount(0);
   });
 
   test('⭐ MOTION — the picture moves while it can; under reduced motion it is one still frame', async ({ page }) => {
@@ -204,6 +233,57 @@ test.describe('the Engine · Micro (BL61)', () => {
     await page.getByRole('button', { name: 'Almanac', exact: true }).click();
     await expect.poll(() => sent.slice(3), { message: 'LIVE FEED closed: back to 5 s' })
       .toEqual([sub('unsubscribe', 'ticker'), sub('subscribe', 'ticker_batch')]);
+  });
+
+  test('⭐ PLATE — the price bar on the live price: Live, the price, the day\'s move and line (the Dashboard\'s 1D), where and when; the price flashes the way it moved, never under reduced motion, and a flash under way ends when motion is reduced (BL67)', async ({ page }) => {
+    // mutations: the move or the range off the Dashboard's line (no live price last) → red; no flash → red; a flash under
+    // reduced motion → red; a flash left on when motion is reduced mid-flash (v1.0's) → red. The clock runs here, as in
+    // LIVE FEED: the feed lets one price a second through.
+    let feed: WebSocketRoute | null = null;
+    await page.routeWebSocket(/ws-feed\.exchange\.coinbase\.com/, (ws) => { feed = ws; ws.onMessage(() => {}); });
+    await page.route(/api\.coinbase\.com\/v2\/prices/, (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { amount: '100000.00' } }) }));
+    await page.route(/\/api\/btc-candles/, (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify(dayLine(Date.now())) }));
+    await page.route(/blockchain\.info|\/api\/btc-history/, (r) => r.abort());
+    await page.addInitScript(SEED.replace("btcPriceMode: 'manual'", "btcPriceMode: 'live'"));
+    await page.goto('/');
+    await expect(page.getByLabel('Log an event')).toBeVisible({ timeout: 15_000 });
+    await page.getByLabel('Almanac').click();
+    await openAlmanacFace(page, 'Engine');
+    const bar = page.getByRole('group', { name: "Bitcoin's price" });
+    const price = bar.locator('b');
+    const colour = () => price.evaluate((e) => getComputedStyle(e).color);
+    await page.waitForTimeout(1_100);
+    feed!.send(JSON.stringify({ type: 'ticker', product_id: 'BTC-USD', price: '100250.00' }));
+    await expect(bar.getByText('Live', { exact: true }), 'PLATE live').toBeVisible();
+    await expect(price, 'PLATE the price the Engine draws').toHaveText('$100,250');
+    await expect(bar.getByTitle('Past 24 hours'), 'PLATE the day\'s move: the Dashboard\'s 1D line, the live price last').toHaveText('▲ 2.3%, past 24 hours');
+    await expect(bar, 'PLATE where and when, and the day\'s range').toContainText(/Coinbase · \d{1,2}:\d{2}:\d{2}\s[AP]M · 24h range \$98\.0K to \$100K$/);
+    await expect(bar.locator('svg polyline'), 'PLATE the day\'s line, in the move\'s colour').toHaveCSS('stroke', 'rgb(78, 203, 130)');
+    await expect(bar, 'PLATE all of it on the screen').toBeInViewport({ ratio: 1 });
+    // a lower price: the price flashes red, then settles back
+    await page.waitForTimeout(1_100);
+    feed!.send(JSON.stringify({ type: 'ticker', product_id: 'BTC-USD', price: '100180.00' }));
+    await expect(price, 'PLATE flashes the way it moved').toHaveCSS('color', 'rgb(232, 80, 74)', { timeout: 600 });
+    await expect(price, 'PLATE then settles').toHaveCSS('color', 'rgb(232, 232, 232)', { timeout: 3_000 });
+    await expect(price, 'PLATE the new price').toHaveText('$100,180');
+    // motion reduced while a flash is under way: the flash ends at once and never comes back (v1.0 left it on — the
+    // effect's cleanup cleared its timer, and the re-run returned before clearing the flash)
+    await page.waitForTimeout(1_100);
+    const sent = Date.now();
+    feed!.send(JSON.stringify({ type: 'ticker', product_id: 'BTC-USD', price: '100220.00' }));
+    await expect(price, 'PLATE flashes up').toHaveCSS('color', 'rgb(78, 203, 130)', { timeout: 450 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(Date.now() - sent, 'PLATE premise: motion reduced while the 650 ms flash is under way').toBeLessThan(550);
+    await page.waitForTimeout(1_000);
+    expect(await colour(), 'PLATE a flash under way ends when motion is reduced').toBe('rgb(232, 232, 232)');
+    await expect(price, 'PLATE the price it flashed for').toHaveText('$100,220');
+    // under reduced motion the price jumps to the new one and never flashes
+    await page.waitForTimeout(1_100);
+    feed!.send(JSON.stringify({ type: 'ticker', product_id: 'BTC-USD', price: '100300.00' }));
+    await expect(price, 'PLATE reduced motion: the new price').toHaveText('$100,300');
+    expect(await colour(), 'PLATE reduced motion: no flash').toBe('rgb(232, 232, 232)');
+    await page.waitForTimeout(200);
+    expect(await colour(), 'PLATE reduced motion: still no flash').toBe('rgb(232, 232, 232)');
   });
 
   test('⭐ POP PHONE — a tap on any part pops its card up from the screen\'s bottom, the part kept in view above it; ✕, Escape, a tap elsewhere or on the part again close it; another part swaps it', async ({ page }) => {
@@ -286,7 +366,9 @@ test.describe('the Engine · Micro (BL61)', () => {
         await page.keyboard.press('Escape');
         await expect(page.getByRole('dialog'), `POP COMPUTER ${name}: Escape closes it`).toHaveCount(0);
       }
-      const btn = page.getByRole('group', { name: "The engine's parts" }).getByRole('button', { name: 'Strike' });
+      const parts = page.getByRole('group', { name: "The engine's parts" });
+      expect((await parts.boundingBox())!.width, 'POP COMPUTER the parts\' buttons in sight on a computer (BL67)').toBeGreaterThan(200);
+      const btn = parts.getByRole('button', { name: 'Strike' });
       await btn.click();
       const card = page.getByRole('dialog', { name: 'Strike' });
       await expect(card, 'POP COMPUTER from a button: on the screen').toBeInViewport({ ratio: 1 });
@@ -320,7 +402,10 @@ test.describe('the Engine · Micro (BL61)', () => {
     await expect(page.getByRole('dialog'), 'READ a readout opens no card').toHaveCount(0);
     await page.touchscreen.tap(c.x + 130, c.y + 100);   // no part there (and above any sheet)
     await expect.poll(() => pixels(page), { message: 'READ the next touch takes it away' }).toBe(plain);
-    // an up-and-down stroke from the tape scrolls the page and reads nothing
+    // an up-and-down stroke from the tape scrolls the page and reads nothing. The page needs room to scroll: with the
+    // parts' row out of sight on a phone (BL67) the face is about this phone's height, so the test gives it some.
+    await page.evaluate(() => { const room = document.createElement('div'); room.style.height = '600px'; document.body.appendChild(room); });
+    expect(await page.evaluate(() => document.body.scrollHeight - document.body.clientHeight), 'READ premise: room to scroll').toBeGreaterThan(100);
     await toTop(page);
     await touch('touchStart', 83, 330);
     for (let i = 1; i <= 10; i++) { await touch('touchMove', 83 + (i % 2), 330 - i * 18); await page.waitForTimeout(16); }
