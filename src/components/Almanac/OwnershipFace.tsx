@@ -30,7 +30,7 @@ import {
 } from './cyclingFaceView';
 import {
   ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, strikeCallVerdict, liquidationVerdict,
-  strikeLimitTail, MODE_NOTE,
+  strikeLimitTail, MODE_NOTE, shownDefense, shiftShown, btcAxisDecimals,
 } from './ownershipFaceView';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
@@ -368,7 +368,9 @@ export default function OwnershipFace() {
 
   const { rows, last } = sim;
   const liqMonth = sim.liqMonth;
-  const defenseActive = sim.defenseCount > 0;
+  // Sweep 3 (A1-10) — the shifts a face shows (`shownDefense`): a float overage under SHIFT_DUST_USD is no defense.
+  const defense = shownDefense(rows);
+  const defenseActive = defense.count > 0;
   // What the Strike cap did. The verdict's call branch carries a call (plus the yield sentence); the note
   // under the verdict carries everything else — including a call the liquidation verdict pushed aside. A call is
   // flagged (policy off) or MODELLED (the support policy's cure or sale) — both enter the call branch (C2).
@@ -488,6 +490,7 @@ export default function OwnershipFace() {
   // The effective Coinbase stop feeds the dashed policy-limit series only while the policy applies (a primitive dep).
   const limitStopPct = applied ? policySettings.cbStopEffPct : undefined;
   const chartRows = useMemo(() => chartOwnershipRows(rows, limitStopPct), [rows, limitStopPct]);
+  const btcDecimals = btcAxisDecimals(chartRows);   // Sweep 3 (A4-9) — a small stack's axis never repeats a label
   const milestones = fixedMilestoneMonths(months);
   // 4-yr cycle only: turns inside the horizon become peak/trough rows. View-only, derived from the shifted
   // schedule — the SAME source the path note reads (unclipped), so the two can never disagree.
@@ -509,7 +512,7 @@ export default function OwnershipFace() {
       month: m,
       year: msYearLabel(m),
       flags: [
-        ...(r.defended ? [{ text: '⇄', title: 'debt shifted to Strike' }] : []),
+        ...(shiftShown(r) ? [{ text: '⇄', title: 'debt shifted to Strike' }] : []),
         ...(collateralMovedFlag(r, applied) ? [{ text: '⇡', title: 'collateral moved into Coinbase' }] : []),
         ...(r.postLiquidation ? [{ text: '⚑' }] : []),
       ],
@@ -553,8 +556,8 @@ export default function OwnershipFace() {
   ];
   if (defenseActive) {
     statTiles.push([
-      'Debt shifted', fmtK(sim.totalDefenseDrawnUsd),
-      `${sim.defenseCount} mo · CB → Strike${unhedgedMonth !== null ? ` · unheld from mo ${unhedgedMonth}` : ''}`,
+      'Debt shifted', fmtK(defense.totalUsd),
+      `${defense.count} mo · CB → Strike${unhedgedMonth !== null ? ` · unheld from mo ${unhedgedMonth}` : ''}`,
       'var(--btc)',
     ]);
   }
@@ -743,9 +746,9 @@ export default function OwnershipFace() {
           {/* The policy-off defense note — its words unchanged. Under the policy the crash playbook's note replaces it. */}
           {!applied && defenseActive && (
             <p className={styles.noteQuiet}>
-              LTV stop defense: {fmtK(sim.totalDefenseDrawnUsd)} of Coinbase debt shifted to Strike across{' '}
-              {sim.defenseCount} month{sim.defenseCount === 1 ? '' : 's'}
-              {sim.firstDefenseMonth !== null ? `, starting month ${sim.firstDefenseMonth}` : ''}.
+              LTV stop defense: {fmtK(defense.totalUsd)} of Coinbase debt shifted to Strike across{' '}
+              {defense.count} month{defense.count === 1 ? '' : 's'}
+              {defense.firstMonth !== null ? `, starting month ${defense.firstMonth}` : ''}.
               {sim.totalTopUpBtc > 0 && (
                 <> When the line ran short, {fmtBtc(sim.totalTopUpBtc)} of collateral was moved into Coinbase —
                 {' '}{fmtBtc(sim.totalTopUpFromColdBtc)} from cold storage, {fmtBtc(sim.totalTopUpFromStrikeBtc)} from the
@@ -895,7 +898,7 @@ export default function OwnershipFace() {
                     <CartesianGrid stroke="var(--line-2)" vertical={false} />
                     <XAxis dataKey="m" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" />
                     <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" width={44}
-                      tickFormatter={(x) => `${x.toFixed(1)}₿`} />
+                      tickFormatter={(x) => `${x.toFixed(btcDecimals)}₿`} />
                     <Tooltip content={<ChartTip kind="btc" />} />
                     <Legend wrapperStyle={{ fontSize: 10.5, color: 'var(--text-muted)' }} />
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />
@@ -1201,7 +1204,7 @@ export default function OwnershipFace() {
                         className={`${styles.msRow} ${m === monthIdx ? styles.msRowOn : ''} ${r.postLiquidation ? styles.msPost : ''}`}>
                         <td className={`${styles.msTd} ${styles.msYear}`}>
                           {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
-                          {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
+                          {shiftShown(r) && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
                           {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
                           {r.postLiquidation && <span className={styles.msFlag}> ⚑</span>}
                           {/* A 4-yr cycle turn, with its REAL date — the row can sit up to a month off the turn. */}

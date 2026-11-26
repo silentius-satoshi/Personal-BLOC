@@ -256,7 +256,11 @@ export interface PolicyReading {
   cash: { openingUsd: number; leftUsd: number; toBillsUsd: number; toCureUsd: number };
   /** `zone` is the state of the FIRST unpaid month — the cause the unpaid line names. */
   /** BL14 (δ1): `atGoal` — the first unpaid month sat at the goal (absent ⇒ no). */
-  unpaid: { firstMonth: number; totalUsd: number; zone: PolicyState | null; atGoal?: boolean } | null;
+  /** Sweep 3 (A1-6): `afterLiquidation` — the first unpaid month came after Coinbase was seized (absent ⇒ no), by the
+   *  reading's own rule: strictly after a month-end seizure, from the seizure month on the way down. */
+  unpaid: {
+    firstMonth: number; totalUsd: number; zone: PolicyState | null; atGoal?: boolean; afterLiquidation?: boolean;
+  } | null;
   coldAboveSupportBtc: number;
   firstThrottleMonth: number | null;
   /** Months (m ≥ 1) in each state — the engine's own count. */
@@ -348,6 +352,8 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
       : {
         firstMonth: first, totalUsd: sim.totalUnfundedUsd, zone: sim.rows[first]?.policyZone ?? null,
         atGoal: sim.rows[first]?.atGoal === true,   // BL14 — the first unpaid month sat at the goal (δ1)
+        ...(sim.liqMonth !== null && (first > sim.liqMonth || (first === sim.liqMonth && sim.seizedOnTheWayDown))
+          ? { afterLiquidation: true } : {}),
       },
     coldAboveSupportBtc: sim.coldRetrievedAboveSupportBtc,
     firstThrottleMonth: sim.firstCeilingThrottleMonth,
@@ -508,8 +514,11 @@ const UNPAID_CAUSE: Record<PolicyState, string> = {
 export function policyUnpaidNote(r: PolicyReading): string | null {
   if (r.unpaid === null || !shownUsd(r.unpaid.totalUsd)) return null;
   // BL14 (δ1) — at the goal the plan borrows nothing for the bills in ANY zone: the line had room; the goal skipped the draw.
+  // Sweep 3 (A1-6) — after a seizure the plan borrows nothing in any zone: the seizure is the cause, never the limits.
   const cause = r.unpaid.atGoal === true ? GOAL_UNPAID_CAUSE
-    : r.unpaid.zone === null ? 'nothing in the model paid them' : UNPAID_CAUSE[r.unpaid.zone];
+    : r.unpaid.afterLiquidation === true && r.liqMonth !== null
+      ? `Coinbase was liquidated in month ${r.liqMonth}, and the policy borrows nothing more`
+      : r.unpaid.zone === null ? 'nothing in the model paid them' : UNPAID_CAUSE[r.unpaid.zone];
   const act = shownUsd(r.cash.openingUsd) ? 'A larger cash reserve would cover them.' : 'Set a cash reserve to cover them.';
   return `From month ${r.unpaid.firstMonth}, ${fmtUSD(r.unpaid.totalUsd)} of bills went unpaid — ${cause}. ${act}`;
 }

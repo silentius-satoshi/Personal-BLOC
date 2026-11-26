@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { placementPlan, MOVE_THRESHOLD_BTC, type PlacementInput } from '../../../simulation/placement';
 import type { CyclingRow } from '../../../simulation/cyclingSim';
 import {
-  moveCard, moveSections, coldAhead, rowActions, fmtBtc3, AHEAD_LABEL, monthsText,
+  moveCard, moveSections, coldAhead, rowActions, fmtBtc3, fmtMoveBtc3, AHEAD_LABEL, monthsText,
   type ActionKind, type BreakerReading, type ColdAheadInput, type MoveCardContext, type ScheduleRow,
 } from '../decisionView';
 import { monthYear } from '../futuresView';
@@ -178,7 +178,8 @@ describe('⭐ R1b — Cold storage, always, and ahead on the path below (BL54)',
       expect(next.value, `AHEAD FIGURES ${i}: Next`).toBe(ref === undefined ? 'none within 60 months' : `in ${monthsText(ref.m)}`);
       expect(next.parts.map((p) => p.text), `AHEAD FIGURES ${i}: Next's parts`).toEqual(ref === undefined ? [] : [
         monthYear(START, ref.m),
-        ...intoOf(ref).map((x) => `${fmtBtc3(x.btc!)} ₿ from ${x.kind === 'strikeToCold' ? 'Strike' : 'Coinbase'}`
+        // Sweep 3 (A1-7): a move under the threshold is floored, as its row prints it (`fmtMoveBtc3`).
+        ...intoOf(ref).map((x) => `${fmtMoveBtc3(x.btc!)} ₿ from ${x.kind === 'strikeToCold' ? 'Strike' : 'Coinbase'}`
           + (x.btc! < MOVE_THRESHOLD_BTC ? ' (small — can wait)' : '')),
       ]);
       if (ref === undefined) nones += 1; else nexts += 1;
@@ -189,7 +190,7 @@ describe('⭐ R1b — Cold storage, always, and ahead on the path below (BL54)',
       const months = [H, ...(ref ? [ref.m] : []), ...(reach !== undefined ? [reach] : []), ...(standDown !== undefined ? [standDown] : [])];
       const allowed = new Set([
         ...months.flatMap((m) => [monthsText(m), monthYear(START, m)]),
-        ...(ref ? intoOf(ref).map((x) => `${fmtBtc3(x.btc!)} ₿`) : []),
+        ...(ref ? intoOf(ref).map((x) => `${fmtMoveBtc3(x.btc!)} ₿`) : []),
         ...(goal !== null ? [`${fmtBtc3(goal)} ₿`, `${fmtBtc3(last.netCoinsBtc!)} ₿`, '0.000 ₿'] : []),
         shownBtc(last.coldBtc) ? `${fmtBtc3(last.coldBtc)} ₿` : 'nothing',
       ].flatMap((t) => t.match(FIG) ?? []));

@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildDemoSeedState, DEMO_SEED_STORE_VERSION } from '../demoSeed';
 import { bucketEventToMonth } from '../../../simulation/logUtils';
 import { toLocalISO } from '../../../utils/format';
@@ -61,5 +63,18 @@ describe('buildDemoSeedState', () => {
     const other = buildDemoSeedState(new Date(2027, 0, 20)); // 2027-01-20
     expect(other.advisorStartDate).toBe('2026-06-20');
     expect(bucketEventToMonth(toLocalISO(new Date(2027, 0, 20)), other.advisorStartDate as string)).toBe(8);
+  });
+});
+
+describe('⭐ SANDBOX ONLY (Sweep 3, A5-7) — the header names the deploy the seed belongs to', () => {
+  it('⭐ SANDBOX ONLY — the sandbox (personal-bloc-demo), never the public deploy, where real users live', () => {
+    const head = readFileSync(join(process.cwd(), 'src/lib/demo/demoSeed.ts'), 'utf8').split('\n').slice(0, 4).join('\n');
+    expect(head).toContain('On the SANDBOX deploy (`personal-bloc-demo`, VITE_DEMO=1)');
+    expect(head).toContain('never the public or the owner\'s');
+    expect(head, 'SANDBOX ONLY the old claim gone').not.toContain('On the PUBLIC deploy');
+    // commercialization.md agrees: VITE_DEMO on the sandbox, never on the public deploy.
+    const deploys = readFileSync(join(process.cwd(), 'docs/claude/commercialization.md'), 'utf8');
+    expect(deploys).toMatch(/sandbox \(`personal-bloc-demo`\) \| `VITE_DEMO=1`/);
+    expect(deploys).toMatch(/public \(`personal-bloc-public`\)[^\n]*⚠ \*\*NO\*\* `VITE_DEMO`/);
   });
 });

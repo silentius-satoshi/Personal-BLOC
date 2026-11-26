@@ -27,7 +27,9 @@ import {
   OPENING_CASH_FLOW_NOTE, seedLine, defendedFromSub, collateralMovedFlag, openPastLltvNote,
   msYearLabel, MS_TABLE, MS_VIEWS_STRATEGY,
 } from './cyclingFaceView';
-import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
+import {
+  chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE, shiftShown, btcAxisDecimals,
+} from './ownershipFaceView';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
   policyUnpaidNote, neverDrawsNote, drawPauseClause, policyTileSub, defenseLineNote,
@@ -410,7 +412,7 @@ export default function UnifiedFace() {
       month: m,
       year: msYearLabel(m),
       flags: [
-        ...(r.defended ? [{ text: '⇄', title: 'debt shifted to Strike' }] : []),
+        ...(shiftShown(r) ? [{ text: '⇄', title: 'debt shifted to Strike' }] : []),
         ...(collateralMovedFlag(r, applied) ? [{ text: '⇡', title: 'collateral moved into Coinbase' }] : []),
         ...(r.postLiquidation ? [{ text: '⚑' }] : []),
       ],
@@ -439,6 +441,7 @@ export default function UnifiedFace() {
   // The effective Coinbase stop feeds the dashed policy-limit series only while the policy applies (a primitive dep).
   const limitStopPct = applied ? policySettings.cbStopEffPct : undefined;
   const chartRows = useMemo(() => chartOwnershipRows(rows, limitStopPct), [rows, limitStopPct]);
+  const btcDecimals = btcAxisDecimals(chartRows);   // Sweep 3 (A4-9) — a small stack's axis never repeats a label
 
   // ⚠ An oscillating path tracks no line, and PL_BAND_LABEL is a Record<PlBand> that 'fourYear' is not.
   const pathNote = pathKind === 'fourYear'
@@ -831,7 +834,7 @@ export default function UnifiedFace() {
                     <CartesianGrid stroke="var(--line-2)" vertical={false} />
                     <XAxis dataKey="m" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" />
                     <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} stroke="var(--line-2)" width={44}
-                      tickFormatter={(x) => `${x.toFixed(1)}₿`} />
+                      tickFormatter={(x) => `${x.toFixed(btcDecimals)}₿`} />
                     <Tooltip content={<ChartTip kind="btc" />} />
                     <Legend wrapperStyle={{ fontSize: 10.5, color: 'var(--text-muted)' }} />
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />
@@ -1001,7 +1004,7 @@ export default function UnifiedFace() {
                         className={`${styles.msRow} ${m === monthIdx ? styles.msRowOn : ''} ${r.postLiquidation ? styles.msPost : ''}`}>
                         <td className={`${styles.msTd} ${styles.msYear}`}>
                           {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
-                          {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
+                          {shiftShown(r) && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
                           {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
                           {r.postLiquidation && <span className={styles.msFlag}> ⚑</span>}
                           {turn && (

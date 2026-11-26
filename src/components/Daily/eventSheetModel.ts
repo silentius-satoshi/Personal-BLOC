@@ -14,6 +14,13 @@ import { fmtUSDCents } from '../../utils/format';
  *  collateral move is journal-only (`COLLATERAL_FEEDS_MONTH`, held to `isMonthlyMeaningful`), so skipping its balances
  *  carries nothing. */
 export const PAST_BALANCES_NOTE = "Past date — current balances optional. Skip if you don't have them.";
+
+/** Sweep 3 — the delete confirm states `rollupMonth`'s rule, which is always true: a month with flows and no reading
+ *  carries the month before's balances, marked provisional, until a reading is logged. Its old "If a today flow loses
+ *  its reading, the month is marked provisional" held only with a reading in the month before to carry. */
+export const deleteConfirmText = (month: number): string =>
+  `Delete this event? Month ${month} will be re-rolled. If that leaves the month with flows but no reading, it carries `
+  + "the month before's balances, marked provisional, until a reading is logged.";
 export function pastBalancesNote(dayLog: DayEvent[], advisorStartDate: string, month: number, feedsMonth: boolean): string {
   const ownReading = dayLog.some((e) => e.kind === 'balanceReading' && bucketEventToMonth(e.date, advisorStartDate) === month);
   return !feedsMonth || ownReading || priorStocksForMonth(dayLog, advisorStartDate, month) === undefined

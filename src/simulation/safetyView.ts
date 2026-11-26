@@ -113,9 +113,19 @@ export function ownerSafetyVerdict(view: SafetyView, hasCbLoan: boolean): { stat
   const copy = state === 'safe'
     ? 'Safe — nothing to do today'
     : state === 'watch'
-      ? (today === 'watch' ? 'Watch — your CB cushion is tightening' : CB_AT_SUPPORT_WATCH)
+      ? (today === 'watch' ? todayWatchCopy(view, hasCbLoan) : CB_AT_SUPPORT_WATCH)
       : 'Act — pay down or add collateral now';
   return { state, copy };
+}
+
+/** Sweep 3 — today's amber line names the bar that is amber: Strike's, Coinbase's, or both. It said "CB" whenever
+ *  today was amber — for Strike's bar too, and with no Coinbase loan at all. Words only: the state is unchanged. */
+function todayWatchCopy(view: SafetyView, hasCbLoan: boolean): string {
+  const cb = hasCbLoan && view.cbLevel === 'watch';
+  const strike = view.strikeLevel === 'watch';
+  return cb && strike ? 'Watch — your Strike and CB cushions are tightening'
+    : strike ? 'Watch — your Strike cushion is tightening'
+      : 'Watch — your CB cushion is tightening';
 }
 
 /** D7 — the at-support line under the Coinbase bar (the owner's Safety card, to the cent; the Dashboard and a trusted

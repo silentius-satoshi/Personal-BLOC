@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
-import { todayLocalISO } from '../../utils/format';
+import { todayLocalISO, typedISODate } from '../../utils/format';
 import { NostrAuthGate } from '../Auth/NostrAuthGate';
 import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
 import { OwnerKeySetup } from './OwnerKeySetup';
@@ -181,7 +181,11 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
                     className={styles.dateInput}
                     value={draft.startDate}
                     max={todayLocalISO()}
-                    onChange={(e) => setDraft((d) => ({ ...d, startDate: e.target.value }))}
+                    onChange={(e) => {
+                      // Sweep 3 — a cleared field writes nothing: the draft keeps its last date (finished, it is the plan's).
+                      const start = typedISODate(e.target.value);
+                      if (start !== null) setDraft((d) => ({ ...d, startDate: start }));
+                    }}
                   />
                 </div>
               </div>

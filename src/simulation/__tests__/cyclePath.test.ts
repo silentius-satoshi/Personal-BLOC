@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   CYCLE_LOW_MULT, CYCLE_TOP_MULT, CYCLE_SHIFT_MONTH_MS, CYCLE_PHASE_SHIFT_MAX_MONTHS,
   cycleMultAt, cycleConvergencePath, shiftedCycleTurns, upcomingCycleTurns, cycleTurnsInHorizon,
@@ -59,14 +61,19 @@ describe('cycleMultAt', () => {
       '2030-09-02 low', '2033-08-01 high', '2034-07-31 low',
     ]);
     // ⚠ This pins the EXACTNESS, not the exact-hit shortcut: the log-linear interpolation also lands
-    // exactly on these values without it today, so the shortcut is a precaution no test can tell apart.
+    // exactly on these values without it today, so no result can tell the shortcut apart.
     for (const t of CYCLE_TURNS) expect(cycleMultAt(new Date(t.date))).toBe(multOf(t.kind));
-    // ⭐ CANARY on the accident that HIDES the shortcut. Deleting the shortcut today changes no result,
-    // so no test can catch its removal — mutation-verified: all 23 cases still pass without it. What can
-    // be pinned is the assumption underneath. If either line below ever fails, exp(log(x)) has stopped
-    // round-tripping, the shortcut has become load-bearing, and it needs a test of its own.
-    expect(Math.exp(Math.log(CYCLE_LOW_MULT))).toBe(CYCLE_LOW_MULT);
-    expect(Math.exp(Math.log(CYCLE_TOP_MULT))).toBe(CYCLE_TOP_MULT);
+    // ⭐ SHORTCUT — Sweep 3 (A6-4): so the shortcut is pinned in the source, directly. Deleting it today changes no
+    // result (mutation-verified: all 23 cases still pass without it); the canary this replaces pinned exp(log(x))
+    // round-tripping instead, and failed whenever the platform's approximated Math moved one ulp. The line itself:
+    // inside cycleMultAt, an exact turn hit returns the turn's own multiple, before any interpolation.
+    const src = readFileSync(join(process.cwd(), 'src/simulation/cyclePath.ts'), 'utf8');
+    const start = src.indexOf('export function cycleMultAt(');
+    const body = src.slice(start, src.indexOf('\n}\n', start));
+    const SHORTCUT = 'if (probe === b.date) return multOf(b.kind);';
+    expect(start, 'SHORTCUT premise: cycleMultAt is read').toBeGreaterThanOrEqual(0);
+    expect(body.split(SHORTCUT).length - 1, 'SHORTCUT once, inside cycleMultAt').toBe(1);
+    expect(body.indexOf(SHORTCUT), 'SHORTCUT before the interpolation').toBeLessThan(body.indexOf('Math.log('));
   });
 
   it('4 · is strictly monotone between consecutive turns, and never leaves [LOW, TOP]', () => {

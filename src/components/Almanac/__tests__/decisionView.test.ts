@@ -5,15 +5,15 @@ import {
   PATH_INVARIANT_LINE, BREAKER_LOADING_LINE, crashNote, consoleLinkLabel, decisionDisclaimer, pathSublabel,
   pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles, scheduleFileName, manualPriceNote,
   stressNote, BELOW_SUPPORT_NOTE, moveCardText, ON_SUPPORT_NOTE, SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY,
-  seedsFromMove,
-  type ActionKind, type MoveCardContext, type BreakerReading, type PathNoteInput,
+  seedsFromMove, fmtMoveBtc3, MONTH_END_SEIZURE,
+  type ActionKind, type MoveCardContext, type BreakerReading, type PathNoteInput, type SeizureRead,
 } from '../decisionView';
 import {
   placementPlan, MOVE_THRESHOLD_BTC,
   type PlacementInput, type PlacementPlan, type PlacementState,
 } from '../../../simulation/placement';
 import {
-  runCyclingSim, allInEquity, effectiveStrikeCapPct, type CyclingInputs, type CyclingResult,
+  runCyclingSim, allInEquity, effectiveStrikeCapPct, type CyclingInputs, type CyclingResult, type CyclingRow,
 } from '../../../simulation/cyclingSim';
 import { cbMetrics } from '../../../simulation/cbMetrics';
 import { ceilingLiquidationMultiple } from '../../../simulation/cbDefense';
@@ -268,6 +268,84 @@ describe('coinbaseLoanLine — the three shapes', () => {
     const s = sim();
     const nothing: CyclingResult = { ...s, rows: s.rows.map((r) => ({ ...r, strikeToCbBtc: 0 })) };
     expect(coinbaseLoanLine(nothing, place({ strikeCollateralBtc: 0.01 }), false)).toBeNull();
+  });
+});
+
+// ── Sweep 3 — after a seizure, a sub-threshold figure, a loan opened by buys (A1-5, A1-7, A1-12) ─────────────────────
+
+describe('⭐ Sweep 3 — the schedule\'s words after a seizure, under the threshold, and for a loan opened by buys', () => {
+  const BROKEN = /NaN|Infinity|undefined|\$-/;
+  const base = () => runCyclingSim({ ...SP_REPRO, pricePath: SUPPORT, supportPolicy: policyFor(SUPPORT) });
+  const PLEDGE = 'Buy $2,000 of bitcoin (≈ 0.020 ₿) and pledge it to Coinbase.';
+  const KEEP = 'Buy $2,000 of bitcoin (≈ 0.020 ₿) and keep it.';
+
+  it('⭐ KEEP IT (A1-5) — on the way down from the seizure month; at a month-end seizure from the month after', () => {
+    const row = (m: number): CyclingRow => ({ ...base().rows[1], m, btcBoughtUsd: 2_000, price: 100_000 });
+    const buy = (m: number, liq: number | null, way: SeizureRead): string =>
+      rowActions(row(m), liq, way).find((a) => a.kind === 'buy')!.text;
+    const DOWN: SeizureRead = { onTheWayDown: true, priceUsd: null };
+    expect([buy(11, 12, DOWN), buy(12, 12, DOWN), buy(13, 12, DOWN)], 'KEEP IT on the way down').toEqual([PLEDGE, KEEP, KEEP]);
+    // Month-end: month 12's row is pushed before the seizure — its buy was pledged, then seized with the loan.
+    expect([buy(11, 12, MONTH_END_SEIZURE), buy(12, 12, MONTH_END_SEIZURE), buy(13, 12, MONTH_END_SEIZURE)], 'KEEP IT month-end')
+      .toEqual([PLEDGE, PLEDGE, KEEP]);
+    expect(buy(30, null, MONTH_END_SEIZURE), 'KEEP IT no seizure').toBe(PLEDGE);
+  });
+
+  it('⭐ KEEP IT (A1-5) — a seized run\'s schedule never pledges a buy after the seizure', () => {
+    for (const supportPolicy of [policyFor(SUPPORT), undefined]) {
+      const sim = runCyclingSim({ ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.35), supportPolicy, openingColdBtc: 0.5 });
+      expect(sim.liqMonth, 'KEEP IT premise: seized in month 12').toBe(12);
+      const from = sim.seizedOnTheWayDown ? 12 : 13;
+      const buys = planSchedule(sim, place()).filter((r) => r.m >= from).flatMap((r) => r.actions.filter((a) => a.kind === 'buy'));
+      expect(buys.length, `KEEP IT premise: buys after the seizure (${supportPolicy ? 'on the way down' : 'month-end'})`).toBeGreaterThan(0);
+      for (const a of buys) {
+        expect(a.text, `KEEP IT ${a.text}`).toMatch(/ and keep it\.$/);
+        expect(a.text).not.toMatch(BROKEN);
+      }
+    }
+  });
+
+  it('⭐ FLOORED (A1-7) — a sub-threshold ₿ figure is floored, alike on the card and in the schedule; at the threshold, as before', () => {
+    expect([fmtMoveBtc3(0.0097), fmtMoveBtc3(0.00999999), fmtMoveBtc3(0.004), fmtMoveBtc3(0.015 - 0.01)])
+      .toEqual(['0.009', '0.009', '0.004', '0.005']);
+    expect([fmtMoveBtc3(MOVE_THRESHOLD_BTC), fmtMoveBtc3(0.0125), fmtMoveBtc3(0.3)])
+      .toEqual([fmtBtc3(MOVE_THRESHOLD_BTC), fmtBtc3(0.0125), fmtBtc3(0.3)]);
+    // The card: 0.0097 ₿ over Strike's keep — not worth moving.
+    const p = place({ strikeCollateralBtc: place().strikeKeepBtc! + 0.0097 });
+    expect(p.worthMoving, 'FLOORED premise').toBe(false);
+    const batch = card({ plan: p }).lines.find((l) => l.key === 'batch')!.text;
+    expect(batch).toBe("Nothing worth moving yet — 0.009 ₿ is under the 0.01 ₿ threshold; next month's re-plan picks it up.");
+    // The schedule: the same figure on a future row's small lines.
+    const row = { ...base().rows[1], strikeToCbBtc: 0.0097, strikeToColdBtc: 0.0097, sweptToColdBtc: 0.0097 };
+    expect(rowActions(row, null).filter((a) => a.btc === 0.0097).map((a) => a.text)).toEqual([
+      'Release 0.009 ₿ of Strike collateral into Coinbase. (small — can wait)',
+      'Release 0.009 ₿ of Strike collateral to cold storage. (small — can wait)',
+      'Move 0.009 ₿ from Coinbase to cold storage. (small — can wait)',
+    ]);
+  });
+
+  it('⭐ OPENED BY BUYS (A1-12) — no loan at the opening: the first pledged buy\'s month and the first borrow\'s, from the rows', () => {
+    const s = runCyclingSim({
+      ...SP_REPRO, cbCollateralBtc: 0, cbDebt: 0, strikeCreditLine: 40_000, pricePath: pathP1(), supportPolicy: policyFor(SUPPORT),
+    });
+    const held = s.rows.find((r) => r.m > 0 && shownBtc(r.cbCollateralBtc));
+    const borrow = s.rows.find((r) => r.m > 0 && shownUsd(r.refinancedUsd));
+    expect(held, 'OPENED premise: a buy is pledged to Coinbase').toBeDefined();
+    expect([shownUsd(held!.btcBoughtUsd), s.rows.some((r) => r.m > 0 && r.m <= held!.m && shownBtc(r.strikeToCbBtc))],
+      'OPENED premise: by a buy, before any Strike release').toEqual([true, false]);
+    expect(borrow, 'OPENED premise: a later Coinbase borrow').toBeDefined();
+    const noMove = place({ strikeCollateralBtc: 0.01 });
+    const lead = `You have no Coinbase loan yet. This plan opens one: your month-${held!.m} buy is pledged to Coinbase`;
+    const line = coinbaseLoanLine(s, noMove, false);
+    expect(line).toBe(`${lead}, and the first Coinbase borrow is in month ${borrow!.m}.`);
+    const noBorrow: CyclingResult = { ...s, rows: s.rows.map((r) => ({ ...r, refinancedUsd: 0 })) };
+    expect(coinbaseLoanLine(noBorrow, noMove, false)).toBe(`${lead}, but this path never borrows on Coinbase.`);
+    expect(line).not.toMatch(BROKEN);
+    // A Strike release in the same month keeps the release's own words.
+    const released: CyclingResult = {
+      ...s, rows: s.rows.map((r) => (r.m === held!.m ? { ...r, strikeToCbBtc: 0.05 } : r)),
+    };
+    expect(coinbaseLoanLine(released, noMove, false)).toMatch(new RegExp(`collateral moves to Coinbase in month ${held!.m}`));
   });
 });
 

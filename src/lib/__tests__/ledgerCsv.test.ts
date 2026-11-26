@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { buildLedgerCsv, ledgerFaceAvailable } from '../ledgerCsv';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { buildLedgerCsv, ledgerFaceAvailable, PAYDOWN_DAGGER_NOTE } from '../ledgerCsv';
 import type { MonthlyLogEntry } from '../../simulation/types';
 
 // Minimal full entry — only required fields defaulted; overrides layer on top (optional cells stay absent
@@ -149,5 +151,17 @@ describe('F2 — the cells\' decimals (Sweep 2b)', () => {
     }
     expect(checked, 'F2 SWEEP premise').toBe(400 * 7);
     expect(rows.some((r) => r.split(',')[BTC[0]].length > 8), 'F2 SWEEP premise — small coin figures reached').toBe(true);
+  });
+});
+
+describe('⭐ DAGGER (Sweep 3, A2-9) — the Ledger\'s † says what it marks: a minimum or NDP paid, not in Paydown', () => {
+  it('⭐ DAGGER — its words, and the face prints them (the false "includes" gone)', () => {
+    expect(PAYDOWN_DAGGER_NOTE).toBe("† Strike's minimum or its yearly payment (NDP) was paid this month — not counted in Paydown.");
+    expect(PAYDOWN_DAGGER_NOTE).not.toMatch(/NaN|Infinity|undefined|\$-/);
+    const face = readFileSync(join(process.cwd(), 'src/components/Almanac/LedgerFace.tsx'), 'utf8');
+    expect(face, 'DAGGER the face reads it').toContain('{PAYDOWN_DAGGER_NOTE}');
+    expect(face, 'DAGGER the old claim gone').not.toContain('includes a non-draw / minimum payment');
+    // What the † marks: a month whose Strike minimum or NDP was paid — the same two fields the face reads.
+    expect(face).toContain('const rowNote = e.ndpPaid != null || e.strikeMinPaid != null;');
   });
 });

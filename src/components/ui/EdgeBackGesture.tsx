@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { usePointerDrag } from '../../hooks/usePointerDrag';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { rubberBand } from '../../lib/gestureModel';
@@ -42,7 +42,14 @@ const SETTLE_MS = 320; // --motion-settle
 export function EdgeBackGesture({ onBack, renderUnder, disabled, children }: EdgeBackGestureProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
-  const underRef = useRef<HTMLDivElement>(null);
+  const underRef = useRef<HTMLDivElement | null>(null);
+  // Sweep 3 — while a swipe shows it, the under-layer is INERT, not only aria-hidden: its `.dim` takes no pointer, so a
+  // second finger on the revealed page's nav could open Settings or the Almanac mid-swipe. Set on the node as it mounts
+  // (React 18's types have no `inert`); the node goes when the swipe ends, so the page it reveals is never left inert.
+  const underMount = useCallback((el: HTMLDivElement | null) => {
+    underRef.current = el;
+    el?.setAttribute('inert', '');
+  }, []);
   const dimRef = useRef<HTMLDivElement>(null);
   const zoneRef = useRef<HTMLDivElement>(null);
   const downRef = useRef({ x: 0, y: 0 });
@@ -130,7 +137,7 @@ export function EdgeBackGesture({ onBack, renderUnder, disabled, children }: Edg
   return (
     <div ref={wrapRef} className={styles.wrap}>
       {underContent && (
-        <div ref={underRef} className={styles.under} aria-hidden="true">
+        <div ref={underMount} className={styles.under} aria-hidden="true">
           {underContent}
           <div ref={dimRef} className={styles.dim} style={{ opacity: 0.4 }} />
         </div>

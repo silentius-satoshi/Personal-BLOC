@@ -6,6 +6,7 @@ import {
   buildSafeSafety, scaleSafetyView, computeViewerSafety, CB_AT_SUPPORT_WATCH, ownerAtSupportLine, CB_MOVE_BRINGS_WITHIN,
   type SafetyViewInputs, type SafeSnapshot,
 } from '../safetyView';
+import type { SafetyLevel } from '../cbMetrics';
 import { supportToday } from '../powerLaw';
 import { placementPlan } from '../placement';
 import { ceilingHeadroomUsd } from '../supportPolicy';
@@ -286,6 +287,17 @@ describe('⭐ VERDICT — the owner\'s eyebrow takes the worse reading', () => {
     const red = deriveSafetyView({ ...BASE, btcPrice: 60_000 });   // 83% today
     expect(red.cbLevel, 'VERDICT premise: today red').toBe('act');
     expect(ownerSafetyVerdict(red, true).state, 'VERDICT red stays red').toBe('act');
+  });
+
+  it('⭐ VERDICT WHICH BAR (Sweep 3) — today\'s amber line names the bar that is amber: Strike\'s, Coinbase\'s, or both', () => {
+    const v = deriveSafetyView({ ...BASE, cbLoanBalance: 20_000 });   // within the limit at support: today's words decide
+    const at = (strikeLevel: SafetyLevel, cbLevel: SafetyLevel, loan: boolean) =>
+      ownerSafetyVerdict({ ...v, strikeLevel, cbLevel }, loan);
+    expect(at('watch', 'safe', true), 'WHICH BAR Strike alone').toEqual({ state: 'watch', copy: 'Watch — your Strike cushion is tightening' });
+    expect(at('safe', 'watch', true).copy, 'WHICH BAR Coinbase alone').toBe('Watch — your CB cushion is tightening');
+    expect(at('watch', 'watch', true).copy, 'WHICH BAR both').toBe('Watch — your Strike and CB cushions are tightening');
+    // No Coinbase loan: only Strike's bar shows, so an amber day is Strike's — never "your CB cushion".
+    expect(at('watch', 'watch', false).copy, 'WHICH BAR no loan').toBe('Watch — your Strike cushion is tightening');
   });
 
   it('⭐ VERDICT — with no Coinbase loan nothing at support counts (the bar isn\'t shown)', () => {

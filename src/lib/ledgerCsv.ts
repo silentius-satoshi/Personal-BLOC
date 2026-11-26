@@ -128,6 +128,11 @@ export function fmtColdBtc(n: number): string {
   return Number(n.toFixed(5)) === 0 ? n.toFixed(8) : n.toFixed(5);
 }
 
+/** Sweep 3 (A2-9) — the † on a month's Paydown cell: Strike's minimum or its yearly payment (NDP) was paid that month.
+ *  Neither is in Paydown (a minimum is balance-neutral — logUtils never adds it), so the old "† includes a non-draw /
+ *  minimum payment." said the opposite of the cell. */
+export const PAYDOWN_DAGGER_NOTE = "† Strike's minimum or its yearly payment (NDP) was paid this month — not counted in Paydown.";
+
 /** The disclosure line for cold movement outside the table, or null when there is none (|unlogged| < COLD_EPS).
  *  `columnShown` = hasColdColumn(...). With a column: "‡ …— not in the total above." Without one there is no total
  *  and nothing to anchor, so the line has no ‡ and says the months have no row. Figure = fmtColdBtc(|unlogged|). */

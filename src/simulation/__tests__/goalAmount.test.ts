@@ -298,8 +298,9 @@ describe('⭐ GOAL KEPT — the spare income kept at the goal counts in all-in e
       cases += 1;
     }
     expect(cases).toBe(24);
-    expect([runKept, baseKept], 'KEPT non-vacuous on both sides').toEqual([expect.any(Number), expect.any(Number)]);
-    expect(Math.min(runKept, baseKept), 'KEPT both sides keep spare income somewhere in the sweep').toBeGreaterThan(5);
+    // Sweep 3 (A6-6): one assertion per side — the old `expect.any(Number)` pair accepted 0, so it could never fail.
+    expect({ run: runKept > 5, baseline: baseKept > 5 }, 'KEPT non-vacuous on both sides: each keeps spare income in more than 5 of the 24 cases')
+      .toEqual({ run: true, baseline: true });
   });
 
   it('⭐ GOAL KEPT — all-in equity adds each side\'s own; with no goal both totals are 0 and all-in equity is bit-identical', () => {

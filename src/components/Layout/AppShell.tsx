@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -66,6 +66,7 @@ import { CbDefenseTool }    from '../Tools/CbDefenseTool';
 import AlmanacView, { type AlmanacFace } from '../Almanac/AlmanacView';
 import { PreviewAsViewer } from '../Almanac/seenAsViewer';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
+import { toPageTop }        from '../../utils/pageTop';
 import styles from './AppShell.module.css';
 
 const ALL_TABS_META = [
@@ -345,6 +346,12 @@ export function AppShell() {
   // Leaving the Almanac forgets the face asked for — the one mechanism, so the nav's button, full mode's Tools menu and
   // a tab (which open the hub directly) all open the grid.
   useEffect(() => { if (activeTab !== 'almanac') setAlmanacFace(undefined); }, [activeTab]);
+  // Sweep 3 (3.4) — a page opens at its top. The app scrolls <body>, and a page change kept the last page's offset: full
+  // mode's "Switch to simple view" opened the Dashboard part-way down. ONE reset, keyed on the page drawn — the mode, the
+  // tab, the journal's view, the preview — in place of "Preview as viewer"'s and "✕ Exit preview"'s own calls, an edge
+  // swipe's page change included; a layout effect, so the old offset never paints.
+  const pageDrawn = `${simpleMode || viewerMode ? 'simple' : 'full'}|${activeTab}|${simpleView}|${viewerPreview}`;
+  useLayoutEffect(() => { toPageTop(); }, [pageDrawn]);
   // Full mode: the link shows only while the Almanac tab can open (a hidden tab bounces to the first visible one).
   const planPathsInFullMode = hiddenTabs.includes('almanac') ? null : goPlanPaths;
   // …and the CB Loan tab's console link only while the Emergency tab can open — Settings can hide it, and a hidden tab

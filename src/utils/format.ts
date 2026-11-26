@@ -61,7 +61,16 @@ export const toLocalISO = (date: Date): string =>
 
 export const todayLocalISO = (): string => toLocalISO(new Date());
 
+/** Sweep 3 — a date field's value as a yyyy-mm-dd to write, or null when there is none: a cleared field (a picker's
+ *  Clear or Reset) gives '', and a blank start date made every month of the plan read NaN. The three start-date fields
+ *  (Settings, the sidebar, onboarding) write only what this returns; a cleared field writes nothing. */
+export function typedISODate(v: string): string | null {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) ? v : null;
+}
+
 export function fmtMiningUSD(n: number): string {
+  // Sweep 3 (A4-7) — a negative net is "−$1.06", never "$-1.0620": the sign, then the same tiers on its size.
+  if (n < 0) return `−${fmtMiningUSD(-n)}`;
   if (n < 0.01) return '$' + n.toFixed(4);
   if (n < 100)  return '$' + n.toFixed(2);
   return '$' + WHOLE.format(Math.round(n));
@@ -100,6 +109,12 @@ export function relativeAge(ts: number | null): string {
 export function fmtLtvPct(fraction: number, decimals = 1): string {
   if (!Number.isFinite(fraction)) return fraction > 0 ? '∞' : '—';
   return `${(fraction * 100).toFixed(decimals)}%`;
+}
+
+/** Sweep 3 (A4-5) — a change in percentage points, signed, one decimal ("+1.2", "-0.4"), with its unit when it is a
+ *  number. A change that isn't one (∞ − ∞, an LTV on no collateral both sides) is "—" — never "NaNpp" or "+Infinity". */
+export function fmtPpDelta(delta: number, unit = ''): string {
+  return Number.isFinite(delta) ? `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}${unit}` : '—';
 }
 
 /** Sweep 2c (L5) — "all-in" on screen, held together: a word joiner (U+2060) after the hyphen, so a line never breaks

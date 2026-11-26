@@ -1,7 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useStore } from '../../store/useStore';
 import { useSimulation } from '../../hooks/useSimulation';
+import { ltvOf } from '../../simulation/ltv';
+import { fmtLtvPct } from '../../utils/format';
 import styles from './TierCards.module.css';
+
+/**
+ * Sweep 3 (A4-6) — the Custom tier's reading: a month's expenses drawn on the sandbox collateral, by `ltvOf` (expenses
+ * on ₿0 are ∞ — "Liquidated" — never the 0, "Safe", the old fallback read), and its 80%-crash LTV; printed through
+ * `fmtLtvPct`. A priced position reads exactly as before (`ltvOf` is the same ratio; the crash keeps its `Math.ceil`).
+ */
+export function customTierReading(expenses: number, sandboxBtc: number, btcPrice: number): {
+  dayOne: number; crash: number; label: 'Liquidated' | 'Margin Call' | 'Safe'; dayOneText: string; crashText: string;
+} {
+  const dayOne = ltvOf(expenses, sandboxBtc, btcPrice);
+  const crash = dayOne / 0.20;
+  const label = crash >= 0.85 ? 'Liquidated' : crash >= 0.70 ? 'Margin Call' : 'Safe';
+  return {
+    dayOne, crash, label,
+    dayOneText: fmtLtvPct(dayOne),
+    crashText: Number.isFinite(crash) ? `${Math.ceil(crash * 100)}%` : fmtLtvPct(crash),
+  };
+}
 
 const TIERS: { key: 'min' | 'rec' | 'ideal'; label: string; ltv: number }[] = [
   { key: 'min',   label: 'Minimum',     ltv: 0.15 },
@@ -26,16 +46,10 @@ export function TierCards() {
     setCustomRaw(sandboxBtc.toFixed(2));
   }, [sandboxBtc]);
 
-  const customDayOneLtv = sandboxBtc > 0 && btcPrice > 0
-    ? expenses / (sandboxBtc * btcPrice)
-    : 0;
-  const customCrashLtv = customDayOneLtv / 0.20;
-  const customCrashLabel =
-    customCrashLtv >= 0.85 ? 'Liquidated' :
-    customCrashLtv >= 0.70 ? 'Margin Call' : 'Safe';
+  const custom = customTierReading(expenses, sandboxBtc, btcPrice);
   const customCrashColor =
-    customCrashLtv >= 0.85 ? 'var(--red)' :
-    customCrashLtv >= 0.70 ? 'var(--amber)' : 'var(--green)';
+    custom.crash >= 0.85 ? 'var(--red)' :
+    custom.crash >= 0.70 ? 'var(--amber)' : 'var(--green)';
 
   return (
     <div className={styles.cards}>
@@ -116,12 +130,12 @@ export function TierCards() {
           )}
 
           <span className={styles.ltvRow}>
-            Day-one LTV: <strong>{(customDayOneLtv * 100).toFixed(1)}%</strong>
+            Day-one LTV: <strong>{custom.dayOneText}</strong>
           </span>
           <span className={styles.crashRow}>
             80% crash →{' '}
             <strong style={{ color: customCrashColor }}>
-              {Math.ceil(customCrashLtv * 100)}% {customCrashLabel}
+              {custom.crashText} {custom.label}
             </strong>
           </span>
         </button>
